@@ -746,8 +746,8 @@ block content
                             : fallbackNationalityOptions;
                     select.staff-nationality.form-select(
                         data-searchable-select
-                        data-search-placeholder="Search nationality"
-                        data-placeholder="Select nationality"
+                        data-search-placeholder="Uyruk Ara"
+                        data-placeholder="Uyruk Seç"
                         data-no-results-text="No results found"
                     )
                         option(value="" selected)
@@ -784,11 +784,11 @@ block content
                     input.stop-web-title.form-control(type="text" )
                 .input-group
                     span.input-group-text Şehir
-                    select.stop-place.form-select(data-searchable-select data-search-placeholder="Search location")
+                    select.stop-place.form-select(data-searchable-select data-search-placeholder="Şehir Ara")
                         option(value="" selected)
                 .input-group
                     span.input-group-text UETDS Kodu
-                    select.stop-uetds.form-select(data-searchable-select data-search-placeholder="Search UETDS code")
+                    select.stop-uetds.form-select(data-searchable-select data-search-placeholder="UETDS Kodu Ara")
                         option(value="" selected)
                 .form-check.form-switch
                     input.form-check-input.stop-service(type="checkbox" )
@@ -857,10 +857,10 @@ block content
                             input.route-transfer-option-time.form-control.time-flatpickr(type="text" placeholder="00:00" autocomplete="off")
                         .input-group.mb-3
                             span.input-group-text Max Rezervasyon Sayısı
-                            input.route-max-reservation-count.form-control(type="number" min="0" step="1" placeholder="Unlimited")
+                            input.route-max-reservation-count.form-control(type="number" min="0" step="1" placeholder="Sınırsız")
                         .input-group
                             span.input-group-text Max Tek Koltuk Rezervasyon Sayısı
-                            input.route-max-single-seat-count.form-control(type="number" min="0" step="1" placeholder="Unlimited")
+                            input.route-max-single-seat-count.form-control(type="number" min="0" step="1" placeholder="Sınırsız")
 
     .trip
         .gtr-header
@@ -1688,7 +1688,7 @@ block content
             span SEFERE GİT
 
     .customer-blacklist-pop-up.p-3
-        textarea.customer-blacklist-description.form-control(placeholder="Reason")
+        textarea.customer-blacklist-description.form-control(placeholder="Sebep")
         .d-flex.justify-content-end.gap-2.mt-2
             button.btn.btn-secondary.customer-blacklist-close KAPAT
             button.btn.btn-primary.customer-blacklist-add EKLE
@@ -1714,7 +1714,7 @@ block content
 
         .col-3.h-100.right-panel
             input#calendar(type="hidden" name="")
-            select#currentStop.form-select.form-select-sm(value=branchStopId data-searchable-select data-search-placeholder="Search stop")
+            select#currentStop.form-select.form-select-sm(value=branchStopId data-searchable-select data-search-placeholder="Durak Seç")
                 each s in stops
                     if(s.id == branchStopId)
                         option(value=s.id selected) #{s.title}
