@@ -1,0 +1,10 @@
+each b in branches
+    - const btnClass = b.isActive ? 'btn-outline-primary' : 'btn-danger'
+    .btn-group.w-100
+        button.branch-button.d-flex.btn.col-11(type="button" class=btnClass data-id=b.id data-title=b.title)
+            .col-6
+                p.text-center.m-0 #{b.title}
+            .col-6
+                p.text-center.m-0 #{b.placeStr}
+        button.btn.btn-outline-danger.branch-delete.col-1(type="button" data-id=b.id data-title=b.title)
+            i.fa-solid.fa-trash

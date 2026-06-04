@@ -1,0 +1,15 @@
+each p in payments
+    .d-flex.payment
+        .col-3 
+            p.text-center.m-0 #{p.userName}
+        .col-3 
+            p.text-center.m-0 #{p.type}
+        .col-3 
+            p.text-center.m-0 #{p.amount}
+        .col-3
+            if p.canConfirm
+                .d-flex.justify-content-center.gap-3
+                    button.btn.btn-sm.btn-outline-primary.payment-button(type="button" data-id=p.id data-action="approve") Kabul Et
+                    button.btn.btn-sm.btn-outline-danger.payment-button(type="button" data-id=p.id data-action="reject") Reddet
+            else
+                p.text-center.m-0 Bekliyor...

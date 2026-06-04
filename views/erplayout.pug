@@ -1,0 +1,189 @@
+doctype html
+html
+  head
+    meta(name="viewport" content="width=1280, initial-scale=1, user-scalable=no")
+    title= title
+    link(rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png")
+    link(rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png")
+    link(rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png")
+    link(rel="shortcut icon" href="/images/favicon.ico" type="image/x-icon")
+    link(rel='stylesheet' href='/stylesheets/style.css')
+    link(rel='stylesheet' href='/stylesheets/erpscreen.css')
+    link(rel='stylesheet' href='/flatpickr/dist/flatpickr.min.css')
+    link(rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css')
+    link(rel='stylesheet' href='https://cdnjs.cloudflare.com/SearchableSelect.js/6.7.2/css/all.min.css')
+  body
+    .loading
+      .loader
+    .error-popup
+      .gtr-header
+        span HATA
+      .error-close
+        i.fa-solid.fa-x
+      .p-3
+        p.error-message
+    if !isNoNavbar
+      nav.navbar.navbar-expand-lg.bg-body-tertiary(style="height: 8vh;")
+        .container-fluid
+          a.navbar-brand(href="#")
+            img.d-inline-block.align-text-top(src="/images/gotur_yzhn_logo.png" alt="Logo" width="100" height="25" style="object-fit: contain;")
+          button.navbar-toggler(type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation")
+            span.navbar-toggler-icon
+          #navbarSupportedContent.collapse.navbar-collapse
+            ul.navbar-nav.mb-2.mb-lg-0
+              li.nav-item.dropdown
+                a.nav-link.dropdown-toggle(href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false")
+                  | Bilet
+                ul.dropdown-menu
+                  li
+                    a.dropdown-item.ticket-search(href="#") Bilet Ara
+                  if permissions.includes('OPEN_TICKET_SALE')
+                    li
+                      a.dropdown-item.open-ticket-nav(href="#") Açık Bilet Sat
+              li.nav-item.dropdown
+                a.nav-link.dropdown-toggle(href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false")
+                  | Kasa
+                ul.dropdown-menu
+                  li
+                    a.dropdown-item.register-nav(href="#") Kasam
+                  if permissions.includes('REGISTER_RECORD_MANAGE')
+                    li
+                      a.dropdown-item.add-income-nav(href="#") Gelir Ekle
+                    li
+                      a.dropdown-item.add-expense-nav(href="#") Gider Ekle
+                  if permissions.includes('REGISTER_VIEW_OTHERS')
+                    li
+                      a.dropdown-item.other-register-nav(href="#") Diğer Kasalar
+              li.nav-item.dropdown
+                a.nav-link.dropdown-toggle(href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false")
+                  | Ödemeler
+                ul.dropdown-menu
+                  if permissions.includes('REGISTER_USER_PAYMENT')
+                    li
+                      a.dropdown-item.payment-request-nav(href="#") Ödeme İste
+                    li
+                      a.dropdown-item.payment-send-nav(href="#") Ödeme Gönder
+                  li
+                    a.dropdown-item.pending-payments-nav(href="#") Bekleyen Ödemeler
+                  li
+                    a.dropdown-item.pending-collections-nav(href="#") Bekleyen Tahsilatlar
+              if permissions.includes("SUBSCRIPTION_MANAGE")
+                li.nav-item.dropdown
+                  a.nav-link.dropdown-toggle(href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false")
+                    | Abonelik
+                  ul.dropdown-menu
+                    li
+                      a.dropdown-item.member-nav(href="#") Aboneler
+              if permissions.includes("FLEET_MANAGE")
+                li.nav-item.dropdown
+                  a.nav-link.dropdown-toggle(href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false")
+                    | Filo
+                  ul.dropdown-menu
+                    li
+                      a.dropdown-item.bus-nav(href="#") Otobüsler
+                    li
+                      a.dropdown-item.bus-income-nav(href="#") Gelir Ekle
+                    li
+                      a.dropdown-item.bus-expense-nav(href="#") Gider Ekle
+                    li
+                      a.dropdown-item.bus-transactions-report-nav(href="#") Otobüs Hesapları
+              if permissions.includes("ADMIN_PANEL_MANAGE")
+                li.nav-item.dropdown
+                  a.nav-link.dropdown-toggle(href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false")
+                    | Yönetim
+                  ul.dropdown-menu
+                    li
+                      a.dropdown-item.branch-settings-nav(href="#") Şubeler
+                    li
+                      a.dropdown-item.user-settings-nav(href="#") Kullanıcılar
+                    li
+                      a.dropdown-item.bus-plans-nav(href="#") Otobüs Planları
+                    li
+                      a.dropdown-item.staff-nav(href="#") Personeller
+                    li
+                      a.dropdown-item.stops-nav(href="#") Duraklar
+                    li
+                      a.dropdown-item.route-nav(href="#") Hatlar
+                    li
+                      a.dropdown-item.trip-nav(href="#") Seferler
+                    li
+                      a.dropdown-item.price-nav(href="#") Fiyatlar
+                    li
+                      a.dropdown-item.customer-nav(href="#") Müşteriler
+                    li
+                      a.dropdown-item.announcement-add-nav(href="#") Duyuru Ekle
+              if permissions.includes("REPORTS_MANAGE")
+                li.nav-item
+                  a.nav-link.reports-nav(href="#") Raporlar
+          if firmUser
+            - const firmUserName = firmUser && firmUser.name ? firmUser.name : ''
+            - const firmUserUsername = firmUser && firmUser.username ? firmUser.username : ''
+            - const firmUserPhone = firmUser && firmUser.phoneNumber ? firmUser.phoneNumber : ''
+            - const firmUserDisplayName = firmUserName || 'LOGGED IN'
+            div.ms-auto.d-flex.align-items-center
+              .dropdown
+                button#navbarUserDropdown.btn.btn-outline-secondary.d-flex.align-items-center.gap-2.navbar-user-toggle(type="button" data-bs-toggle="dropdown" aria-expanded="false" data-user-name=firmUserName data-user-username=firmUserUsername data-user-phone=firmUserPhone)
+                  i.fa-solid.fa-user
+                  span.text-nowrap #{firmUserDisplayName}
+                ul.dropdown-menu.dropdown-menu-end(aria-labelledby="navbarUserDropdown")
+                  li
+                    button.user-menu-profile.dropdown-item(type="button") Profilim
+                  li
+                    button.user-menu-password.dropdown-item(type="button") Şifre Değiştir
+                  li
+                    form(action="/logout" method="post" class="m-0")
+                      button.dropdown-item.d-flex.align-items-center.gap-2.text-danger(type="submit")
+                        i.fa-solid.fa-right-from-bracket
+                        span Çıkış
+    div(style="padding:1rem 1rem 0rem 1rem!important;")
+      block content
+
+    if firmUser
+      .user-profile-popup
+        .gtr-header
+          span PROFİLİM
+        .user-profile-close
+          i.fa-solid.fa-x
+        form#userProfileForm
+          .p-3.d-flex.flex-column.gap-3
+            p.text-danger.d-none#userProfileError
+            .input-group
+              span.input-group-text İsim Soyisim
+              input#profileNameInput.form-control.profile-name-input(type="text" name="name" autocomplete="name" required)
+            .input-group
+              span.input-group-text Kullanıcı Adı
+              input#profileUsernameInput.form-control.profile-username-input(type="text" name="username" autocomplete="username" required)
+            .input-group
+              span.input-group-text Telefon Numarası
+              input#profilePhoneInput.form-control.profile-phone-input(type="text" name="phoneNumber" autocomplete="tel")
+            .d-flex.justify-content-end.gap-2
+              button.btn.btn-outline-secondary.user-profile-cancel(type="button") İptal
+              button.btn.btn-outline-primary(type="submit") Güncelle
+      .change-password-popup
+        .gtr-header
+          span ŞİFRE DEĞİŞTİR
+        .change-password-close
+          i.fa-solid.fa-x
+        form#changePasswordForm
+          .p-3.d-flex.flex-column.gap-3
+            p.text-danger.d-none#changePasswordError
+            .input-group
+              span.input-group-text Şimdiki Şifre
+              input#currentPasswordInput.form-control(type="password" name="currentPassword" autocomplete="current-password" required)
+            .input-group
+              span.input-group-text Yeni Şifre
+              input#newPasswordInput.form-control(type="password" name="newPassword" autocomplete="new-password" required)
+            .input-group
+              span.input-group-text Yeni Şifre (Tekrar)
+              input#confirmPasswordInput.form-control(type="password" name="confirmPassword" autocomplete="new-password" required)
+            .d-flex.justify-content-end.gap-2
+              button.btn.btn-outline-secondary.change-password-cancel(type="button") İptal
+              button.btn.btn-outline-primary(type="submit") Güncelle
+    script(src="https://cdn.jsdelivr.net/npm/popper.js@1.12.9/dist/umd/popper.min.js")
+    script(src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js")
+    script(src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/js/all.min.js")
+    script(src="https://code.jquery.com/jquery-3.7.1.min.js")
+    script(src="/flatpickr/dist/flatpickr.min.js")
+    script(src="/flatpickr/dist/l10n/en.js")
+    script(src="/scripts/erp.js")
+    block scripts

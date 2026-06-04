@@ -1,0 +1,36 @@
+p#price-stops-data #{JSON.stringify(stops)}
+each p in prices
+    .btn-group.w-100
+        button.price-row.d-flex.btn.btn-outline-primary.col-11(type="button" data-id=p.id data-from=p.fromTitle data-to=p.toTitle)
+            .col
+                p.text-center.m-0(data-field="fromStopId" data-value=p.fromStopId) #{p.fromTitle}
+            .col
+                p.text-center.m-0(data-field="toStopId" data-value=p.toStopId) #{p.toTitle}
+            .col
+                p.text-center.m-0(data-field="isBidirectional" data-value=p.isBidirectional) #{p.isBidirectional ? "Evet" : "Hayır"}
+            .col
+                p.text-center.m-0(data-field="price1" data-value=p.price1) #{p.price1}
+            .col
+                p.text-center.m-0(data-field="price2" data-value=p.price2) #{p.price2}
+            .col
+                p.text-center.m-0(data-field="price3" data-value=p.price3) #{p.price3}
+            .col
+                p.text-center.m-0(data-field="webPrice" data-value=p.webPrice) #{p.webPrice}
+            .col
+                p.text-center.m-0(data-field="singleSeatPrice1" data-value=p.singleSeatPrice1) #{p.singleSeatPrice1}
+            .col
+                p.text-center.m-0(data-field="singleSeatPrice2" data-value=p.singleSeatPrice2) #{p.singleSeatPrice2}
+            .col
+                p.text-center.m-0(data-field="singleSeatPrice3" data-value=p.singleSeatPrice3) #{p.singleSeatPrice3}
+            .col
+                p.text-center.m-0(data-field="singleSeatWebPrice" data-value=p.singleSeatWebPrice) #{p.singleSeatWebPrice}
+            .col.d-none
+                p.text-center.m-0(data-field="seatLimit" data-value=p.seatLimit) #{p.seatLimit}
+            .col.d-none
+                p.text-center.m-0(data-field="hourLimit" data-value=p.hourLimit) #{p.hourLimit}
+            .col
+                p.text-center.m-0(data-field="validFrom" data-value=p.validFromRaw) #{p.validFrom}
+            .col
+                p.text-center.m-0(data-field="validUntil" data-value=p.validUntilRaw) #{p.validUntil}
+        button.btn.btn-outline-danger.price-delete.col-1(type="button" data-id=p.id data-from=p.fromTitle data-to=p.toTitle)
+            i.fa-solid.fa-trash

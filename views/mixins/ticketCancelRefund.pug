@@ -1,0 +1,37 @@
+p.m-0.text-center.fs-5.fw-bold #{trip.date} - #{trip.time}
+p.mb-3.text-center Select the tickets you want to process.
+.tickets_
+    each t in tickets
+        .ticket-cancel-box(class=t.gender data-pnr=t.pnr data-seat-number=t.seatNo)
+            i.fa-solid.fa-check.ticket-cancel-check
+            p.text-center
+                b 
+                    span.seat-number #{t.seatNo}
+            p.text-center
+                b
+                    span.from #{t.from}
+                    i.fa-solid.fa-route.mx-2
+                    span.to #{t.to}
+            p.text-center
+                span.name #{t.name} #{t.surname} 
+                |   / 
+                span.phone #{t.phoneNumber}
+            p 
+                b İşlem Yapan:
+                |   Ahmet / Çanakkale
+            p 
+                b Fiyat:
+                span.price   
+                    |   #{t.price}
+                |₺
+            p 
+                b Ödeme:
+                span.payment   
+                    |   #{t.payment}
+            p 
+                b PNR:
+                span.pnr   #{t.pnr}
+            p 
+                b İşlem Tarihi:
+                span.createdAt
+                    |   #{t.createdAt}

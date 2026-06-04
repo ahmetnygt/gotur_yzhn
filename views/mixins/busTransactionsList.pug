@@ -1,0 +1,12 @@
+if !transactions || !transactions.length
+    p.text-center.text-muted.mb-0 Kayıt bulunamadı.
+else
+    each t in transactions
+        - const createdAt = new Date(t.createdAt)
+        - const amount = Number(t.amount || 0)
+        .bus-transaction-item.d-flex.justify-content-between.align-items-start.border.rounded.p-2
+            .d-flex.flex-column.gap-1
+                span.text-muted.small #{createdAt.toLocaleDateString('en-US')} #{createdAt.toLocaleTimeString('en-US')}
+                if t.description
+                    span.small #{t.description}
+            span.fw-semibold(class=t.type === 'income' ? 'text-success' : 'text-danger') #{t.type === 'income' ? '+' : '-'}#{amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

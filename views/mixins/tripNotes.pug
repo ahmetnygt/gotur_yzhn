@@ -1,0 +1,11 @@
+.d-flex.flex-column.gap-2
+    each n in notes
+        .note(data-id=n.id)
+            if permissions.includes('TRIP_NOTES_MANAGE')
+                if n.isOwn || (!n.isOwn && permissions.includes('TRIP_OTHERS_NOTES_MANAGE'))
+                    .note-icons
+                        i.fa-solid.fa-pen.note-edit
+                        i.fa-solid.fa-x.note-delete
+            p.m-0.note-text #{n.noteText}
+            p.m-0.note-info #{n.user}
+            p.m-0.note-info #{new Date(n.updatedAt).toLocaleDateString()} #{new Date(n.updatedAt).toLocaleTimeString()}

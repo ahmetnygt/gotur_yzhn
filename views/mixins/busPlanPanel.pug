@@ -1,0 +1,39 @@
+.bus-plan-create
+    -for(let i = 0;i<80;i++){
+        - let val = busModel?busModel.plan[i]:""
+        - let seatClass = ""
+        - if(busModel){
+        - if(busModel.plan[i] == "Ş"){
+        -   seatClass = "captain"
+        -}
+        - else if(busModel.plan[i] == ">"){
+        -   seatClass = "doors"   
+        -}
+        - else if(busModel.plan[i] > 0 && busModel.plan[i] < 81){
+        -   seatClass = "taken"   
+        -}
+        -}
+        input.bus-plan-create-input(type="text" value=val==0?"":val class=seatClass)
+    -}
+
+div
+    div.mb-3
+        p.mb-2.text-center Plan parametreleri
+        .d-flex
+            input.bus-plan-create-input-parameter.captain(type="text" value="Ş" readonly)
+            span.ms-2.mb-2 Şoför koltuğu
+        .d-flex
+            input.bus-plan-create-input-parameter.doors(type="text" value=">" readonly)
+            span.ms-2.mb-2 Yolcu iniş biniş kapısı
+        .d-flex
+            input.bus-plan-create-input-parameter.taken(type="text" value="17" readonly)
+            span.ms-2.mb-2 Yolcu koltuğu
+    .input-group.mb-3
+        span.input-group-text İsim
+        input.form-control.bus-plan-title(type="text" value=busModel?busModel.title:"")
+    .input-group.mb-3
+        span.input-group-text Açıklama
+        input.form-control.bus-plan-description(type="text" value=busModel?busModel.description:"")
+    .d-flex.gap-3.justify-content-end
+        button.save-bus-plan.btn.btn-outline-primary KAYDET
+        button.btn.btn-outline-danger SİL 

@@ -1,0 +1,88 @@
+ul.nav.nav-pills(style="height: 2rem;overflow: hidden;line-height: 1rem;")
+    li.nav-item
+        a.nav-link.active(data-bs-toggle="tab" href="#activeTickets" style="border-radius: 0;") ACTIVE
+    li.nav-item
+        a.nav-link(data-bs-toggle="tab" href="#canceledTickets" style="border-radius: 0;") CANCEL
+.tab-content
+    .tab-pane.fade.show.active#activeTickets
+        table.table.table-bordered.table-hover.table-sm.m-0.bg-white
+            thead
+                tr
+                    th(scope="col") KN
+                    th(scope="col") İsim Soyisim
+                    th(scope="col") Cinsiyet
+                    th(scope="col") Nereden
+                    th(scope="col") Nereye
+                    th(scope="col") Fiyat
+                    th(scope="col") Ödeme
+                    th(scope="col") Durum
+                    th(scope="col") Telefon Numarası
+                    th(scope="col") Kimlik No
+                    th(scope="col") PNR
+            tbody
+                each t in activeTickets
+                    tr(class=t.isOtherStop ? 'other-stop' : ''
+                        data-seat-number=t.seatNo
+                        data-status=t.status
+                        data-pnr=t.pnr ? t.pnr : ''
+                        data-group-id=t.ticketGroupId
+                        data-is-own-branch-ticket=t.isOwnBranchTicket
+                        data-is-own-branch-stop=t.isOwnBranchStop
+                        data-refund-option=t.tripRefundOptionDate
+                        data-stop-id=t.fromRouteStopId)
+                        td.text-center #{t.seatNo}
+                        td #{t.name} #{t.surname}
+                        td #{t.gender}
+                        td #{t.from}
+                        td #{t.to}
+                        td #{t.price}₺
+                        td #{`${t.payment=="cash"?"Cash":t.payment=="card"?"Card":"Points"}`}
+                        if t.status == "web"
+                            td WEB
+                        else if t.status == "completed" || t.status == "gotur"
+                            td SATIŞ
+                        else if t.status == "reservation"
+                            td REZ
+                        else if t.status == "open"
+                            td AÇIK
+                        else if t.status == "pending"
+                            td BEKLİYOR
+                        else
+                            td -
+                        td #{t.phoneNumber}
+                        td #{t.idNumber}
+                        td #{t.pnr ? t.pnr : ""}
+    .tab-pane.fade#canceledTickets
+        table.table.table-bordered.table-hover.table-sm.m-0.bg-white
+            thead
+                tr
+                    th(scope="col") KN
+                    th(scope="col") İsim Soyisim
+                    th(scope="col") Cinsiyet
+                    th(scope="col") Nereden
+                    th(scope="col") Nereye
+                    th(scope="col") Fiyat
+                    th(scope="col") Ödeme
+                    th(scope="col") Durum
+                    th(scope="col") Telefon Numarası
+                    th(scope="col") Kimlik No
+                    th(scope="col") PNR
+            tbody
+                each t in canceledTickets
+                    tr
+                        td.text-center #{t.seatNo}
+                        td #{t.name} #{t.surname}
+                        td #{t.gender}
+                        td #{t.from}
+                        td #{t.to}
+                        td #{t.price}₺
+                        td #{`${t.payment=="cash"?"Cash":t.payment=="card"?"Card":"Points"}`}
+                        if t.status == "canceled"
+                            td İPTAL
+                        else if t.status == "refund"
+                            td İADE
+                        else
+                            td #{t.status}
+                        td #{t.phoneNumber}
+                        td #{t.idNumber}
+                        td #{t.pnr ? t.pnr : ""}

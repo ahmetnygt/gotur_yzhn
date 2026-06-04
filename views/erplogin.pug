@@ -1,0 +1,48 @@
+extends erplayout
+
+block content
+    .login-page.position-relative
+        .login-accent.login-accent-top
+        .login-accent.login-accent-bottom
+        .login-brand.text-center.text-lg-start
+            .d-flex.gap-3
+                img.login-logo.mb-4(src=`/images/gotur_yzhn_logo.png` alt="GoturYZHN")
+                if firmLogo !== "gotur_yzhn_logo.png"
+                    img.login-logo.mb-4(src=`/images/${firmLogo}` alt=firmLogo)
+            h1.display-6.mb-3 Hoşgeldiniz!
+            p.lead.text-muted.mb-4
+                | Seferlerinizi, ödemeleri takip edin ve tüm operasyonu tek bir yerden kontrol edin.
+            ul.list-unstyled.login-highlights
+                li
+                    i.fa-solid.fa-gauge-high
+                    span Gerçek zamanlı güncellemelerle sorunsuz takip.
+                li
+                    i.fa-solid.fa-file
+                    span Detaylı ve tutarlı raporlama.
+                li
+                    i.fa-solid.fa-headset
+                    span 24/7 destek ile her adımda yanınızdayız.
+        .login-card.shadow-lg
+            form.login-form(action="/login" method="POST")
+                h2.h4.fw-semibold.mb-4.text-center Hesabınıza Giriş Yapın
+                .form-floating.mb-3
+                    input#usernameInput.username.form-control(type="text" name="username" placeholder="Kullanıcı Adı" required autocomplete="username")
+                    label(for="usernameInput") Kullanıcı Adı
+                .form-floating.mb-3.position-relative
+                    input#passwordInput.password.form-control(type="password" name="password" placeholder="Şifre" required autocomplete="current-password")
+                    label(for="passwordInput") Şifre
+                    button.password-toggle.btn.btn-link(type="button" aria-label="Show or hide password")
+                        i.fa-solid.fa-eye
+                .d-flex.flex-wrap.justify-content-between.align-items-center.gap-2.mb-3
+                    span.login-tip.d-flex.align-items-center.gap-2
+                        i.fa-solid.fa-lock
+                        span Bilgileriniz güvende.
+                    a.login-support-link(href="tel:+905434832785") 
+                        i.fa-solid.fa-phone.me-1 
+                        |Teknik Destek: 0544 131 40 13
+                button.btn.btn-primary.login-submit(type="submit") GİRİŞ YAP
+                p.text-muted.small.text-center.mt-3
+                    | Yeni misiniz? Login bilgilerinizi yöneticinizden isteyin.
+
+block scripts
+    script(src="/scripts/erplogin.js")

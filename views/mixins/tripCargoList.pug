@@ -1,0 +1,25 @@
+if cargos.length
+    each cargo in cargos
+        .btn-group.w-100
+            button.trip-cargo-item.d-flex.btn.btn-outline-primary.align-items-center.col-11(type="button" data-id=cargo.id data-sender-name=cargo.senderName data-sender-phone=cargo.senderPhone data-from-title=cargo.fromTitle data-to-title=cargo.toTitle data-description=cargo.description data-payment=cargo.payment data-payment-label=cargo.paymentLabel data-price=cargo.price)
+                .col-3
+                    p.text-center.m-0 #{cargo.senderName || '-'}
+                .col-2
+                    p.text-center.m-0 #{cargo.senderPhone || '-'}
+                .col-2
+                    p.text-center.m-0 #{cargo.fromTitle || '-'}
+                .col-2
+                    p.text-center.m-0 #{cargo.toTitle || '-'}
+                .col-2
+                    p.text-center.m-0.text-truncate(title=cargo.description) #{cargo.description || '-'}
+                .col-1
+                    if cargo.priceFormatted
+                        p.text-center.m-0 #{cargo.priceFormatted}₺
+                    else
+                        p.text-center.m-0 -
+                    p.text-center.m-0.text-muted.small #{cargo.paymentLabel}
+            button.trip-cargo-refund.btn.btn-outline-danger.col-1(type="button" data-id=cargo.id)
+                i.fa-solid.fa-rotate-left.me-1
+                | İADE
+else
+    p.text-center.text-muted.m-0 Bu yolculuğa ait kargo bulunmamaktadır.

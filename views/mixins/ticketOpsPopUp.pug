@@ -1,0 +1,45 @@
+if (permissions.includes("SALE_CREATE_OWN_BRANCH") && isOwnBranchStop == "true" || permissions.includes("SALE_CREATE_OTHER_BRANCH") && isOwnBranchStop == "false")
+    .ticket-op.m
+        p ERKEK SATIŞ
+        i.fa-solid.fa-caret-right
+        ul.ticket-op-buttons
+            each rs in routeStops
+                if rs
+                    if rs.isRestricted
+                        button.ticket-op-button.restricted(type="button" disabled data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
+                    else
+                        button.ticket-op-button(type="button" data-gender="m" data-action="sell" data-route-stop=rs.title data-stop-id=rs.stopId data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
+
+//!- if (permissions.includes("PAST_TRIP_RESERVATION") && new Date(reservationOptionDate.replace("Z","")) < new Date())
+.ticket-op.m
+    p ERKEK REZERVASYON
+    i.fa-solid.fa-caret-right
+    ul.ticket-op-buttons
+        each rs in routeStops
+            if rs
+                if rs.isRestricted
+                    button.ticket-op-button.restricted(type="button" disabled data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
+                else
+                    button.ticket-op-button(type="button" data-gender="m" data-action="reservation" data-route-stop=rs.title data-stop-id=rs.stopId data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
+if (permissions.includes("SALE_CREATE_OWN_BRANCH") && isOwnBranchStop == "true" || permissions.includes("SALE_CREATE_OTHER_BRANCH") && isOwnBranchStop == "false")
+    .ticket-op.f
+        p KADIN SATIŞ
+        i.fa-solid.fa-caret-right
+        ul.ticket-op-buttons
+            each rs in routeStops
+                if rs
+                    if rs.isRestricted
+                        button.ticket-op-button.restricted(type="button" disabled data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
+                    else
+                        button.ticket-op-button(type="button" data-gender="f" data-action="sell" data-route-stop=rs.title data-stop-id=rs.stopId data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
+//!- if (permissions.includes("PAST_TRIP_RESERVATION") && reservationOptionDate > new Date())
+.ticket-op.f
+    p KADIN REZERVASYON
+    i.fa-solid.fa-caret-right
+    ul.ticket-op-buttons
+        each rs in routeStops
+            if rs
+                if rs.isRestricted
+                    button.ticket-op-button.restricted(type="button" disabled data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
+                else
+                    button.ticket-op-button(type="button" data-gender="f" data-action="reservation" data-route-stop=rs.title data-stop-id=rs.stopId data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}

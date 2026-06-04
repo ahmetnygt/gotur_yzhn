@@ -1,0 +1,16 @@
+.tickets
+    each t in tickets
+        button.btn.btn-sm.btn-outline-primary.moving-ticket-button(data-seat-number=t.moveToken || t.seatNo data-is-open=t.status=='open') #{t.displaySeatNo || t.seatNo || "Open Ticket"} - #{t.name} #{t.surname}
+hr.m-0
+.moving-trip-info
+    if tickets[0].status != 'open'
+        p.mb-0.text-center #{trip.dateString} | #{trip.timeString}
+        p.mb-0.text-center #{tickets[0].fromPlaceString} - #{tickets[0].toPlaceString}
+    p.mb-0.text-center
+        i.fa-solid.fa-up-down
+    p.mb-0.text-center.move-to-trip-date Sefer Seçiniz
+    .move-to
+        span.mb-0.text-center.move-to-trip-place
+        span.mx-2 -
+        select.move-to-trip-place-select
+            option(value="")

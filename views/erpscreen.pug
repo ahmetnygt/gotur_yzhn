@@ -1,0 +1,1726 @@
+extends erplayout
+
+block content
+    .add-trip-note
+        .gtr-header
+            span SEFERE NOT EKLE
+        .trip-note-close
+            i.fa-solid.fa-x
+        .p-3
+            textarea.form-control.trip-note-text.mb-3
+            button.save-trip-note.btn.btn-outline-primary EKLE
+
+    .reports-popup
+        .gtr-header
+            span RAPORLAR
+        .reports-close
+            i.fa-solid.fa-x
+        .p-3
+            ul.list-group
+                li.list-group-item.report-item(data-report="salesAndRefunds") Satış ve İadeler
+                li.list-group-item.report-item(data-report="webTickets") Web Biletleri
+                li.list-group-item.report-item(data-report="dailyUserAccount") Günlük Kullanıcı Kasası
+                li.list-group-item.report-item(data-report="upcomingTickets") İleri Tarihli Biletler
+                li.list-group-item.report-item(data-report="externalReturnTickets") Dış Hat (Dönüş) Biletleri
+                li.list-group-item.report-item(data-report="busTransactions") Otobüs Gelir/Giderleri
+    .salesAndRefunds-report-popup.report-popup
+        .gtr-header
+            span İADE VE SATIŞLAR
+        .report-close
+            i.fa-solid.fa-x
+        .d-flex.flex-column.gap-3.p-3
+            .input-group
+                span.input-group-text Başlangıç
+                input.form-control.report-start(type="text")
+            .input-group
+                span.input-group-text Bitiş
+                input.form-control.report-end(type="text")
+            .input-group
+                span.input-group-text Şube
+                select.form-select.report-branch
+                    option(value="") Seçiniz
+            .input-group
+                span.input-group-text Kullanıcı
+                select.form-select.report-user
+                    option(value="") Seçiniz
+            .input-group
+                span.input-group-text Nereden
+                select.form-select.report-from
+                    option(value="") Seçiniz
+            .input-group
+                span.input-group-text Nereye
+                select.form-select.report-to
+                    option(value="") Seçiniz
+            .input-group
+                span.input-group-text Tür
+                select.form-select.report-type
+                    option(value="summary") Özet
+                    option(value="detailed") Detaylı
+            .d-flex.gap-3.justify-content-end
+                button.btn.btn-outline-primary.report-create-button OLUŞTUR
+
+    .webTickets-report-popup.report-popup
+        .gtr-header
+            span WEB BİLETLERİ
+        .report-close
+            i.fa-solid.fa-x
+        .d-flex.flex-column.gap-3.p-3
+            .input-group
+                span.input-group-text Başlangıç
+                input.form-control.report-start(type="text")
+            .input-group
+                span.input-group-text Bitiş
+                input.form-control.report-end(type="text")
+            .input-group
+                span.input-group-text Şube
+                select.form-select.report-branch
+                    option(value="") Seçiniz
+            .input-group
+                span.input-group-text Kullanıcı
+                select.form-select.report-user
+                    option(value="") Seçiniz
+            .input-group
+                span.input-group-text Nereden
+                select.form-select.report-from
+                    option(value="") Seçiniz
+            .input-group
+                span.input-group-text Nereye
+                select.form-select.report-to
+                    option(value="") Seçiniz
+            .input-group
+                span.input-group-text Tür
+                select.form-select.report-type
+                    option(value="summary") Özet
+                    option(value="detailed") Detaylı
+            .input-group
+                span.input-group-text Neye Göre
+                select.form-select.report-group
+                    option(value="bus") Otobüs
+                    option(value="stop") Durak
+            .d-flex.gap-3.justify-content-end
+                button.btn.btn-outline-primary.report-create-button OLUŞTUR
+
+    .upcomingTickets-report-popup.report-popup
+        .gtr-header
+            span İLERİ TARİHLİ BİLETLER
+        .report-close
+            i.fa-solid.fa-x
+        .d-flex.flex-column.gap-3.p-3
+            p.text-muted.mb-2 Bu rapor, ileri tarihli tüm biletleri gösterir. Raporu oluşturduktan sonra, belirlediğiniz tarih aralığında kalkış yapacak biletleri görebilirsiniz.
+            .d-flex.gap-3.justify-content-end
+                button.btn.btn-outline-primary.report-create-button OLUŞTUR
+
+    .dailyUserAccount-report-popup.report-popup
+        .gtr-header
+            span GÜNLÜK KULLANICI KASASI
+        .report-close
+            i.fa-solid.fa-x
+        .d-flex.flex-column.gap-3.p-3
+            .input-group
+                span.input-group-text Başlangıç
+                input.form-control.report-start(type="text")
+            .input-group
+                span.input-group-text Bitiş
+                input.form-control.report-end(type="text")
+            .input-group
+                span.input-group-text Kullanıcı
+                select.form-select.report-user
+                    option(value="") Seçiniz
+            .d-flex.gap-3.justify-content-end
+                button.btn.btn-outline-primary.report-create-button OLUŞTUR
+
+    .externalReturnTickets-report-popup.report-popup
+        .gtr-header
+            span DIŞ HAT (DÖNÜŞ) BİLETLERİ
+        .report-close
+            i.fa-solid.fa-x
+        .d-flex.flex-column.gap-3.p-3
+            .input-group
+                span.input-group-text Başlangıç
+                input.form-control.report-start(type="text")
+            .input-group
+                span.input-group-text Bitiş
+                input.form-control.report-end(type="text")
+            .input-group
+                span.input-group-text Şube
+                select.form-select.report-branch
+                    option(value="") Seçiniz
+            .input-group
+                span.input-group-text Kullanıcı
+                select.form-select.report-user
+                    option(value="") Seçiniz
+            .d-flex.gap-3.justify-content-end
+                button.btn.btn-outline-primary.report-create-button OLUŞTUR
+    .busTransactions-report-popup.report-popup
+        .gtr-header
+            span OTOBÜS GELİR/GİDERLERİ
+        .report-close
+            i.fa-solid.fa-x
+        .d-flex.flex-column.gap-3.p-3
+            .input-group
+                span.input-group-text Başlangıç
+                input.form-control.report-start(type="text")
+            .input-group
+                span.input-group-text Bitiş
+                input.form-control.report-end(type="text")
+            .input-group
+                span.input-group-text Otobüs
+                select.form-select.report-bus
+                    option(value="") Tümü
+            .d-flex.gap-3.justify-content-end
+                button.btn.btn-outline-primary.report-create-button OLUŞTUR
+
+    .add-transaction
+        .gtr-header
+            span GELİR EKLE
+        .add-transaction-close
+            i.fa-solid.fa-x
+        .d-flex.flex-column.gap-3.p-3
+            .input-group
+                span.input-group-text Miktar
+                input.form-control.transaction-amount(type="text")
+            .input-group
+                span.input-group-text Açıklama
+                textarea.form-control.transaction-description(type="text")
+            .d-flex.gap-3.justify-content-end
+                button.btn.btn-outline-primary.add-transaction-button EKLE
+                button.btn.btn-outline-primary.add-transaction-close KAPAT
+
+    .bus-transaction
+        .gtr-header
+            span.bus-transaction-title OTOBÜS GELİRİ EKLE
+        .bus-transaction-close
+            i.fa-solid.fa-x
+        .d-flex.flex-column.gap-3.p-3
+            .input-group
+                span.input-group-text Otobüs
+                select.form-select.bus-transaction-bus
+                    option(value="") Otobüs Seçiniz
+            .input-group
+                span.input-group-text Miktar
+                input.form-control.bus-transaction-amount(type="text")
+            .input-group
+                span.input-group-text Açıklama
+                textarea.form-control.bus-transaction-description(type="text")
+            .bus-transaction-history
+                p.mb-2.fw-semibold Geçmiş İşlemler
+                .bus-transaction-list.d-flex.flex-column.gap-2
+                    p.text-center.text-muted.mb-0 Lütfen bir otobüs seçiniz.
+            .d-flex.gap-3.justify-content-end
+                button.btn.btn-outline-primary.bus-transaction-button KAYDET
+                button.btn.btn-outline-primary.bus-transaction-close KAPAT
+
+    .transaction-transfer
+        .gtr-header
+            span KASA TRANSFER
+        .transaction-transfer-close
+            i.fa-solid.fa-x
+        .d-flex.flex-column.gap-3.p-3
+            .input-group
+                span.input-group-text Şube
+                select.form-select.transfer-branch()
+            .input-group
+                span.input-group-text Kullanıcı
+                select.form-select.transfer-user()
+            .d-flex.gap-3.justify-content-end
+                button.btn.btn-outline-primary.transaction-transfer-button ONAYLA
+                button.btn.btn-outline-primary.transaction-transfer-close KAPAT
+
+    .payment-request
+        .gtr-header
+            span ÖDEME İSTE
+        .payment-request-close
+            i.fa-solid.fa-x
+        .d-flex.flex-column.gap-3.p-3
+            .input-group
+                span.input-group-text Kullanıcı
+                select.form-select.payment-request-user()
+            .input-group
+                span.input-group-text Miktar
+                input.form-control.payment-request-amount(type="text")
+            .d-flex.gap-3.justify-content-end
+                button.btn.btn-outline-primary.payment-request-button ONAYLA
+                button.btn.btn-outline-primary.payment-request-close KAPAT
+
+    .payment-send
+        .gtr-header
+            span ÖDEME GÖNDER
+        .payment-send-close
+            i.fa-solid.fa-x
+        .d-flex.flex-column.gap-3.p-3
+            .input-group
+                span.input-group-text Kullanıcı
+                select.form-select.payment-send-user()
+            .input-group
+                span.input-group-text Miktar
+                input.form-control.payment-send-amount(type="text")
+            .d-flex.gap-3.justify-content-end
+                button.btn.btn-outline-primary.payment-send-button ONAYLA
+                button.btn.btn-outline-primary.payment-send-close KAPAT
+
+    .pending-payments
+        .gtr-header
+            span BEKLEYEN ÖDEMELERİM
+        .pending-payments-close
+            i.fa-solid.fa-x
+        .d-flex.p-3.pb-0
+            .col-3 
+                p.text-center.m-0 
+                    b İsim
+            .col-3 
+                p.text-center.m-0 
+                    b Tür
+            .col-3 
+                p.text-center.m-0 
+                    b Miktar
+            .col-3
+        .p-3.pending-payments-list.d-flex.flex-column.gap-2
+
+
+    .pending-collections
+        .gtr-header
+            span BEKLEYEN TAHSİLATLARIM
+        .pending-collections-close
+            i.fa-solid.fa-x
+        .d-flex.p-3.pb-0
+            .col-3 
+                p.text-center.m-0 
+                    b İsim
+            .col-3 
+                p.text-center.m-0 
+                    b Tür
+            .col-3 
+                p.text-center.m-0 
+                    b Miktar
+            .col-3
+        .p-3.pending-collections-list.d-flex.flex-column.gap-2
+
+    .add-announcement
+        .gtr-header
+            span DUYURU EKLE
+        .announcement-add-close
+            i.fa-solid.fa-x
+        .d-flex.flex-column.gap-3.p-3
+            .input-group
+                span.input-group-text Mesaj
+                textarea.form-control.announcement-message
+            .input-group
+                span.input-group-text Şube
+                select.form-select.announcement-branch
+                    option(value="") Herkes
+            .form-check
+                input.form-check-input.announcement-show-ticker(type="checkbox" id="announcementTicker")
+                label.form-check-label(for="announcementTicker") Şeritte göster
+                p.form-text.text-muted.m-0 Duyurular, şeritte maksimum 24 saat gösterilir.
+            .form-check
+                input.form-check-input.announcement-show-popup(type="checkbox" id="announcementPopup" checked)
+                label.form-check-label(for="announcementPopup") Pop-up olarak göster
+            .d-flex.gap-3.justify-content-end
+                button.btn.btn-outline-primary.announcement-add-button EKLE
+                button.btn.btn-outline-primary.announcement-add-close KAPAT
+
+    .account-cut-deductions-popup
+        .gtr-header
+            span ARAÇ KALKIŞ KESİNTİLERİ
+        .p-3.d-flex.flex-column.gap-3
+            p.text-muted.isInternet.m-0
+            .input-group
+                span.input-group-text.col-7 Toplam Kesinti
+                input.form-control.form-control-sm.account-cut-total-count(type="text" readonly)
+                input.form-control.form-control-sm.account-cut-total-amount(type="text" readonly)
+            .input-group
+                span.input-group-text Komisyon (%)
+                input.form-control.account-comission-percent(type="text")
+            .input-group
+                span.input-group-text Kesinti 1
+                input.form-control.account-deduction1(type="text")
+            .input-group
+                span.input-group-text Kesinti 2
+                input.form-control.account-deduction2(type="text")
+            .input-group
+                span.input-group-text Kesinti 3
+                input.form-control.account-deduction3(type="text")
+            .input-group
+                span.input-group-text Kesinti 4
+                input.form-control.account-deduction4(type="text")
+            .input-group
+                span.input-group-text Kesinti 5
+                input.form-control.account-deduction5(type="text")
+            .input-group
+                span.input-group-text Çorba
+                input.form-control.account-tip(type="text")
+            .d-flex.justify-content-end.gap-2
+                button.btn.btn-outline-secondary.account-cut-deductions-cancel İPTAL
+                button.btn.btn-outline-primary.account-cut-deductions-continue DEVAM
+
+    .account-cut-popup
+        .gtr-header
+            span ARAÇ KALKIŞ
+        .p-3
+            .row.g-3
+                .col.d-flex.flex-column.gap-3
+                    .input-group
+                        span.input-group-text Nakit Satışlarım
+                        input.form-control.form-control-sm.my-cash(type="text" readonly)
+                    .input-group
+                        span.input-group-text Kart Satışlarım
+                        input.form-control.form-control-sm.my-card(type="text" readonly)
+                    .input-group
+                        span.input-group-text Diğer Şubeler
+                        input.form-control.form-control-sm.other-branches(type="text" readonly)
+                    .input-group
+                        span.input-group-text Toplam
+                        input.form-control.form-control-sm.all-total(type="text" readonly)
+                    p.text-muted.isInternet.m-0
+                .col.d-flex.flex-column.gap-3
+                    .input-group
+                        span.input-group-text Komisyon
+                        input.form-control.form-control-sm.account-commission(type="text" readonly)
+                    .input-group
+                        span.input-group-text Kesinti 1
+                        input.form-control.account-deduction1(type="text")
+                    .input-group
+                        span.input-group-text Kesinti 2
+                        input.form-control.account-deduction2(type="text")
+                    .input-group
+                        span.input-group-text Kesinti 3
+                        input.form-control.account-deduction3(type="text")
+                    .input-group
+                        span.input-group-text Kesinti 4
+                        input.form-control.account-deduction4(type="text")
+                    .input-group
+                        span.input-group-text Kesinti 5
+                        input.form-control.account-deduction5(type="text")
+                    .input-group
+                        span.input-group-text Çorba
+                        input.form-control.account-tip(type="text")
+                    .input-group
+                        span.input-group-text Açıklama
+                        textarea.form-control.account-description
+                    .input-group
+                        span.input-group-text Ödenecek Tutar
+                        input.form-control.form-control-sm.account-needtopay(type="text" readonly)
+                    .input-group
+                        span.input-group-text Ödenen Tutar
+                        if permissions.includes("PAY_DIFFERENT_FROM_BUS_EARNING")
+                            input.form-control.form-control-sm.account-payed(type="text")
+                        else
+                            input.form-control.form-control-sm.account-payed(type="text" readonly)
+            .d-flex.justify-content-end.gap-2.mt-3
+                button.btn.btn-outline-secondary.account-cut-close KAPAT
+                button.btn.btn-outline-primary.account-cut-save KAYDET
+                button.btn.btn-outline-danger.account-cut-undo-btn(style="display:none") GERİ AL
+
+    .register
+        .gtr-header
+            span KASA
+        .register-close
+            i.fa-solid.fa-x
+        .d-flex.flex-column.gap-3.p-3
+            .d-flex.gap-2
+                .input-group.register-data-input
+                    span.input-group-text(style="background-color: #2660ff;color: white;") Toplam Bakiye
+                    input.form-control.balance(type="text" readonly)
+                .input-group.register-data-input
+                    span.input-group-text Toplam Nakit Bakiye
+                    input.form-control.cash-balance(type="text" readonly)
+                .input-group.register-data-input
+                    span.input-group-text Toplam Kart Bakiyesi
+                    input.form-control.card-balance(type="text" readonly)
+                .input-group.register-data-input
+                    span.input-group-text Toplam Gelir
+                    input.form-control.income-summary(type="text" readonly)
+                .input-group.register-data-input
+                    span.input-group-text Toplam Gider
+                    input.form-control.expense-summary(type="text" readonly)
+            .d-flex.gap-2
+                .input-group.register-data-input
+                    span.input-group-text Nakit Satışlar
+                    input.form-control.cash-sales(type="text" readonly)
+                .input-group.register-data-input
+                    span.input-group-text Kredi Kartı Satışlar
+                    input.form-control.card-sales(type="text" readonly)
+                .input-group.register-data-input
+                    span.input-group-text Toplam Satışlar
+                    input.form-control.sales-summary(type="text" readonly)
+                .input-group.register-data-input
+                    span.input-group-text Transfer Alınan
+                    input.form-control.transferred-income(type="text" readonly)
+                .input-group.register-data-input
+                    span.input-group-text Diğer Gelirler
+                    input.form-control.other-income(type="text" readonly)
+            .d-flex.gap-2
+                .input-group.register-data-input
+                    span.input-group-text Nakit İadeler
+                    input.form-control.cash-refund(type="text" readonly)
+                .input-group.register-data-input
+                    span.input-group-text Kredi Kartı İadeleri
+                    input.form-control.card-refund(type="text" readonly)
+                .input-group.register-data-input
+                    span.input-group-text Toplam İade
+                    input.form-control.refund-summary(type="text" readonly)
+                .input-group.register-data-input
+                    span.input-group-text Otobüse Ödenen
+                    input.form-control.payed-to-bus(type="text" readonly)
+                .input-group.register-data-input
+                    span.input-group-text Diğer Giderler
+                    input.form-control.other-expense(type="text" readonly)
+        .p-3.d-flex.gap-3.justify-content-end
+            if permissions.includes('REGISTER_RECORD_MANAGE')
+                button.btn.btn-outline-success.btn-sm.add-income-nav
+                    i.fa-solid.fa-plus.me-2
+                    | Gelir Ekle
+                button.btn.btn-outline-danger.btn-sm.add-expense-nav
+                    i.fa-solid.fa-minus.me-2
+                    | Gider Ekle
+            if permissions.includes('REGISTER_RESET')
+                button.btn.btn-outline-primary.btn-sm.register-reset-nav Reset
+            if permissions.includes('REGISTER_TRANSFER')
+                button.btn.btn-outline-primary.btn-sm.transaction-transfer-nav Kasa Devret
+        .p-3
+            .d-flex.mb-2
+                .col-2
+                    p.text-center.m-0 İşlem Tarihi
+                .col-2
+                    p.text-center.m-0 Tür
+                .col-4
+                    p.text-center.m-0 Açıklama
+                .col-2
+                    p.text-center.m-0 Bilgi
+                .col-2
+                    p.text-center.m-0 Tutar
+            .transaction-list.d-flex.flex-column.gap-2
+
+    .other-register
+        .gtr-header
+            span DİĞER KULLANICI KASALARI
+        .other-register-close
+            i.fa-solid.fa-x
+        .d-flex.flex-column.gap-3.p-3
+            .d-flex.gap-2
+                .input-group.register-data-input
+                    span.input-group-text Şube
+                    select.form-select.other-register-branch
+                        option(value="" selected) Şube Seçiniz
+                .input-group.register-data-input
+                    span.input-group-text Kullanıcı
+                    select.form-select.other-register-user
+                .input-group.register-data-input
+                    span.input-group-text Bakiye
+                    input.form-control.other-register-balance(type="text" readonly)
+        .p-3
+            .d-flex.mb-2
+                .col-2
+                    p.text-center.m-0 İşlem Tarihi
+                .col-2
+                    p.text-center.m-0 Tür
+                .col-4
+                    p.text-center.m-0 Açıklama
+                .col-2
+                    p.text-center.m-0 Bilgi
+                .col-2
+                    p.text-center.m-0 Tutar
+            .transaction-list.other-transaction-list.d-flex.flex-column.gap-2
+
+    .open-ticket-sale
+        .open-ticket-close
+            i.fa-solid.fa-x
+        .gtr-header
+            span AÇIK BİLET SATIŞ
+        .d-flex.flex-column.gap-3.p-3
+            .input-group
+                span.input-group-text Nereden
+                select.form-select.open-ticket-from
+                    option(value="" selected) Seçiniz
+            .input-group
+                span.input-group-text Nereye
+                select.form-select.open-ticket-to
+                    option(value="" selected) Seçiniz
+            .input-group
+                span.input-group-text Adet
+                input.form-control.open-ticket-count(type="number" min="1" value="1")
+            .d-flex.gap-3.justify-content-end
+                button.btn.btn-outline-primary.open-ticket-next SONRAKİ
+                button.btn.btn-outline-primary.open-ticket-close KAPAT
+
+    .ticket-search-pop-up
+        .ticket-search-close
+            i.fa-solid.fa-x
+        .gtr-header
+            span BİLET ARA
+        .inputs
+            .input-group
+                span.input-group-text İsim
+                input.search-name.form-control(type="text")
+            .input-group
+                span.input-group-text Soyisim
+                input.search-surname.form-control(type="text")
+            .input-group
+                span.input-group-text Kimlik No
+                input.search-idnum.form-control(type="text")
+            .input-group
+                span.input-group-text Telefon Numarası
+                input.search-phone.form-control(type="text")
+            .input-group
+                span.input-group-text PNR
+                input.search-pnr.form-control(type="text")
+            .input-group
+                span.input-group-text Durum
+                select.search-status.form-select
+                    option(value="") Hepsi
+                    option(value="web") WEB
+                    option(value="gotur") Götür
+                    option(value="completed") Satış
+                    option(value="reservation") Rezervasyon
+                    option(value="open") Açık
+                    option(value="canceled") İptal
+                    option(value="refund") İade
+            .input-group
+                span.input-group-text Kalkış
+                select.form-select(type="text")
+            .input-group
+                span.input-group-text Varış
+                select.form-select(type="text")
+            .input-group
+                button.ticket-search-button.btn.btn-outline-primary ARA
+        .searched-table.px-3.pb-3
+
+    .bus-plans
+        .bus-plans-close
+            i.fa-solid.fa-x
+        .gtr-header
+            span OTOBÜS PLANLARI
+        .d-flex
+            .col-6.p-3
+                .text-end
+                    button.btn.mb-2.add-bus-plan
+                        i.fa-solid.fa-plus.me-2
+                        | EKLE
+                .d-flex.align-items-center.mb-2
+                    .d-flex.col-11
+                        .col-6
+                            p.text-center.mb-0 Plan Adı
+                        .col-6
+                            p.text-center.mb-0 Açıklama
+                    .col-1
+                        p.text-center.mb-0
+                .bus-plan-list.d-flex.flex-column.gap-3.p-2
+            .col-6.d-flex.gap-3.p-3.align-items-start.bus-plan-panel
+
+    .bus
+        .gtr-header
+            span OTOBÜSLER
+        .bus-close
+            i.fa-solid.fa-x
+        .d-flex
+            .bus-list.col-12.p-3.border-end.h-100
+                .text-end
+                    button.btn.mb-2.add-bus
+                        i.fa-solid.fa-plus.me-2
+                        | EKLE
+                .d-flex.align-items-center.mb-2
+                    .d-flex.col-11
+                        .col-3
+                            p.text-center.m-0 Plaka
+                        .col-3
+                            p.text-center.m-0 Otobüs Modeli
+                        .col-3
+                            p.text-center.m-0 Telefon
+                        .col-3
+                            p.text-center.m-0 Toplam Bakiye
+                    .col-1
+                        p.text-center.m-0
+                .bus-list-nodes.d-flex.flex-column.gap-3
+
+            .bus-info.h-100
+                .input-group
+                    span.input-group-text Plaka
+                    input.bus-license-plate.form-control(type="text" )
+                .input-group
+                    span.input-group-text Otobüs Modeli
+                    select.bus-bus-model.form-select()
+                        option(value="" selected)
+                .input-group
+                    span.input-group-text Kaptan Şoför
+                    select.bus-captain.form-select()
+                        option(value="" selected)
+                .input-group
+                    span.input-group-text Araç Telefonu
+                    input.bus-phone.form-control(type="text" )
+                .input-group
+                    span.input-group-text Araç Sahibi
+                    input.bus-owner.form-control(type="text" )
+                button.save-bus.btn.btn-outline-primary SAVE
+            .bus-settings.h-100
+                .input-group.mb-3
+                    span.input-group-text Bu Otobüs İçin Özel Komisyon (%)
+                    input.bus-custom-commission.form-control(type="number" min="0" step="0.01")
+                b Özellikler
+                .ms-3.mb-3
+                    .form-check
+                        input#bus-feature-power-outlet.form-check-input.bus-feature(type="checkbox" data-field="hasPowerOutlet" checked)
+                        label.form-check-label(for="bus-feature-power-outlet") Priz mevcut
+                    .form-check
+                        input#bus-feature-catering.form-check-input.bus-feature(type="checkbox" data-field="hasCatering" checked)
+                        label.form-check-label(for="bus-feature-catering") İkram hizmeti mevcut
+                    .form-check
+                        input#bus-feature-usb.form-check-input.bus-feature(type="checkbox" data-field="hasUsbPort" checked)
+                        label.form-check-label(for="bus-feature-usb") USB girişi mevcut
+                    .form-check
+                        input#bus-feature-seat-screen.form-check-input.bus-feature(type="checkbox" data-field="hasSeatScreen" checked)
+                        label.form-check-label(for="bus-feature-seat-screen") Koltuk arkası ekran mevcut
+                    .form-check
+                        input#bus-feature-comfort-seat.form-check-input.bus-feature(type="checkbox" data-field="hasComfortableSeat" checked)
+                        label.form-check-label(for="bus-feature-comfort-seat") Geniş ve konforlu koltuklar
+                    .form-check
+                        input#bus-feature-fridge.form-check-input.bus-feature(type="checkbox" data-field="hasFridge" checked)
+                        label.form-check-label(for="bus-feature-fridge") Mini buzdolabı mevcut
+                    .form-check
+                        input#bus-feature-wifi.form-check-input.bus-feature(type="checkbox" data-field="hasWifi" checked)
+                        label.form-check-label(for="bus-feature-wifi") Wi-Fi mevcut
+                    .form-check
+                        input#bus-feature-seat-pillow.form-check-input.bus-feature(type="checkbox" data-field="hasSeatPillow" checked)
+                        label.form-check-label(for="bus-feature-seat-pillow") Koltuk yastığı mevcut
+
+    .staff
+        .staff-close
+            i.fa-solid.fa-x
+        .gtr-header
+            span PERSONEL
+        .d-flex
+            .col-6.p-3
+                .text-end
+                    button.btn.mb-2.add-staff
+                        i.fa-solid.fa-plus.me-2
+                        | EKLE
+                .d-flex.align-items-center.mb-2
+                    .d-flex.col-11
+                        .col-4
+                            p.text-center.mb-0 Kimlik No
+                        .col-4
+                            p.text-center.mb-0 İsim Soyisim
+                        .col-4
+                            p.text-center.mb-0 Görev
+                    .col-1
+                        p.text-center.mb-0
+                .staff-list-nodes.d-flex.flex-column.gap-3.p-2
+            .col-6.flex-column.gap-3.p-3.align-items-start.staff-panel
+                .input-group
+                    span.input-group-text Kimlik No
+                    input.staff-id-number.form-control(type="text")
+                .input-group
+                    span.input-group-text Görev
+                    select.staff-duty.form-select()
+                        option(value="" selected)
+                        option(value="driver") Şoför
+                        option(value="assistant") Muavin
+                        option(value="hostess") Host
+                .input-group
+                    span.input-group-text İsim
+                    input.staff-name.form-control(type="text")
+                .input-group
+                    span.input-group-text Soyisim
+                    input.staff-surname.form-control(type="text")
+                .input-group
+                    span.input-group-text Adres
+                    textarea.staff-address.form-control()
+                .input-group
+                    span.input-group-text Telefon
+                    input.staff-phone.form-control(type="text")
+                .input-group
+                    span.input-group-text Cinsiyet
+                    .form-check.form-check-inline
+                        input.form-check-input(type="radio" name="staff-gender" value="m")
+                        label.form-check-label Erkek
+                    .form-check.form-check-inline
+                        input.form-check-input(type="radio" name="staff-gender" value="f")
+                        label.form-check-label Kadın
+                .input-group
+                    span.input-group-text Uyruk
+                    -
+                        const fallbackNationalityOptions = [
+                            { value: "tr", label: "TR - Turkiye", searchText: "TR Turkiye Turkey" },
+                        ];
+                        const staffNationalityOptions = Array.isArray(nationalityOptions) && nationalityOptions.length
+                            ? nationalityOptions
+                            : fallbackNationalityOptions;
+                    select.staff-nationality.form-select(
+                        data-searchable-select
+                        data-search-placeholder="Search nationality"
+                        data-placeholder="Select nationality"
+                        data-no-results-text="No results found"
+                    )
+                        option(value="" selected)
+                        each option in staffNationalityOptions
+                            option(
+                                value=option.value
+                                data-search-text=option.searchText || option.label
+                            ) #{option.label}
+                button.save-staff.btn.btn-outline-primary KAYDET
+
+    .stops
+        .stops-close
+            i.fa-solid.fa-x
+        .gtr-header
+            span DURAKLAR
+        .d-flex
+            .col-6.p-3
+                .text-end
+                    button.btn.mb-2.add-stop
+                        i.fa-solid.fa-plus.me-2
+                        | EKLE
+                .d-flex.align-items-center
+                    .col-6
+                        p.text-center.mb-0 Durak Adı
+                    .col-6
+                        p.text-center.mb-0 Şehir
+                .stop-list-nodes.d-flex.flex-column.gap-3.p-2
+            .col-6.flex-column.gap-3.p-3.align-items-start.stop-panel
+                .input-group
+                    span.input-group-text Durak Adı
+                    input.stop-title.form-control(type="text" )
+                .input-group
+                    span.input-group-text Web Adı
+                    input.stop-web-title.form-control(type="text" )
+                .input-group
+                    span.input-group-text Şehir
+                    select.stop-place.form-select(data-searchable-select data-search-placeholder="Search location")
+                        option(value="" selected)
+                .input-group
+                    span.input-group-text UETDS Kodu
+                    select.stop-uetds.form-select(data-searchable-select data-search-placeholder="Search UETDS code")
+                        option(value="" selected)
+                .form-check.form-switch
+                    input.form-check-input.stop-service(type="checkbox" )
+                    label.form-check-label Mola Yeri
+                .form-check.form-switch
+                    input.form-check-input.stop-active(type="checkbox" checked)
+                    label.form-check-label Aktif
+                button.save-stop.btn.btn-outline-primary KAYDET
+
+    .route
+        .gtr-header
+            span HATLAR
+        .route-close
+            i.fa-solid.fa-x
+        .d-flex
+            .route-list.col-12.p-3.border-end.h-100
+                .text-end
+                    button.btn.mb-2.add-route
+                        i.fa-solid.fa-plus.me-2
+                        | EKLE
+                .d-flex.align-items-center.mb-2
+                    .d-flex.col-11
+                        .col-2
+                            p.text-center.m-0 Hat Kodu
+                        .col-4
+                            p.text-center.m-0 Hat Adı
+                        .col-3
+                            p.text-center.m-0 Nereden
+                        .col-3
+                            p.text-center.m-0 Nereye
+                    .col-1
+                        p.text-center.m-0
+                .route-list-nodes.d-flex.flex-column.gap-3
+
+            .route-info.h-100
+                .input-group
+                    span.input-group-text Hat Kodu
+                    input.route-code.form-control(type="text" )
+                .input-group
+                    span.input-group-text Hat Adı
+                    input.route-title.form-control(type="text" )
+                .input-group
+                    span.input-group-text Açıklama
+                    input.route-description.form-control(type="text" )
+                small.text-muted.mt-1 Bu açıklama internette görüntülenecektir.
+                button.save-route.btn.btn-outline-primary KAYDET
+            .route-settings.h-100
+                .route-tabs.d-flex.mb-3
+                    button.route-tab.btn.btn-outline-primary.active(type="button" data-target="route-stops-tab") Duraklar
+                    button.route-tab.btn.btn-outline-primary(type="button" data-target="route-config-tab") Ayarlar
+                .route-tab-panels
+                    .route-tab-panel#route-stops-tab.active
+                        .input-group.mb-3
+                            select.route-stop-place.form-select(data-searchable-select data-search-placeholder="Durak Ara")
+                                option(value="" selected)
+                            input.route-stop-duration.form-control(placeholder="00:00" type="text" style="display:none;" pattern="^([01]\d|2[0-3]):([0-5]\d)$")
+                            button.add-route-stop-button.btn.btn-outline-primary(type="button") EKLE
+                        .route-stops.d-flex.flex-column.gap-3
+                    .route-tab-panel#route-config-tab
+                        .input-group.mb-3
+                            span.input-group-text Rezervasyon Opsiyonu Süresi
+                            input.route-reservation-option-time.form-control.time-flatpickr(type="text" placeholder="00:00" autocomplete="off")
+                        p.form-text.text-muted.mb-3 Boş bırakırsanız, rezervasyon opsiyonu kalkış saatine kadar geçerli olur.
+                        .input-group.mb-3
+                            span.input-group-text İade/Transfer Opsiyonu Süresi
+                            input.route-transfer-option-time.form-control.time-flatpickr(type="text" placeholder="00:00" autocomplete="off")
+                        .input-group.mb-3
+                            span.input-group-text Max Rezervasyon Sayısı
+                            input.route-max-reservation-count.form-control(type="number" min="0" step="1" placeholder="Unlimited")
+                        .input-group
+                            span.input-group-text Max Tek Koltuk Rezervasyon Sayısı
+                            input.route-max-single-seat-count.form-control(type="number" min="0" step="1" placeholder="Unlimited")
+
+    .trip
+        .gtr-header
+            span SEFERLER
+        .trip-close
+            i.fa-solid.fa-x
+        .d-flex
+            .trip-list.col-12.p-3.border-end.h-100
+                .d-flex.justify-content-between.align-content-center
+                    input.trip-settings-calendar.form-control(type="text")
+                    .text-end
+                        button.btn.mb-2.add-trip
+                            i.fa-solid.fa-plus.me-2
+                            | EKLE
+                .d-flex
+                    .d-flex.mb-2(class=`${permissions.includes('TRIP_CANCEL')?"col-11":"col-12"}`)
+                        .col-2
+                            p.text-center.m-0 Kalkış Tarihi
+                        .col-2
+                            p.text-center.m-0 Nereden
+                        .col-2
+                            p.text-center.m-0 Nereye
+                        .col-2
+                            p.text-center.m-0 Plaka
+                        .col-1
+                            p.text-center.m-0 Hat Kodu
+                        .col-3
+                            p.text-center.m-0 Hat Adı
+                    if permissions.includes('TRIP_CANCEL')
+                        .col-1
+                .trip-list-nodes.d-flex.flex-column.gap-3
+
+            .trip-info.h-100.col-5
+                .input-group
+                    span.input-group-text Hat
+                    select.trip-route.form-select()
+                        option(value="" selected)
+                .input-group
+                    span.input-group-text Başlangıç
+                    input.trip-first-date.form-control(type="text" )
+                .input-group
+                    span.input-group-text Bitiş
+                    input.trip-last-date.form-control(type="text" )
+                .input-group
+                    span.input-group-text Kalkış Saati
+                    input.trip-departure.form-control(type="text" )
+                .input-group
+                    span.input-group-text Otobüs Modeli
+                    select.trip-bus-model.form-select()
+                        option(value="" selected)
+                .input-group
+                    span.input-group-text Otobüs
+                    select.trip-bus.form-select()
+                        option(value="" selected)
+                button.save-trip.btn.btn-outline-primary EKLE
+            .trip-settings.h-100.col-5
+                button.save-trip.btn.btn-outline-primary KAYDET
+
+    .trip-staff-pop-up
+        .gtr-header
+            span PERSONEL
+        .trip-staff-close
+            i.fa-solid.fa-x
+        .d-flex.flex-column.gap-3.p-3
+            if permissions.includes('TRIP_STAFF_ASSIGN')
+                .input-group
+                    span.input-group-text Kaptan Şoför
+                    select.form-select.trip-staff-captain
+                        option(value="" selected) Seçilmedi
+                    input.form-control.trip-staff-captain-phone(type="text" readonly)
+                .input-group
+                    span.input-group-text İkinci Şoför
+                    select.form-select.trip-staff-second
+                        option(value="" selected) Seçilmedi
+                    input.form-control.trip-staff-second-phone(type="text" readonly)
+                .input-group
+                    span.input-group-text Üçüncü Şoför
+                    select.form-select.trip-staff-third
+                        option(value="" selected) Seçilmedi
+                    input.form-control.trip-staff-third-phone(type="text" readonly)
+                .input-group
+                    span.input-group-text Muavin
+                    select.form-select.trip-staff-assistant
+                        option(value="" selected) Seçilmedi
+                    input.form-control.trip-staff-assistant-phone(type="text" readonly)
+                .input-group
+                    span.input-group-text Host
+                    select.form-select.trip-staff-hostess
+                        option(value="" selected) Seçilmedi
+                    input.form-control.trip-staff-hostess-phone(type="text" readonly)
+                .d-flex.gap-3.justify-content-end
+                    button.btn.btn-outline-primary.trip-staff-save KAYDET
+                    button.btn.btn-outline-primary.trip-staff-close IPTAL
+            else
+                .input-group
+                    span.input-group-text Kaptan Şoför
+                    input.form-control.trip-staff-captain(type="text" readonly)
+                    input.form-control.trip-staff-captain-phone(type="text" readonly)
+                .input-group
+                    span.input-group-text İkinci Şoför
+                    input.form-control.trip-staff-second(type="text" readonly)
+                    input.form-control.trip-staff-second-phone(type="text" readonly)
+                .input-group
+                    span.input-group-text Üçüncü Şoför
+                    input.form-control.trip-staff-third(type="text" readonly)
+                    input.form-control.trip-staff-third-phone(type="text" readonly)
+                .input-group
+                    span.input-group-text Muavin
+                    input.form-control.trip-staff-assistant(type="text" readonly)
+                    input.form-control.trip-staff-assistant-phone(type="text" readonly)
+                .input-group
+                    span.input-group-text Host
+                    input.form-control.trip-staff-hostess(type="text" readonly)
+                    input.form-control.trip-staff-hostess-phone(type="text" readonly)
+
+    .trip-cargo-pop-up
+            .gtr-header
+                span KARGO EKLE
+            .trip-cargo-close
+                i.fa-solid.fa-x
+            .trip-cargo-form.p-3.d-flex.flex-column.gap-3
+                .input-group
+                    span.input-group-text Nereden
+                    select.form-select.trip-cargo-from.form-select-sm
+                        option(value="" selected disabled) Seçiniz
+                .input-group
+                    span.input-group-text Nereye
+                    select.form-select.trip-cargo-to.form-select-sm
+                        option(value="" selected disabled) Seçiniz
+                .input-group
+                    span.input-group-text Gönderen Adı
+                    input.form-control.trip-cargo-sender-name.form-control-sm(type="text")
+                .input-group
+                    span.input-group-text Gönderen Telefon
+                    input.form-control.trip-cargo-sender-phone.form-control-sm(type="text")
+                .input-group
+                    span.input-group-text Gönderen Kimlik
+                    input.form-control.trip-cargo-sender-identity.form-control-sm(type="text")
+                .input-group
+                    span.input-group-text İçerik
+                    textarea.form-control.trip-cargo-description.form-control-sm(rows="2")
+                .d-flex.gap-3
+                    .input-group
+                        span.input-group-text Ödeme
+                        select.form-select.trip-cargo-payment.form-select-sm
+                            option(value="cash" selected) Nakit
+                            option(value="card") Kart
+                    .input-group
+                        span.input-group-text Ücret
+                        input.form-control.trip-cargo-price.form-control-sm(type="number" min="0" step="0.01")
+            .p-3.d-flex.gap-3.justify-content-end
+                button.btn.btn-outline-primary.trip-cargo-save(type="button") KAYDET
+                button.btn.btn-outline-primary.trip-cargo-close(type="button") İPTAL
+
+    .trip-cargo-list-pop-up
+        .gtr-header
+            span KARGO LİSTESİ
+        .trip-cargo-list-close
+            i.fa-solid.fa-x
+        .p-3.d-flex.flex-column.gap-2
+            .trip-cargo-list-header.d-flex.col-11
+                .col-3
+                    p.text-center.m-0 Gönderen
+                .col-2
+                    p.text-center.m-0 Telefon
+                .col-2
+                    p.text-center.m-0 Nereden
+                .col-2
+                    p.text-center.m-0 Nereye
+                .col-2
+                    p.text-center.m-0 İçerik
+                .col-1
+                    p.text-center.m-0 Ücret
+            .col-1
+            .trip-cargo-list-nodes.d-flex.flex-column.gap-2
+                p.text-center.text-muted.m-0.trip-cargo-list-placeholder Kargo Yükleniyor...
+
+    .trip-revenue-pop-up
+        .gtr-header
+            span SEFER HASILATI
+        .trip-revenue-close
+            i.fa-solid.fa-x
+        table.table.table-sm.table-bordered.mb-0
+            thead
+                tr
+                    th Şube
+                    th Durak Adet
+                    th Durak Miktar
+                    th Toplam Adet
+                    th Toplam Miktar
+            tbody.trip-revenue-rows
+            tfoot
+                tr
+                    th Toplam
+                    th.trip-revenue-total-current-count
+                    th.trip-revenue-total-current-amount
+                    th.trip-revenue-total-all-count
+                    th.trip-revenue-total-all-amount
+
+    .trip-stop-restriction-pop-up
+        .gtr-header
+            span DURAK KISITLA
+        .trip-stop-restriction-close
+            i.fa-solid.fa-x
+        .trip-stop-restriction-content.p-3
+        .d-flex.gap-3.justify-content-end.p-3
+            button.btn.btn-outline-primary.trip-stop-restriction-save-all BU HATTIN TÜM SEFERLERİNE UYGULA
+            button.btn.btn-outline-primary.trip-stop-restriction-save KAYDET
+            button.btn.btn-outline-primary.trip-stop-restriction-close IPTAL
+
+    .trip-time-adjust-pop-up
+        .gtr-header
+            span SEFER SAAT GÜNCELLE
+        .trip-time-adjust-close
+            i.fa-solid.fa-x
+        .p-3.d-flex.flex-column.gap-3
+            .input-group
+                span.input-group-text Hangi Duraktan
+                select.form-select.form-select-sm.trip-time-adjust-stop
+                    option(value="" disabled selected) Seçiniz
+            .d-flex.gap-3.flex-wrap
+                .form-check
+                    input.form-check-input(type="radio" name="trip-time-adjust-direction" id="trip-time-adjust-forward" value="forward")
+                    label.form-check-label(for="trip-time-adjust-forward") İleri Al
+                .form-check
+                    input.form-check-input(type="radio" name="trip-time-adjust-direction" id="trip-time-adjust-backward" value="backward")
+                    label.form-check-label(for="trip-time-adjust-backward") Geri Al
+            .input-group
+                span.input-group-text Süre
+                input.trip-time-adjust-amount.form-control.form-control-sm(type="text" placeholder="00:15")
+        .p-3.d-flex.justify-content-end.gap-2
+            button.btn.btn-outline-primary.trip-time-adjust-confirm(type="button") GÜNCELLE
+            button.btn.btn-outline-secondary.trip-time-adjust-cancel(type="button") IPTAL
+
+    .prices
+        .gtr-header
+            span FİYATLAR
+        .price-close
+            i.fa-solid.fa-x
+        .d-flex
+            .price-list.col-12.p-3.border-end.h-100
+                .text-end
+                    button.btn.mb-2.add-price
+                        i.fa-solid.fa-plus.me-2
+                        | EKLE
+                .d-flex.align-items-center.mb-2
+                    .d-flex.col-11
+                        .col
+                            p.text-center.m-0 Nereden
+                        .col
+                            p.text-center.m-0 Nereye
+                        .col
+                            p.text-center.m-0 Çift Yön
+                        .col
+                            p.text-center.m-0 Fiyat 1
+                        .col
+                            p.text-center.m-0 Fiyat 2
+                        .col
+                            p.text-center.m-0 Fiyat 3
+                        .col
+                            p.text-center.m-0 Web
+                        .col
+                            p.text-center.m-0 Tekli 1
+                        .col
+                            p.text-center.m-0 Tekli 2
+                        .col
+                            p.text-center.m-0 Tekli 3
+                        .col
+                            p.text-center.m-0 Web Tekli
+                        .col
+                            p.text-center.m-0 Başlangıç
+                        .col
+                            p.text-center.m-0 Bitiş
+                    .col-1
+                        p.text-center.m-0
+                .price-list-nodes.d-flex.flex-column.gap-3
+        .p-3.d-flex.justify-content-end
+            button.btn.btn-outline-primary.price-save KAYDET
+
+    .price-add-popup
+        .gtr-header
+            span FİYAT EKLE
+        .price-add-close
+            i.fa-solid.fa-x
+        .p-3.d-flex.flex-column.gap-3
+            .d-flex.mb-2
+                .col
+                    p.text-center.m-0 Nereden
+                .col
+                    p.text-center.m-0 Nereye
+                .col
+                    p.text-center.m-0 Çift Yön
+                .col
+                    p.text-center.m-0 Fiyat 1
+                .col
+                    p.text-center.m-0 Fiyat 2
+                .col
+                    p.text-center.m-0 Fiyat 3
+                .col
+                    p.text-center.m-0 Web Fiyat
+                .col
+                    p.text-center.m-0 Tekli 1
+                .col
+                    p.text-center.m-0 Tekli 2
+                .col
+                    p.text-center.m-0 Tekli 3
+                .col
+                    p.text-center.m-0 Web Tekli
+                .col
+                    p.text-center.m-0 Koltuk Limiti
+                .col
+                    p.text-center.m-0 Saat Limiti
+                .col
+                    p.text-center.m-0 Başlangıç
+                .col
+                    p.text-center.m-0 Bitiş
+            .d-flex.btn.btn-primary.price-button-inputs.price-add-row
+                .col
+                    select.price-button-select(data-field="fromStopId")
+                .col
+                    select.price-button-select(data-field="toStopId")
+                .col.d-flex.justify-content-center.align-items-center
+                    input.price-bidirectional.form-check-input(type="checkbox" data-field="isBidirectional")
+                .col
+                    input.price-button-input(type="text" value="" data-field="price1")
+                .col
+                    input.price-button-input(type="text" value="" data-field="price2")
+                .col
+                    input.price-button-input(type="text" value="" data-field="price3")
+                .col
+                    input.price-button-input(type="text" value="" data-field="webPrice")
+                .col
+                    input.price-button-input(type="text" value="" data-field="singleSeatPrice1")
+                .col
+                    input.price-button-input(type="text" value="" data-field="singleSeatPrice2")
+                .col
+                    input.price-button-input(type="text" value="" data-field="singleSeatPrice3")
+                .col
+                    input.price-button-input(type="text" value="" data-field="singleSeatWebPrice")
+                .col
+                    input.price-button-input(type="text" value="" data-field="seatLimit")
+                .col
+                    input.price-button-input.hour-limit(type="number" value="" data-field="hourLimit")
+                .col
+                    input.price-button-input.date-picker(type="text" value="" data-field="validFrom")
+                .col
+                    input.price-button-input.date-picker(type="text" value="" data-field="validUntil")
+        .p-3.d-flex.gap-3.justify-content-end
+            button.btn.btn-outline-primary.price-add-save KAYDET
+            button.btn.btn-outline-primary.price-add-save-continue KAYDET VE DEVAM ET
+
+    .ticket-cancel-refund-open
+        .ticket-cancel-refund-open-close
+            i.fa-solid.fa-x
+        .gtr-header
+            span 
+        .tickets.p-3
+        .d-flex.gap-3.justify-content-center.p-3
+            button.btn.btn-outline-primary.disabled.ticket-button-action.cancel-action-button BİLET SEÇ
+            button.btn.btn-outline-danger.ticket-cancel-refund-open-close IPTAL
+
+    .moving
+        .gtr-header
+            span BİLET TRANSFER
+        .moving-close
+            i.fa-solid.fa-x
+        p.m-0.mt-1.text-center İşlem yapmak istediğiniz bilet(ler)i seçin.
+        .info
+        .d-flex.justify-content-center.w-100.p-3.gap-2
+            button.btn.btn-outline-primary.moving-confirm
+                | ONAYLA
+            button.btn.btn-outline-primary.moving-close
+                | İPTAL
+
+    .passenger-info-popup
+        p.text-center
+            b 
+                span.seat-number 
+        p.text-center
+            b
+                span.from 
+                i.fa-solid.fa-route.mx-2
+                span.to 
+        p.text-center.name-phone-container
+            span.name
+            |   /
+            span.phone
+        p
+            b.me-1 İşlem Yapan:
+            span.username
+            |   /
+            span.userBranch
+        p.price-container
+            b.me-1 Fiyat:
+            span.price   
+        p.payment-container
+            b.me-1 Ödeme Türü:
+            span.payment  
+        p.take-on-container
+            b.me-1 Biniş Noktası:
+            span.take-on
+        p.take-off-container
+            b.me-1 İniş Noktası:
+            span.take-off
+        p.pnr-container
+            b.me-1 PNR:
+            span.pnr  
+        p 
+            b.me-1 İşlem Tarihi:
+            span.createdAt
+
+    .ticket-info-pop-up
+        .ticket-close 
+            i.fa-solid.fa-x
+        .ticket-header
+            p.mb-0
+                b
+                    span.ticket-info-pop-up_from 
+                    i.fa-solid.fa-route.mx-2
+                    span.ticket-info-pop-up_to 
+        .ticket-rows
+
+            .ticket-buttons.d-flex.justify-content-center.gap-3
+                button.btn.btn-outline-primary.ticket-button-action(data-action="") 
+                button.btn.btn-outline-primary.ticket-button-cancel İPTAL
+
+    .firm
+        .gtr-header
+            span FİRMA AYARLARI
+        .firm-close
+            i.fa-solid.fa-x
+        .d-flex.flex-column.gap-2
+            .input-group
+                span.input-group-text Bilet Başına Acenta Komisyonu (%)
+                input.form-control(type="text")
+
+    .branch
+        .gtr-header
+            span ŞUBELER
+        .branch-close
+            i.fa-solid.fa-x
+        .d-flex
+            .branch-list.col-12.p-3.border-end.h-100
+                .text-end
+                    button.btn.mb-2.add-branch
+                        i.fa-solid.fa-plus.me-2
+                        | EKLE
+                .d-flex.align-items-center.mb-2
+                    .d-flex.col-11
+                        .col-6
+                            p.text-center.m-0 Şube Adı
+                        .col-6
+                            p.text-center.m-0 Durak
+                    .col-1
+                        p.text-center.m-0
+                .branch-list-nodes.d-flex.flex-column.gap-3
+
+            .branch-info.h-100
+                .d-flex.justify-content-end 
+                    .form-check
+                        input#isBranchActive.form-check-input(type="checkbox" value="active" checked)
+                        label.form-check-label(for="isBranchActive" checked) Aktif
+                .input-group
+                    span.input-group-text Şube Adı
+                    input.branch-title.form-control(type="text" )
+                .input-group
+                    span.input-group-text Şube Durağı
+                    select.branch-place.form-select()
+                        option(value="" selected)
+                .form-check
+                    input#isMainBranch.form-check-input(type="checkbox" value="")
+                    label.form-check-label(for="isMainBranch") Bu bir ana şube mi?
+                .input-group.is-main-branch-group
+                    span.input-group-text Ana Şube
+                    select.branch-main-branch.form-select
+                        option(value="" selected)
+                button.save-branch.btn.btn-outline-primary KAYDET
+            .branch-settings.h-100
+                b Şube Bilgileri
+                .ms-3.mb-3
+                    .d-flex.gap-2
+                        .col-auto
+                            label.col-form-label(for="inputPassword6") Sahiplik
+                        .col-auto
+                            input.form-control.branch-owner(type="text")
+                    .d-flex.gap-2
+                        .col-auto
+                            label.col-form-label(for="inputPassword6") Telefon No
+                        .col-auto
+                            input.form-control.branch-phone(type="text")
+                    .d-flex.gap-2
+                        .col-auto
+                            label.col-form-label(for="inputPassword6") Adres
+                        .col-auto
+                            input.form-control.branch-address(type="text")
+                    .d-flex.gap-2
+                        .col-auto
+                            label.col-form-label(for="inputPassword6") Ticari Ünvan
+                        .col-auto
+                            input.form-control.branch-trade-title(type="text")
+                    .d-flex.gap-2
+                        .col-auto
+                            label.col-form-label(for="inputPassword6") Vergi Dairesi
+                        .col-auto
+                            input.form-control.branch-tax-office(type="text")
+                    .d-flex.gap-2
+                        .col-auto
+                            label.col-form-label(for="inputPassword6") Vergi No
+                        .col-auto
+                            input.form-control.branch-tax-number(type="text")
+                    .d-flex.gap-2
+                        .col-auto
+                            label.col-form-label(for="inputPassword6") F1 Belge No
+                        .col-auto
+                            input.form-control.branch-f1-document(type="text")
+                b Komisyon ve Kesintiler
+                .ms-3.mb-3
+                    .d-flex.gap-2
+                        .col-auto
+                            label.col-form-label(for="inputPassword6") Kendi durağından komisyon (%)
+                        .col-auto
+                            input.form-control.branch-own-commission(type="text")
+                    .d-flex.gap-2
+                        .col-auto
+                            label.col-form-label(for="inputPassword6") Diğer duraklardan komisyon (%)
+                        .col-auto
+                            input.form-control.branch-other-commission(type="text")
+                    .d-flex.gap-2
+                        .form-check
+                            input#isPaysInternet.form-check-input(type="checkbox" value="active" checked)
+                            label.form-check-label(for="isPaysInternet" checked) İnternet biletlerini araca öder
+                    .d-flex.gap-2
+                        .col-auto
+                            label.col-form-label(for="inputPassword6") İnternet bileti komisyonu (%)
+                        .col-auto
+                            input.form-control.branch-internet-commission(type="text")
+                    .d-flex.gap-2
+                        .col-auto
+                            label.col-form-label(for="inputPassword6") Sabit Kesinti 1
+                        .col-auto
+                            input.form-control.branch-deduction1(type="text")
+                    .d-flex.gap-2
+                        .col-auto
+                            label.col-form-label(for="inputPassword6") Sabit Kesinti 2
+                        .col-auto
+                            input.form-control.branch-deduction2(type="text")
+                    .d-flex.gap-2
+                        .col-auto
+                            label.col-form-label(for="inputPassword6") Sabit Kesinti 3
+                        .col-auto
+                            input.form-control.branch-deduction3(type="text")
+                    .d-flex.gap-2
+                        .col-auto
+                            label.col-form-label(for="inputPassword6") Sabit Kesinti 4
+                        .col-auto
+                            input.form-control.branch-deduction4(type="text")
+                    .d-flex.gap-2
+                        .col-auto
+                            label.col-form-label(for="inputPassword6") Sabit Kesinti 5
+                        .col-auto
+                            input.form-control.branch-deduction5(type="text")
+    .users
+        .gtr-header
+            span KULLANICILAR
+        .users-close
+            i.fa-solid.fa-x
+        .d-flex
+            .user-list.col-12.p-3.border-end.h-100
+                .text-end
+                    button.btn.mb-2.add-user
+                        i.fa-solid.fa-plus.me-2
+                        | EKLE
+                .d-flex.align-items-center.mb-2
+                    .d-flex.col-11
+                        .col-4
+                            p.text-center.m-0 İsim Soyisin
+                        .col-4
+                            p.text-center.m-0 Şube
+                        .col-4
+                            p.text-center.m-0 Telefon No
+                    .col-1
+                        p.text-center.m-0
+                .user-list-nodes.d-flex.flex-column.gap-3
+
+            .user-info.h-100
+                .d-flex.justify-content-end 
+                    .form-check
+                        input#isUserActive.form-check-input(type="checkbox" value="active" checked)
+                        label.form-check-label(for="isUserActive") Aktif
+                .input-group
+                    span.input-group-text İsim Soyisim
+                    input.user-name.form-control(type="text" )
+                .input-group
+                    span.input-group-text Kullanıcı Adı
+                    input.user-username.form-control(type="text" )
+                .input-group
+                    span.input-group-text Şifre
+                    input.user-password.form-control(type="password" )
+                .input-group
+                    span.input-group-text Telefon No
+                    input.user-phone.form-control(type="text" )
+                .input-group
+                    span.input-group-text Şube
+                    select.user-branches.form-select()
+                        option(value="" selected)
+                button.save-user.btn.btn-outline-primary KAYDET
+            .user-settings.h-100
+                ul.nav.nav-tabs#permissionTabs(role="tablist")
+                    li.nav-item
+                        a.nav-link.active(data-bs-toggle="tab" href="#kasa") Kasa
+                    li.nav-item
+                        a.nav-link(data-bs-toggle="tab" href="#sefer") Sefer
+                    li.nav-item
+                        a.nav-link(data-bs-toggle="tab" href="#satis") Satış
+                    li.nav-item
+                        a.nav-link(data-bs-toggle="tab" href="#hesap") Hesap Kesim
+                    li.nav-item
+                        a.nav-link(data-bs-toggle="tab" href="#diger") Diğer
+                .tab-content.mt-3.px-2(style="overflow-y: auto;height: 40vh;")
+                    .tab-pane.fade.show.active#kasa
+                        .form-check.mb-2
+                            input#select-all-register.form-check-input.permission-select-all(type="checkbox" data-module="register")
+                            label.form-check-label(for="select-all-register") Hepsini Seç
+                        .permission-list(data-module="register")
+                    .tab-pane.fade#sefer
+                        .form-check.mb-2
+                            input#select-all-trip.form-check-input.permission-select-all(type="checkbox" data-module="trip")
+                            label.form-check-label(for="select-all-trip") Hepsini Seç
+                        .permission-list(data-module="trip")
+                    .tab-pane.fade#satis
+                        .form-check.mb-2
+                            input#select-all-sales.form-check-input.permission-select-all(type="checkbox" data-module="sales")
+                            label.form-check-label(for="select-all-sales") Hepsini Seç
+                        .permission-list(data-module="sales")
+                    .tab-pane.fade#hesap
+                        .form-check.mb-2
+                            input#select-all-account.form-check-input.permission-select-all(type="checkbox" data-module="account_cut")
+                            label.form-check-label(for="select-all-account") Hepsini Seç
+                        .permission-list(data-module="account_cut")
+                    .tab-pane.fade#diger
+                        .form-check.mb-2
+                            input#select-all-other.form-check-input.permission-select-all(type="checkbox" data-module="other")
+                            label.form-check-label(for="select-all-other") Hepsini Seç
+                        .permission-list(data-module="other")
+
+    .members
+        .gtr-header
+            span ABONELER
+        .members-close
+            i.fa-solid.fa-x
+        .members-search.p-3.d-flex.gap-2
+            .input-group
+                span.input-group-text Kimlik No
+                input.member-search-idNumber.form-control(type="text")
+            .input-group
+                span.input-group-text İsim
+                input.member-search-name.form-control(type="text")
+            .input-group
+                span.input-group-text Soyisim
+                input.member-search-surname.form-control(type="text")
+            .input-group
+                span.input-group-text Telefon No
+                input.member-search-phone.form-control(type="text")
+            button.btn.btn-outline-primary.member-search-btn ARA
+            button.btn.btn-outline-primary.member-add-btn EKLE
+        .member-list.p-3
+            .d-flex.mb-2
+                .col-2
+                    p.text-center.m-0 Kimlik No
+                .col-2
+                    p.text-center.m-0 İsim
+                .col-2
+                    p.text-center.m-0 Soyisim
+                .col-2
+                    p.text-center.m-0 Telefon No
+                .col-2
+                    p.text-center.m-0 İndr. Tipi
+                .col-2
+                    p.text-center.m-0 Puan veya İndr. Oranı
+            .member-list-nodes.d-flex.flex-column.gap-3
+
+    -
+        const genderOptions = (customerFieldOptions && customerFieldOptions.gender) || [];
+        const customerTypeOptions = (customerFieldOptions && customerFieldOptions.customerType) || [];
+        const customerCategoryOptions = (customerFieldOptions && customerFieldOptions.customerCategory) || [];
+        const pointOrPercentOptions = (customerFieldOptions && customerFieldOptions.pointOrPercent) || [];
+    .member-info
+        .gtr-header
+            span ABONE BİLGİLERİ
+        .member-info-close
+            i.fa-solid.fa-x
+        .member-info-body.d-flex
+            .member-info-left.p-3.d-flex.flex-column.gap-2
+                .input-group
+                    span.input-group-text Kimlik No
+                    input.member-info-idNumber.form-control(type="text")
+                .input-group
+                    span.input-group-text İsim
+                    input.member-info-name.form-control(type="text")
+                .input-group
+                    span.input-group-text Soyisim
+                    input.member-info-surname.form-control(type="text")
+                .input-group
+                    span.input-group-text Telefon No
+                    input.member-info-phone.form-control(type="text")
+                .input-group
+                    span.input-group-text Cinsiyet
+                    select.member-info-gender.form-select
+                        option(value="") Seçiniz
+                        each option in genderOptions
+                            option(value=option.value)= option.label
+                .input-group
+                    span.input-group-text Tür
+                    select.member-info-type.form-select
+                        option(value="") Seçiniz
+                        each option in customerTypeOptions
+                            option(value=option.value)= option.label
+                .input-group
+                    span.input-group-text Kategori
+                    select.member-info-category.form-select
+                        option(value="") Seçiniz
+                        each option in customerCategoryOptions
+                            option(value=option.value)= option.label
+                .input-group
+                    span.input-group-text Email
+                    input.member-info-email.form-control(type="text")
+                .input-group
+                    span.input-group-text Şifre
+                    input.member-info-password.form-control(type="password")
+                .input-group
+                    span.input-group-text Puan/İndirim
+                    select.member-info-pointorpercent.form-select
+                        option(value="") Seçiniz
+                        each option in pointOrPercentOptions
+                            option(value=option.value)= option.label
+                .input-group
+                    span.input-group-text Puan
+                    input.member-info-pointamount.form-control(type="text")
+                .input-group
+                    span.input-group-text İndirim (%)
+                    input.member-info-percent.form-control(type="text")
+                button.btn.btn-primary.member-info-save.mt-2 Kaydet
+            .member-info-middle
+            .member-info-right.p-3
+                .member-ticket-list.d-flex.flex-column.gap-2
+
+    .customers
+        .gtr-header
+            span MÜŞTERİLER
+        .customers-close
+            i.fa-solid.fa-x
+        .customers-search.p-3.d-flex.gap-2
+            .input-group
+                span.input-group-text Kimlik No
+                input.customer-search-idNumber.form-control(type="text")
+            .input-group
+                span.input-group-text İsim
+                input.customer-search-name.form-control(type="text")
+            .input-group
+                span.input-group-text Soyisim
+                input.customer-search-surname.form-control(type="text")
+            .input-group
+                span.input-group-text Telefon No
+                input.customer-search-phone.form-control(type="text")
+            button.btn.btn-outline-primary.customer-search-btn ARA
+            button.btn.btn-outline-primary.customer-blacklist-btn KARA LİSTEYİ GETİR
+        .customer-list.p-3
+            .d-flex.mb-2.col-11
+                .col-2
+                    p.text-center.m-0 Kimlik No
+                .col-3.customer-list-name-header
+                    p.text-center.m-0 İsim
+                .col-2
+                    p.text-center.m-0 Soyisim
+                .col-2
+                    p.text-center.m-0 Telefon No
+                .col-3.customer-list-category-header
+                    p.text-center.m-0 Abonelik
+                .col-2.blacklist-reason-header(style="display:none")
+                    p.text-center.m-0 Sebep
+            .col-1
+
+            .customer-list-nodes.d-flex.flex-column.gap-3
+
+    .blackout
+
+    .ticket-ops-pop-up
+
+    .taken-ticket-ops-pop-up
+        .taken-ticket-op(data-action="complete")
+            span SATIŞA ÇEVİR
+        .taken-ticket-op(data-action="edit")
+            span DÜZENLE
+        .taken-ticket-op(data-action="refund")
+            span İADE
+        .taken-ticket-op(data-action="cancel")
+            span İPTAL
+        .taken-ticket-op(data-action="open")
+            span AÇIĞA AL
+        .taken-ticket-op(data-action="attach_open")
+            span SEFERE BAĞLA
+        .taken-ticket-op(data-action="move")
+            span TRANSFER
+        .taken-ticket-op(data-action="delete_pending")
+            span İPTAL
+        .taken-ticket-op(data-action="")
+            span KOLTUK GEÇMİŞİ
+
+    .search-ticket-ops-pop-up
+        .taken-ticket-op.searched-ticket-op(data-action="complete")
+            span SATIŞA ÇEVİR
+        .taken-ticket-op.searched-ticket-op(data-action="open")
+            span AÇIĞA AL
+        .taken-ticket-op.searched-ticket-op(data-action="attach_open")
+            span SEFERE BAĞLA
+        .taken-ticket-op.searched-ticket-op(data-action="edit")
+            span DÜZENLE
+        .taken-ticket-op.searched-ticket-op(data-action="refund")
+            span İADE
+        .taken-ticket-op.searched-ticket-op(data-action="cancel")
+            span İPTAL
+        .taken-ticket-op.searched-ticket-op(data-action="move")
+            span TRANSFER
+        .searched-ticket-op(data-action="go_trip")
+            span SEFERE GİT
+
+    .customer-blacklist-pop-up.p-3
+        textarea.customer-blacklist-description.form-control(placeholder="Reason")
+        .d-flex.justify-content-end.gap-2.mt-2
+            button.btn.btn-secondary.customer-blacklist-close KAPAT
+            button.btn.btn-primary.customer-blacklist-add EKLE
+
+    .row(style="height: 89vh;")
+        .col-4.h-100
+            .passenger-table.mb-3
+            .notes-stops
+                .bg-white.h-100.p-2.w-50
+                    .d-flex.justify-content-around.align-items-center 
+                        span SEFER NOTLARI
+                        if permissions.includes("TRIP_NOTES_MANAGE")
+                            button.add-trip-note-button.btn.btn-outline-primary 
+                                i.fa-solid.fa-plus
+                    hr.m-2
+                    .trip-notes
+                .stops-times.bg-white.h-100.p-2.w-50
+
+            .ticker
+                p
+        .col-5.d-flex.flex-column.align-items-center.px-3.gap-2.h-100
+            .busPlan
+
+        .col-3.h-100.right-panel
+            input#calendar(type="hidden" name="")
+            select#currentStop.form-select.form-select-sm(value=branchStopId data-searchable-select data-search-placeholder="Search stop")
+                each s in stops
+                    if(s.id == branchStopId)
+                        option(value=s.id selected) #{s.title}
+                    else
+                        option(value=s.id) #{s.title}
+            .tripRows 
+            div(style="width: 100%;height: 10vh;display:flex;align-items: center;justify-content: space-evenly;background-color: white;border-radius: 5px;")
+                img.firm-logo(src=`/images/${tenantKey}.png`)
+                #clock

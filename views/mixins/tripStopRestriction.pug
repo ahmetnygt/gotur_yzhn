@@ -1,0 +1,20 @@
+table.table.table-bordered.text-center
+    - const fromStops = routeStops.slice(0, -1);
+    - const toStops = routeStops.slice(1);
+    thead
+        tr
+            th
+            each rs in toStops
+                th #{rs.title}
+    tbody
+        each from in fromStops
+            tr
+                th #{from.title}
+                each to in toStops
+                    if to.order > from.order
+                        - const r = restrictions.find(r => r.fromRouteStopId == from.id && r.toRouteStopId == to.id);
+                        - const allowed = r ? r.isAllowed : "true";
+                        td
+                            input.trip-stop-restriction-checkbox(type="checkbox" data-from=from.id data-to=to.id checked=allowed data-initial=allowed)
+                    else
+                        td

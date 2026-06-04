@@ -1,0 +1,10 @@
+each rs in routeStops
+    .route-stop.text-center(data-stop-id=rs.stopId data-duration=rs.duration)
+        -if(rs.isFirst == false || rs.isFirst == "false"){
+            .d-flex.flex-column.align-items-center._route-stop-duration
+                i.fa-solid.fa-chevron-up.text-primary
+                input.duration-input(type="text" value=rs.duration)
+                i.fa-solid.fa-chevron-down.text-primary
+        -}
+        span #{rs.stop}
+        i.fa-solid.fa-x.text-danger.ms-2.remove-route-stop

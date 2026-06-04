@@ -1,0 +1,29 @@
+each t in transactions
+    button.transactions-button.d-flex.btn(class=t.type=="income"?"btn-success":"btn-danger")
+        .col-2
+            p.text-center.m-0 #{new Date(t.createdAt).toLocaleDateString()} #{new Date(t.createdAt).toLocaleTimeString()}
+        .col-2
+            if t.category == "cash_sale"
+                p.text-center.m-0 Cash ticket sale
+            else if t.category == "card_sale"
+                p.text-center.m-0 Card ticket sale
+            else if t.category == "cash_refund"
+                p.text-center.m-0 Credit card ticket refund
+            else if t.category == "card_refund"
+                p.text-center.m-0 Cash ticket refund
+            else if t.category == "payed_to_bus"
+                p.text-center.m-0 Paid to bus
+            else if t.category == "income"
+                p.text-center.m-0 Income
+            else if t.category == "expense"
+                p.text-center.m-0 Expense
+            else if t.category == "transfer_in"
+                p.text-center.m-0 Transfer received
+        .col-4
+            p.text-center.m-0 #{t.description}
+        .col-2
+            p.text-center.m-0 
+                if t.ticketId 
+                    |KN: #{t.seatNumber} PNR: #{t.pnr}
+        .col-2
+            p.text-center.m-0 #{t.type=="income"?"+":"-"}#{t.amount}

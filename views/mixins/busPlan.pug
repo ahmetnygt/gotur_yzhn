@@ -1,0 +1,169 @@
+.trip-info-settings
+    if !trip.isActive
+        p.inactiveTripText SEFER İPTAL
+    if !trip.isAccountCut && trip.isActive
+        if permissions.includes('CUT_ACCOUNT')
+            button.btn.btn-primary.btn-sm.account-cut Araç Kaldır
+    else if trip.isActive
+        if permissions.includes('REVERT_ACCOUNT_CUT')
+            button.btn.btn-danger.btn-sm.account-cut-undo Hesap Kesilmiş
+    .trip-helper-buttons
+        .trip-cargo.dropdown
+            .trip-cargo-button.dropdown-toggle(type="button" data-bs-toggle="dropdown" aria-expanded="false")
+                i.fa-solid.fa-box-open
+            ul.dropdown-menu
+                li
+                    a.dropdown-item.trip-cargo-add(href="#") Kargo Ekle
+                li
+                    a.dropdown-item.trip-cargo-list(href="#") Kargo Listesi
+        if permissions.includes('TRIP_FINANCIAL_DETAILS_VIEW')
+            .trip-incomes
+                | ₺
+                .trip-incomes-popup
+                    .input-group
+                        span.input-group-text.col-7 Satış (Durak)
+                        input.form-control.form-control-sm(type="text" readonly value=incomes.currentSoldCount)
+                        input.form-control.form-control-sm(type="text" readonly value=`${incomes.currentSoldAmount}₺`)
+                    .input-group
+                        span.input-group-text.col-7 Satış (Tümü)
+                        input.form-control.form-control-sm(type="text" readonly value=incomes.totalSoldCount)
+                        input.form-control.form-control-sm(type="text" readonly value=`${incomes.totalSoldAmount}₺`)
+                    .input-group
+                        span.input-group-text.col-7 Rezervasyon (Durak)
+                        input.form-control.form-control-sm(type="text" readonly value=incomes.currentReservedCount)
+                        input.form-control.form-control-sm(type="text" readonly value=`${incomes.currentReservedAmount}₺`)
+                    .input-group
+                        span.input-group-text.col-7 Rezervasyon (Tümü)
+                        input.form-control.form-control-sm(type="text" readonly value=incomes.totalReservedCount)
+                        input.form-control.form-control-sm(type="text" readonly value=`${incomes.totalReservedAmount}₺`)
+                    .input-group
+                        span.input-group-text.col-7 Kargo
+                        input.form-control.form-control-sm(type="text" readonly value=incomes.cargoCount)
+                        input.form-control.form-control-sm(type="text" readonly value=`${incomes.cargoAmount}₺`)
+                    .input-group
+                        span.input-group-text.col-7 Toplam
+                        input.form-control.form-control-sm(type="text" readonly value=incomes.grandCount)
+                        input.form-control.form-control-sm(type="text" readonly value=`${incomes.grandAmount}₺`)
+        .trip-options.dropdown
+            .trip-options-button.dropdown-toggle(type="button" data-bs-toggle="dropdown" aria-expanded="false")
+                i.fa-solid.fa-ellipsis-vertical
+            ul.dropdown-menu
+                li
+                    a.dropdown-item.trip-option-staff(href="#") Personel
+                if trip.isActive
+                    if permissions.includes('TRIP_CANCEL')
+                        li
+                            a.dropdown-item.trip-option-cancel-trip(href="#") Sefer İptal
+                else
+                    if permissions.includes('TRIP_CANCEL')
+                        li
+                            a.dropdown-item.trip-option-active-trip(href="#") Sefer Aktif Et
+                if permissions.includes('TRIP_STOP_RESTRICT')
+                    li
+                        a.dropdown-item.trip-option-stop-restriction(href="#") Durak Kısıtla
+                if permissions.includes('TRIP_STOP_RESTRICT') || permissions.includes('TRIP_TIME_ADJUST')
+                    li
+                        a.dropdown-item.trip-option-change-time(href="#") Saat Değiştir
+                if permissions.includes('TRIP_FINANCIAL_DETAILS_VIEW')
+                    li
+                        a.dropdown-item.trip-option-revenues(href="#") Hasılatlar
+        .trip-documents.dropdown
+            .trip-documents-button.dropdown-toggle(type="button" data-bs-toggle="dropdown" aria-expanded="false")
+                i.fa-solid.fa-file-lines
+            ul.dropdown-menu
+                if trip.isAccountCut
+                    li
+                        a.dropdown-item.accountCut(href="#") Hesap Fişi
+                if trip.isAccountCut || permissions.includes('PRINT_SEAT_PLAN_INVOICE_WITHOUT_CUT')
+                    li
+                        a.dropdown-item.trip-seat-plan-report(href="#") Koltuk Planlı Yolcu Listesi
+                li
+                    a.dropdown-item.uetds-trip-detail-report(href="#") UETDS Sefer Dökümü
+    p.text-center.m-0 #{route.routeCode} | #{trip.dateString} - #{trip.timeString}
+    p.m-0.text-center
+        b
+            | #{trip.fromPlaceString.toUpperCase()}
+            i.fa-solid.fa-route.mx-2
+            | #{trip.toPlaceString.toUpperCase()}
+    .d-flex.justify-content-between.mb-1.captain-info
+        b.m-0.captain-name #{captain ? captain.name + " " + captain.surname : ""}
+        b.m-0.captain-phone #{captain ? captain.phoneNumber.replace(/(\d{3})(\d{3})(\d{2})(\d{2})/, "$1 $2 $3 $4") : ""}
+    .d-flex.justify-content-between.mb-3
+        if permissions.includes('TRIP_BUS_ASSIGN')
+            select.trip-bus-license-plate.form-select-sm.form-select(data-current-bus-id=trip.busId)
+                option(value="" selected disabled) Plaka Seçiniz
+        else
+            input.trip-bus-license-plate.form-control-sm.form-control(data-current-bus-id=trip.busId type="text" readonly)
+        if permissions.includes('TRIP_SEAT_MODEL_CHANGE')
+            select.trip-bus-plan.form-select-sm.form-select(data-current-bus-model-id=trip.busModelId)
+                option(value="" selected disabled) Koltuk Planı Seçiniz
+        else
+            input.trip-bus-plan.form-control-sm.form-control(data-current-bus-model-id=trip.busModelId type="text" readonly)
+.seats
+    - let seatNumber = 0
+    - let seatIndex = 0
+    - const rowCount = (busModel.rowCount && busModel.rowCount > 0) ? busModel.rowCount : 16
+    - const colCount = (busModel.colCount && busModel.colCount > 0) ? busModel.colCount : 5
+
+    - for(let i = 0; i < rowCount; i++)
+        .seat-row
+            - for(let j = 0; j < colCount; j++){
+                - if(seatIndex < busModel.planBinary.length) {
+                    - if(busModel.planBinary[seatIndex] == '0'){
+                        .seat.hidden
+                            |0
+                    - }
+                    - else {
+                        - seatNumber++
+                        .seat(class=`${tickets[seatNumber]?tickets[seatNumber].status!=="pending"?tickets[seatNumber].gender:"":""}  ${tickets[seatNumber]?tickets[seatNumber].status:""} seat-${seatNumber} ${tickets[seatNumber]?tickets[seatNumber].stopOrder:""}`
+                            data-seat-number=seatNumber
+                            data-seat-type=seatTypes[seatNumber]
+                            data-pending-ticket-id=tickets[seatNumber]?tickets[seatNumber].status=="pending"?tickets[seatNumber].id:"":""
+                            data-group-id=tickets[seatNumber]?tickets[seatNumber].ticketGroupId:""
+                            data-pnr=tickets[seatNumber]?tickets[seatNumber].pnr:"" 
+                            data-gender=tickets[seatNumber]?tickets[seatNumber].gender:""  
+                            data-from=tickets[seatNumber]?tickets[seatNumber].from:"" 
+                            data-to=tickets[seatNumber]?tickets[seatNumber].to:"" 
+                            data-name=tickets[seatNumber]?tickets[seatNumber].name+" "+tickets[seatNumber].surname:"" 
+                            data-phone=tickets[seatNumber]?tickets[seatNumber].phoneNumber:"" 
+                            data-price=tickets[seatNumber]?tickets[seatNumber].price:""
+                            data-created-at=tickets[seatNumber]?tickets[seatNumber].createdAt:""
+                            data-user-name=tickets[seatNumber]?tickets[seatNumber].user:""
+                            data-branch=tickets[seatNumber]?tickets[seatNumber].userBranch:""
+                            data-take-on=tickets[seatNumber]?tickets[seatNumber].takeOnText:""
+                            data-take-off=tickets[seatNumber]?tickets[seatNumber].takeOffText:""
+                            data-is-own-branch-ticket=tickets[seatNumber]?tickets[seatNumber].isOwnBranchTicket:""
+                            data-is-own-branch-stop=tickets[seatNumber]?tickets[seatNumber].isOwnBranchStop:""
+                            data-status=tickets[seatNumber]?tickets[seatNumber].status:"" 
+                            data-refund-option=tickets[seatNumber]?tickets[seatNumber].tripRefundOptionDate:"" 
+                            data-payment=tickets[seatNumber]?tickets[seatNumber].payment:""
+                            data-next-route-stop-order=(tickets[seatNumber] && tickets[seatNumber].nextRouteStopOrder != null ? tickets[seatNumber].nextRouteStopOrder : "")
+                            data-next-route-stop-id=(tickets[seatNumber] && tickets[seatNumber].nextRouteStopId != null ? tickets[seatNumber].nextRouteStopId : "")
+                            data-trip-id=trip.id)
+
+                            p.seat-number #{seatNumber}
+                            p.from #{tickets[seatNumber]?tickets[seatNumber].from:""}
+                            .seat-content
+                                p.web #{tickets[seatNumber]?tickets[seatNumber].status == "web"?"WEB":"":""}
+                                if tickets[seatNumber]
+                                    if tickets[seatNumber].price
+                                        p.price #{tickets[seatNumber]?tickets[seatNumber].price+"₺":""}
+                            p.to #{tickets[seatNumber]?tickets[seatNumber].to:""}
+                    - }
+                - }
+                - seatIndex++;
+            - }
+input#fromId(type="hidden" value=fromId)
+input#toId(type="hidden" value=toId)
+input#fromStr(type="hidden" value=fromStr)
+input#toStr(type="hidden" value=toStr)
+input#tripDate(type="hidden" value=tripDate)
+input#tripTime(type="hidden" value=tripTime)
+input#tripPlaceTime(type="hidden" value=trip.modifiedTime)
+input#tripId(type="hidden" value=tripId)
+input#tripRouteId(type="hidden" value=trip.routeId)
+input#captainId(type="hidden" value=trip.captainId)
+input#driver2Id(type="hidden" value=trip.driver2Id)
+input#driver3Id(type="hidden" value=trip.driver3Id)
+input#assistantId(type="hidden" value=trip.assistantId)
+input#hostessId(type="hidden" value=trip.hostessId)
