@@ -9,10 +9,10 @@ const safeNumber = (value) => {
 
 const formatCurrency = (value) => {
   const amount = safeNumber(value);
-  return `${amount.toLocaleString('en-US', {
+  return `${amount.toLocaleString('tr-TR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  })} $`;
+  })} ₺`;
 };
 
 const formatCount = (value) => {
@@ -29,7 +29,7 @@ const normalizeDate = (value) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
-const dateTimeFormatter = new Intl.DateTimeFormat('en-US', {
+const dateTimeFormatter = new Intl.DateTimeFormat('tr-TR', {
   day: '2-digit',
   month: '2-digit',
   year: 'numeric',
@@ -103,39 +103,39 @@ function generateExternalReturnTicketsReport(data, output) {
   };
 
   const drawSummarySections = () => {
-    const startText = query.startDate || 'Not Specified';
-    const endText = query.endDate || 'Not Specified';
-    const branchText = query.branch || 'All';
-    const userText = query.user || 'All';
+    const startText = query.startDate || 'Belirtilmedi';
+    const endText = query.endDate || 'Belirtilmedi';
+    const branchText = query.branch || 'Tümü';
+    const userText = query.user || 'Tümü';
     const totalCount = formatCount(totals.count || 0);
     const totalAmount = formatCurrency(totals.amount || 0);
 
     drawSummaryRow([
-      { label: 'Start', value: formatDateTime(startText) },
-      { label: 'End', value: formatDateTime(endText) },
-      { label: 'Report Date', value: formatDateTime(generatedAt || new Date()) },
+      { label: 'Başlangıç', value: formatDateTime(startText) },
+      { label: 'Bitiş', value: formatDateTime(endText) },
+      { label: 'Rapor Tarihi', value: formatDateTime(generatedAt || new Date()) },
     ]);
 
     drawSummaryRow([
-      { label: 'Branch', value: branchText },
-      { label: 'User', value: userText },
-      { label: 'Total Tickets', value: totalCount },
+      { label: 'Şube', value: branchText },
+      { label: 'Kullanıcı', value: userText },
+      { label: 'Toplam Bilet', value: totalCount },
     ]);
 
     drawSummaryRow([
-      { label: 'Total Amount', value: totalAmount },
+      { label: 'Toplam Tutar', value: totalAmount },
     ]);
   };
 
   const columns = [
-    { key: 'branch', label: 'Branch', width: 46, align: 'center' },
-    { key: 'user', label: 'User', width: 62, align: 'center' },
-    { key: 'transactionDate', label: 'Trans. Date', width: 68, align: 'center' },
-    { key: 'tripInfo', label: 'Trip Information', width: 158, align: 'center' },
-    { key: 'payment', label: 'Payment', width: 60, align: 'center' },
-    { key: 'gender', label: 'G', width: 36, align: 'center' },
+    { key: 'branch', label: 'Şube', width: 46, align: 'center' },
+    { key: 'user', label: 'Kullanıcı', width: 62, align: 'center' },
+    { key: 'transactionDate', label: 'İşlem Tarihi', width: 68, align: 'center' },
+    { key: 'tripInfo', label: 'Sefer Bilgisi', width: 158, align: 'center' },
+    { key: 'payment', label: 'Ödeme', width: 60, align: 'center' },
+    { key: 'gender', label: 'C', width: 36, align: 'center' },
     { key: 'pnr', label: 'PNR', width: 60, align: 'center' },
-    { key: 'price', label: 'Fee', width: 50, align: 'center' },
+    { key: 'price', label: 'Ücret', width: 50, align: 'center' },
   ];
 
   const formatTripInfo = (info) => {
@@ -215,13 +215,13 @@ function generateExternalReturnTicketsReport(data, output) {
 
   const printUserHeader = (name, isContinuation = false) => {
     ensureSpace(18);
-    const titleText = isContinuation ? `${name} (continued)` : name;
+    const titleText = isContinuation ? `${name} (devamı)` : name;
     doc.font('Bold').fontSize(10).text(titleText, xStart, doc.y);
     doc.moveDown(0.3);
     drawTableHeader();
   };
 
-  const title = 'External Region (Return) Tickets Report'.toUpperCase();
+  const title = 'Dış Hat (Dönüş) Biletleri Raporu'.toUpperCase();
   doc.font('Bold').fontSize(14).text(title, xStart, doc.y, {
     width: usableWidth,
     align: 'center',
@@ -234,7 +234,7 @@ function generateExternalReturnTicketsReport(data, output) {
 
   if (!branches.length) {
     ensureSpace(20);
-    doc.font('Bold').fontSize(10).text('No tickets found to list.', xStart, doc.y);
+    doc.font('Bold').fontSize(10).text('Listelenecek bilet bulunamadı.', xStart, doc.y);
     doc.end();
     return new Promise((resolve, reject) => {
       stream.on('finish', resolve);
@@ -248,11 +248,11 @@ function generateExternalReturnTicketsReport(data, output) {
     }
 
     ensureSpace(24);
-    const branchTitle = branch.title || 'Unspecified Branch';
+    const branchTitle = branch.title || 'Belirtilmeyen Şube';
     doc.font('Bold').fontSize(12).text(branchTitle, xStart, doc.y);
     doc.moveDown(0.2);
     doc.font('Regular').fontSize(9).text(
-      `Tickets: ${formatCount(branch.totals?.count)} | Amount: ${formatCurrency(branch.totals?.amount)}`,
+      `Bilet: ${formatCount(branch.totals?.count)} | Tutar: ${formatCurrency(branch.totals?.amount)}`,
       xStart,
       doc.y,
     );
@@ -261,19 +261,19 @@ function generateExternalReturnTicketsReport(data, output) {
     const users = Array.isArray(branch.users) ? branch.users : [];
     if (!users.length) {
       ensureSpace(14);
-      doc.font('Regular').fontSize(8).text('No records found.', xStart, doc.y);
+      doc.font('Regular').fontSize(8).text('Kayıt bulunamadı.', xStart, doc.y);
       doc.moveDown(0.6);
     }
 
     users.forEach((user) => {
-      const userName = user.name || 'Unspecified User';
+      const userName = user.name || 'Belirtilmeyen Kullanıcı';
       printUserHeader(userName);
 
       const ticketsList = Array.isArray(user.tickets) ? user.tickets : [];
 
       if (!ticketsList.length) {
         ensureSpace(14);
-        doc.font('Regular').fontSize(8).text('No records found.', xStart, doc.y);
+        doc.font('Regular').fontSize(8).text('Kayıt bulunamadı.', xStart, doc.y);
         doc.moveDown(0.6);
       } else {
         ticketsList.forEach((ticket) => {
@@ -288,7 +288,7 @@ function generateExternalReturnTicketsReport(data, output) {
 
       ensureSpace(14);
       doc.font('Bold').fontSize(8).text(
-        `${userName} total: ${formatCount(user.totals?.count)} tickets | ${formatCurrency(user.totals?.amount)}`,
+        `${userName} toplam: ${formatCount(user.totals?.count)} bilet | ${formatCurrency(user.totals?.amount)}`,
         xStart,
         doc.y,
       );
@@ -298,7 +298,7 @@ function generateExternalReturnTicketsReport(data, output) {
 
     ensureSpace(16);
     doc.font('Bold').fontSize(9).text(
-      `${branchTitle} total: ${formatCount(branch.totals?.count)} tickets | ${formatCurrency(branch.totals?.amount)}`,
+      `${branchTitle} toplam: ${formatCount(branch.totals?.count)} bilet | ${formatCurrency(branch.totals?.amount)}`,
       xStart,
       doc.y,
     );

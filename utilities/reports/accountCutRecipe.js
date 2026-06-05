@@ -63,8 +63,8 @@ function generateAccountReceipt(data, output) {
     doc.font('Regular').text(value);
   };
 
-  drawLabelValue('Station : ', header.stop || '', leftX, y);
-  drawLabelValue('Driver : ', header.driver || '', rightX, y);
+  drawLabelValue('Durak : ', header.stop || '', leftX, y);
+  drawLabelValue('Şoför : ', header.driver || '', rightX, y);
   y += 30;
 
   const drawSummary = (label, value, x, yy) => {
@@ -72,22 +72,22 @@ function generateAccountReceipt(data, output) {
     doc.font('Regular').text(String(value ?? ''));
   };
 
-  drawSummary('Ticket Count : ', summary.ticketCount || 0, leftX, y);
-  drawSummary('Deductions : ', summary.cut + "₺" || 0, rightX, y);
+  drawSummary('Bilet Sayısı : ', summary.ticketCount || 0, leftX, y);
+  drawSummary('Kesintiler : ', summary.cut + "₺" || 0, rightX, y);
   y += 15;
-  drawSummary('Total Deducted : ', summary.ticketTotal + "₺" || 0, leftX, y);
-  drawSummary('Tip : ', summary.tip + "₺" || 0, rightX, y);
+  drawSummary('Toplam Kesilen : ', summary.ticketTotal + "₺" || 0, leftX, y);
+  drawSummary('Çorba : ', summary.tip + "₺" || 0, rightX, y);
   y += 15;
-  drawSummary('Cargo Count : ', summary.cargoCount || 0, leftX, y);
-  drawSummary('Cargo Amount : ', summary.cargoTotal + "₺" || 0, rightX, y);
+  drawSummary('Kargo Sayısı : ', summary.cargoCount || 0, leftX, y);
+  drawSummary('Kargo Tutarı : ', summary.cargoTotal + "₺" || 0, rightX, y);
   y += 15;
-  drawSummary('Commission : ', summary.commission + "₺" || 0, leftX, y);
-  drawSummary('Amount Due : ', summary.needToPay + "₺" || 0, rightX, y);
+  drawSummary('Komisyon : ', summary.commission + "₺" || 0, leftX, y);
+  drawSummary('Ödenecek Tutar : ', summary.needToPay + "₺" || 0, rightX, y);
   y += 15;
-  drawSummary('Remaining Amount : ', summary.afterComission + "₺" || 0, leftX, y);
-  drawSummary('Paid : ', summary.payed + "₺" || 0, rightX, y);
+  drawSummary('Kalan Tutar : ', summary.afterComission + "₺" || 0, leftX, y);
+  drawSummary('Ödenen : ', summary.payed + "₺" || 0, rightX, y);
   y += 15;
-  drawSummary('Balance : ', summary.remaining + "₺" || 0, leftX, y);
+  drawSummary('Bakiye : ', summary.remaining + "₺" || 0, leftX, y);
 
   y += 40;
   const x0 = doc.page.margins.left;
@@ -97,12 +97,12 @@ function generateAccountReceipt(data, output) {
   doc.fontSize(9);
 
   const cols = [
-    { key: 'no', label: 'SN', x: x0 + unit * 0, w: unit * 1, align: 'left' },
-    { key: 'name', label: 'Full Name', x: x0 + unit * 1, w: unit * 3, align: 'left' },
-    { key: 'gender', label: 'F/M', x: x0 + unit * 4, w: unit * 1, align: 'center' },
-    { key: 'from', label: 'From', x: x0 + unit * 5, w: unit * 2, align: 'left' },
-    { key: 'to', label: 'To', x: x0 + unit * 7, w: unit * 2, align: 'left' },
-    { key: 'price', label: 'Price', x: x0 + unit * 9, w: unit * 1, align: 'right' },
+    { key: 'no', label: 'No', x: x0 + unit * 0, w: unit * 1, align: 'left' },
+    { key: 'name', label: 'İsim Soyisim', x: x0 + unit * 1, w: unit * 3, align: 'left' },
+    { key: 'gender', label: 'K/E', x: x0 + unit * 4, w: unit * 1, align: 'center' },
+    { key: 'from', label: 'Nereden', x: x0 + unit * 5, w: unit * 2, align: 'left' },
+    { key: 'to', label: 'Nereye', x: x0 + unit * 7, w: unit * 2, align: 'left' },
+    { key: 'price', label: 'Fiyat', x: x0 + unit * 9, w: unit * 1, align: 'right' },
   ];
 
   const pad = 4;
@@ -269,7 +269,7 @@ async function generateAccountReceiptFromDb(tripId, stopId, output, models = {})
     header: {
       stop: stopTitle,
       route: stopTitle && destinationStopTitle ? `${stopTitle} - ${destinationStopTitle}` : destinationStopTitle,
-      departure: `${new Intl.DateTimeFormat("en-US", { day: "numeric", month: "long" }).format(new Date(trip.date))} ${trip.time.split(':').slice(0, 2).join(':')} `,
+      departure: `${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long" }).format(new Date(trip.date))} ${trip.time.split(':').slice(0, 2).join(':')} `,
       arrival: destinationStopTitle,
       bus: bus?.licensePlate || '',
       driver: [captain?.name, captain?.surname].filter(Boolean).join(' ')

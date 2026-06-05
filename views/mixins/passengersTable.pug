@@ -1,8 +1,8 @@
 ul.nav.nav-pills(style="height: 2rem;overflow: hidden;line-height: 1rem;")
     li.nav-item
-        a.nav-link.active(data-bs-toggle="tab" href="#activeTickets" style="border-radius: 0;") ACTIVE
+        a.nav-link.active(data-bs-toggle="tab" href="#activeTickets" style="border-radius: 0;") AKTİF
     li.nav-item
-        a.nav-link(data-bs-toggle="tab" href="#canceledTickets" style="border-radius: 0;") CANCEL
+        a.nav-link(data-bs-toggle="tab" href="#canceledTickets" style="border-radius: 0;") İPTAL
 .tab-content
     .tab-pane.fade.show.active#activeTickets
         table.table.table-bordered.table-hover.table-sm.m-0.bg-white
@@ -36,7 +36,7 @@ ul.nav.nav-pills(style="height: 2rem;overflow: hidden;line-height: 1rem;")
                         td #{t.from}
                         td #{t.to}
                         td #{t.price}₺
-                        td #{`${t.payment=="cash"?"Cash":t.payment=="card"?"Card":"Points"}`}
+                        td #{`${t.payment=="cash"?"Nakit":t.payment=="card"?"Card":"Puan"}`}
                         if t.status == "web"
                             td WEB
                         else if t.status == "completed" || t.status == "gotur"
@@ -76,7 +76,7 @@ ul.nav.nav-pills(style="height: 2rem;overflow: hidden;line-height: 1rem;")
                         td #{t.from}
                         td #{t.to}
                         td #{t.price}₺
-                        td #{`${t.payment=="cash"?"Cash":t.payment=="card"?"Card":"Points"}`}
+                        td #{`${t.payment=="cash"?"Nakit":t.payment=="card"?"Card":"Puan"}`}
                         if t.status == "canceled"
                             td İPTAL
                         else if t.status == "refund"

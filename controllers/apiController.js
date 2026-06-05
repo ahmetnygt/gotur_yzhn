@@ -118,7 +118,7 @@ exports.getStops = async (req, res) => {
     } catch (err) {
         console.error("STOP_LIST_ERROR:", err);
         return res.status(500).json({
-            error: "An unexpected error occurred",
+            error: "Beklenmeyen bir hata oluştu",
             detail: err.message
         });
     }
@@ -144,7 +144,7 @@ exports.search = async (req, res) => {
         if (!from || !to || !date) {
             return res
                 .status(400)
-                .json({ error: "from, to, and date are required." });
+                .json({ error: "kalkış, varış ve tarih alanları zorunludur." });
         }
 
         const fromStop = await Stop.findOne({ where: { placeId: from } });
@@ -152,7 +152,7 @@ exports.search = async (req, res) => {
 
         if (!fromStop || !toStop) {
             return res.status(404).json({
-                error: "From/To stop not found.",
+                error: "Kalkış/Varış durağı bulunamadı.",
             });
         }
 
@@ -402,7 +402,7 @@ exports.search = async (req, res) => {
     } catch (err) {
         console.error("TRIP_SEARCH_ERROR:", err);
         res.status(500).json({
-            error: "Unexpected error",
+            error: "Beklenmeyen hata",
             detail: err.message,
         });
     }
@@ -422,19 +422,19 @@ exports.createPayment = async (req, res) => {
 
         if (!tripId || !fromStopId || !toStopId) {
             return res.status(400).json({
-                error: "tripId, fromStopId, and toStopId are required."
+                error: "tripId, fromStopId ve toStopId alanları zorunludur."
             });
         }
 
         if (!Array.isArray(seatNumbers) || seatNumbers.length === 0) {
             return res.status(400).json({
-                error: "At least one seatNumber must be provided."
+                error: "En az bir koltuk numarası belirtilmelidir."
             });
         }
 
         if (!Array.isArray(genders) || genders.length !== seatNumbers.length) {
             return res.status(400).json({
-                error: "genders array must have the same length as seatNumbers."
+                error: "Cinsiyet dizisi koltuk numaralarıyla aynı uzunlukta olmalıdır."
             });
         }
 
@@ -455,7 +455,7 @@ exports.createPayment = async (req, res) => {
     } catch (err) {
         console.error("PAYMENT_CREATE_ERROR:", err);
         return res.status(500).json({
-            error: "Unexpected error",
+            error: "Beklenmeyen hata",
             detail: err.message
         });
     }
@@ -470,7 +470,7 @@ exports.getPaymentDetail = async (req, res) => {
 
         const payment = await TicketPayment.findByPk(paymentId);
         if (!payment) {
-            return res.status(404).json({ error: "Payment not found." });
+            return res.status(404).json({ error: "Ödeme bulunamadı." });
         }
 
         const trip = await Trip.findOne({
@@ -491,7 +491,7 @@ exports.getPaymentDetail = async (req, res) => {
         });
 
         if (!trip) {
-            return res.status(404).json({ error: "Trip not found." });
+            return res.status(404).json({ error: "Sefer bulunamadı." });
         }
 
         const fromStop = await Stop.findByPk(payment.fromStopId);
@@ -534,7 +534,7 @@ exports.getPaymentDetail = async (req, res) => {
     } catch (err) {
         console.error("PAYMENT_DETAIL_ERROR:", err);
         return res.status(500).json({
-            error: "Unexpected error",
+            error: "Beklenmeyen hata",
             detail: err.message
         });
     }
@@ -548,9 +548,9 @@ exports.paymentComplete = async (req, res) => {
         const { phone, email, names, surnames, idNumbers } = req.body;
 
         const pay = await TicketPayment.findByPk(req.params.id);
-        if (!pay) return res.status(404).json({ error: "Payment record not found." });
+        if (!pay) return res.status(404).json({ error: "Ödeme kaydı bulunamadı." });
 
-        if (pay.isSuccess) return res.json({ success: true, message: "This transaction has already been processed." });
+        if (pay.isSuccess) return res.json({ success: true, message: "Bu işlem zaten gerçekleştirilmiş." });
 
         let webUser = await FirmUser.findOne({ where: { username: "WEB" } });
 
@@ -584,7 +584,7 @@ exports.paymentComplete = async (req, res) => {
 
     } catch (e) {
         console.error("API_PAYMENT_COMPLETE_ERR:", e);
-        res.status(500).json({ error: e.message || "Error creating ticket." });
+        res.status(500).json({ error: e.message || "Bilet oluşturulurken hata meydana geldi." });
     }
 }
 
@@ -594,16 +594,16 @@ exports.register = async (req, res) => {
         const { name, surname, phone, password, email, gender, idNumber } = req.body;
 
         if (!idNumber || !phone || !password || !name || !surname) {
-            return res.status(400).json({ error: "Please fill in all required fields." });
+            return res.status(400).json({ error: "Lütfen tüm zorunlu alanları doldurun." });
         }
 
         if (idNumber.length !== 11) {
-            return res.status(400).json({ error: "Invalid ID Number." });
+            return res.status(400).json({ error: "Geçersiz Kimlik Numarası." });
         }
 
         const existing = await Customer.findOne({ where: { idNumber: idNumber } });
         if (existing) {
-            return res.status(409).json({ error: "A user with this ID Number already exists." });
+            return res.status(409).json({ error: "Bu Kimlik Numarasına sahip bir müşteri/kullanıcı zaten var." });
         }
 
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -629,7 +629,7 @@ exports.register = async (req, res) => {
 
     } catch (err) {
         console.error("REGISTER_ERR:", err);
-        res.status(500).json({ error: "Registration failed.", detail: err.message });
+        res.status(500).json({ error: "Kayıt başarısız oldu.", detail: err.message });
     }
 };
 
@@ -639,21 +639,21 @@ exports.login = async (req, res) => {
         const { idNumber, password } = req.body;
 
         if (!idNumber || !password) {
-            return res.status(400).json({ error: "ID Number and password are required." });
+            return res.status(400).json({ error: "Kimlik Numarası ve şifre zorunludur." });
         }
 
         const customer = await Customer.findOne({ where: { idNumber: idNumber } });
         if (!customer) {
-            return res.status(401).json({ error: "User not found." });
+            return res.status(401).json({ error: "Kullanıcı bulunamadı." });
         }
 
         if (!customer.password) {
-            return res.status(401).json({ error: "No password set for this user." });
+            return res.status(401).json({ error: "Bu kullanıcı için şifre ayarlanmamış." });
         }
 
         const match = await bcrypt.compare(password, customer.password);
         if (!match) {
-            return res.status(401).json({ error: "Incorrect password." });
+            return res.status(401).json({ error: "Hatalı şifre." });
         }
 
         const userObj = customer.toJSON();
@@ -663,7 +663,7 @@ exports.login = async (req, res) => {
 
     } catch (err) {
         console.error("LOGIN_ERR:", err);
-        res.status(500).json({ error: "Login failed.", detail: err.message });
+        res.status(500).json({ error: "Giriş başarısız.", detail: err.message });
     }
 };
 
@@ -672,20 +672,20 @@ exports.getProfile = async (req, res) => {
         const { Customer } = req.models;
         const { id } = req.params;
 
-        if (!id) return res.status(400).json({ error: "ID required." });
+        if (!id) return res.status(400).json({ error: "ID zorunludur." });
 
         const customer = await Customer.findByPk(id, {
             attributes: { exclude: ['password'] }
         });
 
         if (!customer) {
-            return res.status(404).json({ error: "User not found." });
+            return res.status(404).json({ error: "Kullanıcı bulunamadı." });
         }
 
         res.json({ success: true, user: customer });
     } catch (err) {
         console.error("GET_PROFILE_ERR:", err);
-        res.status(500).json({ error: "Could not retrieve profile info." });
+        res.status(500).json({ error: "Profil bilgisi alınamadı." });
     }
 };
 
@@ -694,11 +694,11 @@ exports.updateProfile = async (req, res) => {
         const { Customer } = req.models;
         const { id, name, surname, email, gender, password } = req.body;
 
-        if (!id) return res.status(400).json({ error: "User ID missing." });
+        if (!id) return res.status(400).json({ error: "Kullanıcı ID eksik." });
 
         const customer = await Customer.findByPk(id);
         if (!customer) {
-            return res.status(404).json({ error: "User not found." });
+            return res.status(404).json({ error: "Kullanıcı bulunamadı." });
         }
 
         const updateData = {
@@ -721,7 +721,7 @@ exports.updateProfile = async (req, res) => {
 
     } catch (err) {
         console.error("UPDATE_PROFILE_ERR:", err);
-        res.status(500).json({ error: "Update failed.", detail: err.message });
+        res.status(500).json({ error: "Güncelleme başarısız.", detail: err.message });
     }
 };
 
@@ -817,7 +817,7 @@ exports.getCustomerTickets = async (req, res) => {
 
     } catch (err) {
         console.error("GET_TICKETS_ERR:", err);
-        res.status(500).json({ error: "Could not retrieve tickets.", detail: err.message });
+        res.status(500).json({ error: "Biletler alınamadı.", detail: err.message });
     }
 };
 
@@ -828,7 +828,7 @@ exports.cancelTicket = async (req, res) => {
 
         const ticket = await Ticket.findByPk(ticketId);
         if (!ticket) {
-            return res.status(404).json({ error: "Ticket not found." });
+            return res.status(404).json({ error: "Bilet bulunamadı." });
         }
 
         const tripDate = new Date(ticket.optionDate + " " + ticket.optionTime);
@@ -837,10 +837,10 @@ exports.cancelTicket = async (req, res) => {
 
         await ticket.update({ status: newStatus });
 
-        res.json({ success: true, message: "Transaction successful." });
+        res.json({ success: true, message: "İşlem başarılı." });
 
     } catch (err) {
         console.error("CANCEL_TICKET_ERR:", err);
-        res.status(500).json({ error: "Transaction failed." });
+        res.status(500).json({ error: "İşlem başarısız oldu." });
     }
 };

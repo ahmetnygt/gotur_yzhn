@@ -3,10 +3,10 @@ if tickets.length
         .member-ticket-card
             .member-ticket-header
                 .member-ticket-route
-                    span.member-ticket-route-text #{t.from || 'Not Specified'}
+                    span.member-ticket-route-text #{t.from || 'Belirtilmedi'}
                     span.member-ticket-route-arrow
                         i.fa-solid.fa-angles-right
-                    span.member-ticket-route-text #{t.to || 'Not Specified'}
+                    span.member-ticket-route-text #{t.to || 'Belirtilmedi'}
                 span.member-ticket-pnr PNR: #{t.pnr || '-'}
             .member-ticket-meta
                 if t.tripDateDisplay || t.tripTimeDisplay

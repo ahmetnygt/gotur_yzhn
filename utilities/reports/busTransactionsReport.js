@@ -9,15 +9,15 @@ const safeNumber = (value) => {
 
 const formatCurrency = (value) => {
   const amount = safeNumber(value);
-  return `${amount.toLocaleString('en-US', {
+  return `${amount.toLocaleString('tr-TR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  })} $`;
+  })} ₺`;
 };
 
 const formatCount = (value) => {
   const num = safeNumber(value);
-  return num.toLocaleString('en-US');
+  return num.toLocaleString('tr-TR');
 };
 
 const normalizeDate = (value) => {
@@ -29,7 +29,7 @@ const normalizeDate = (value) => {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
-const dateTimeFormatter = new Intl.DateTimeFormat('en-US', {
+const dateTimeFormatter = new Intl.DateTimeFormat('tr-TR', {
   day: '2-digit',
   month: '2-digit',
   year: 'numeric',
@@ -106,19 +106,19 @@ function generateBusTransactionsReport(data, output) {
 
   const drawGroupTotals = (groupTotals, busTitle) => {
     const items = [
-      { label: 'Plate', value: busTitle },
-      { label: 'Income', value: formatCurrency(groupTotals.income) },
-      { label: 'Expense', value: formatCurrency(groupTotals.expense) },
+      { label: 'Plaka', value: busTitle },
+      { label: 'Gelir', value: formatCurrency(groupTotals.income) },
+      { label: 'Gider', value: formatCurrency(groupTotals.expense) },
       { label: 'Net', value: formatCurrency(groupTotals.net) },
     ];
     drawKeyValueRow(items);
   };
 
   const columns = [
-    { key: 'date', label: 'Date', width: 100, align: 'center' },
-    { key: 'description', label: 'Description', width: usableWidth - 220, align: 'center' },
-    { key: 'type', label: 'Type', width: 60, align: 'center' },
-    { key: 'amount', label: 'Amount', width: 60, align: 'center' },
+    { key: 'date', label: 'Tarih', width: 100, align: 'center' },
+    { key: 'description', label: 'Açıklama', width: usableWidth - 220, align: 'center' },
+    { key: 'type', label: 'Tür', width: 60, align: 'center' },
+    { key: 'amount', label: 'Miktar', width: 60, align: 'center' },
   ];
 
   const formatColumnValue = (row, key) => {
@@ -128,7 +128,7 @@ function generateBusTransactionsReport(data, output) {
       case 'description':
         return row.description || '';
       case 'type':
-        return row.type === 'income' ? 'Income' : 'Expense';
+        return row.type === 'income' ? 'Gelir' : 'Gider';
       case 'amount':
         return formatCurrency(row.amount);
       default:
@@ -188,26 +188,26 @@ function generateBusTransactionsReport(data, output) {
     doc.moveDown(0.1);
   };
 
-  const title = 'Bus Income and Expense Report'.toUpperCase();
+  const title = 'Otobüs Gelir ve Gider Raporu'.toUpperCase();
   doc.font('Bold').fontSize(14).text(title, xStart, doc.y, { width: usableWidth, align: 'center' });
   doc.moveDown(0.8);
   doc.font('Regular').fontSize(9);
 
   drawKeyValueRow([
-    { label: 'Start Date', value: formatDateTime(query.startDate) },
-    { label: 'End Date', value: formatDateTime(query.endDate) },
-    { label: 'Plate', value: query.bus || 'All' },
+    { label: 'Başlangıç Tarihi', value: formatDateTime(query.startDate) },
+    { label: 'Bitiş Tarihi', value: formatDateTime(query.endDate) },
+    { label: 'Plaka', value: query.bus || 'Tümü' },
   ]);
 
   drawKeyValueRow([
-    { label: 'Total Income', value: formatCurrency(totals.income) },
-    { label: 'Total Expense', value: formatCurrency(totals.expense) },
-    { label: 'Net Amount', value: formatCurrency(totals.net) },
+    { label: 'Toplam Gelir', value: formatCurrency(totals.income) },
+    { label: 'Toplam Gider', value: formatCurrency(totals.expense) },
+    { label: 'Net Tutar', value: formatCurrency(totals.net) },
   ]);
 
   if (!groups.length) {
     ensureSpace(40);
-    doc.text('No records found matching the specified criteria.', xStart, doc.y, {
+    doc.text('Belirtilen kriterlere uygun kayıt bulunamadı.', xStart, doc.y, {
       width: usableWidth,
       align: 'center',
     });
@@ -231,7 +231,7 @@ function generateBusTransactionsReport(data, output) {
 
     if (!group.rows || !group.rows.length) {
       ensureSpace(20);
-      doc.text('No records found for this bus.', xStart, doc.y, {
+      doc.text('Bu otobüs için kayıt bulunamadı.', xStart, doc.y, {
         width: usableWidth,
         align: 'center',
       });

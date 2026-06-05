@@ -1315,12 +1315,12 @@ $("#userProfileForm").on("submit", async e => {
     const phoneNumber = $("#profilePhoneInput").val().trim();
 
     if (!name) {
-        showInlineError($error, "Name cannot be empty.");
+        showInlineError($error, "İsim boş bırakılamaz.");
         return;
     }
 
     if (!username) {
-        showInlineError($error, "Username cannot be empty.");
+        showInlineError($error, "Kullanıcı adı boş bırakılamaz.");
         return;
     }
 
@@ -1364,22 +1364,22 @@ $("#changePasswordForm").on("submit", async e => {
     const confirmPassword = $("#confirmPasswordInput").val();
 
     if (!currentPassword) {
-        showInlineError($error, "Please enter your old password.");
+        showInlineError($error, "Lütfen eski şifrenizi giriniz.");
         return;
     }
 
     if (!newPassword) {
-        showInlineError($error, "Please enter your new password.");
+        showInlineError($error, "Lütfen yeni şifrenizi giriniz.");
         return;
     }
 
     if (newPassword.length < 6) {
-        showInlineError($error, "New password must be at least 6 characters.");
+        showInlineError($error, "Yeni şifre en az 6 karakter olmalıdır.");
         return;
     }
 
     if (newPassword !== confirmPassword) {
-        showInlineError($error, "New passwords do not match.");
+        showInlineError($error, "Yeni şifreler uyuşmuyor.");
         return;
     }
 
@@ -2333,7 +2333,7 @@ async function loadTrip(date, time, tripId) {
         $(".trip-cargo-list").off().on("click", async function (e) {
             e.preventDefault();
             if (!currentTripId) {
-                showError("Trip information not found.");
+                showError("Sefer bilgisi bulunamadı.");
                 return;
             }
 
@@ -2367,7 +2367,7 @@ async function loadTrip(date, time, tripId) {
                     try {
                         await $.post("/post-refund-cargo", { cargoId });
                     } catch (err) {
-                        const message = err?.responseJSON?.message || err?.responseText || "An error occurred during cargo refund.";
+                        const message = err?.responseJSON?.message || err?.responseText || "Kargo iadesi sırasında bir hata oluştu.";
                         showError(message);
                         $button.prop("disabled", false).html(originalHtml);
                         return;
@@ -2383,7 +2383,7 @@ async function loadTrip(date, time, tripId) {
                 });
             } catch (err) {
                 console.log(err);
-                showError("Cargo list could not be retrieved.");
+                showError("Kargo listesi alınamadı.");
                 $(".trip-cargo-list-nodes").html('<p class="text-center text-danger m-0">Cargo list could not be retrieved.</p>');
             }
         });
@@ -2449,12 +2449,12 @@ async function loadTrip(date, time, tripId) {
                         }
 
                         if (!currentTripId) {
-                            showError("Trip information not found.");
+                            showError("Sefer bilgisi bulunamadı.");
                             return;
                         }
 
                         if (!currentTripRouteId) {
-                            showError("Route information not found.");
+                            showError("Hat bilgisi bulunamadı.");
                             return;
                         }
 
@@ -2506,7 +2506,7 @@ async function loadTrip(date, time, tripId) {
                                 err?.responseJSON?.message ||
                                 err?.responseJSON?.error ||
                                 err?.responseText ||
-                                "An error occurred during stop restriction update.";
+                                "Durak kısıtlaması güncellenirken bir hata oluştu.";
                             showError(message);
                         } finally {
                             $saveAllButton.prop("disabled", false).html(originalSaveAllHtml);
@@ -2562,7 +2562,7 @@ async function loadTrip(date, time, tripId) {
             e.stopPropagation();
 
             if (!currentTripId) {
-                showError("Trip information not found.");
+                showError("Sefer bilgisi bulunamadı.");
                 return;
             }
 
@@ -2574,14 +2574,14 @@ async function loadTrip(date, time, tripId) {
                 $(".blackout").css("display", "block");
             } catch (err) {
                 console.log(err);
-                showError("Stop list could not be retrieved.");
+                showError("Durak listesi alınamadı.");
             }
         });
 
         // Time change confirm
         $(".trip-time-adjust-confirm").off().on("click", async function () {
             if (!currentTripId) {
-                showError("Trip information not found.");
+                showError("Sefer bilgisi bulunamadı.");
                 return;
             }
 
@@ -2590,28 +2590,28 @@ async function loadTrip(date, time, tripId) {
             const amount = $(".trip-time-adjust-amount").val();
 
             if (!routeStopId) {
-                showError("Please select a stop.");
+                showError("Lütfen bir durak seçiniz.");
                 return;
             }
 
             if (!direction) {
-                showError("Please select a direction.");
+                showError("Lütfen bir yön seçiniz.");
                 return;
             }
 
             if (!amount) {
-                showError("Please select a duration.");
+                showError("Lütfen bir süre seçiniz.");
                 return;
             }
 
             const [hours, minutes] = amount.split(":").map(Number);
             if (Number.isNaN(hours) || Number.isNaN(minutes)) {
-                showError("Please enter a valid duration.");
+                showError("Lütfen geçerli bir süre giriniz.");
                 return;
             }
 
             if (hours * 60 + minutes === 0) {
-                showError("Duration cannot be 0.");
+                showError("Süre 0 olamaz.");
                 return;
             }
 
@@ -2636,7 +2636,7 @@ async function loadTrip(date, time, tripId) {
                 }
             } catch (err) {
                 console.log(err);
-                const message = err?.responseJSON?.message || err?.responseText || err?.statusText || "Trip time could not be updated.";
+                const message = err?.responseJSON?.message || err?.responseText || err?.statusText || "Sefer saati güncellenemedi.";
                 showError(message);
             } finally {
                 $button.prop("disabled", false);
@@ -2750,12 +2750,12 @@ async function loadTrip(date, time, tripId) {
                         $(".blackout").css("display", "block");
 
                         flatpickr($(".reservation-expire input.changable.date"), {
-                            locale: "en",
+                            locale: "tr",
                             altInput: true,
                             altFormat: "d F Y",
                         });
                         flatpickr($(".reservation-expire input.changable.time"), {
-                            locale: "en",
+                            locale: "tr",
                             enableTime: true,
                             noCalendar: true,
                         });
@@ -2898,7 +2898,7 @@ async function loadTrip(date, time, tripId) {
                 $(".passenger-info-popup .payment").html(data.payment == "cash" ? "Nakit" : data.payment == "card" ? "Kredi Kartı" : data.payment == "point" ? "Puan" : "");
                 $(".passenger-info-popup .pnr").html(data.pnr ? data.pnr : "");
                 const date2 = new Date(data.createdAt);
-                $(".passenger-info-popup .createdAt").html(date2.toLocaleDateString("en-US") + " " + date2.toLocaleTimeString("en-US"));
+                $(".passenger-info-popup .createdAt").html(date2.toLocaleDateString("tr-TR") + " " + date2.toLocaleTimeString("tr-TR"));
 
                 $(".passenger-info-popup").css({
                     left: popupLeft + "px",
@@ -3061,7 +3061,7 @@ async function loadTrip(date, time, tripId) {
                 deduction5: $(".account-cut-popup .account-deduction5").val(),
                 tip: $(".account-cut-popup .account-tip").val(),
                 description: $(".account-cut-popup .account-description").val(),
-                payedAmount: $(".account-cut-popup .account-payed").val()
+                payedTutar: $(".account-cut-popup .account-payed").val()
             };
             try {
                 await $.ajax({ url: "/post-bus-account-cut", type: "POST", data: data3 });
@@ -3340,7 +3340,7 @@ async function renderTripRows(html, options = {}) {
                 || Number($button.closest(".btn-group").find(".trip-button").data("id"));
 
             if (!tripId) {
-                showError("Trip information not found.");
+                showError("Sefer bilgisi bulunamadı.");
                 return;
             }
 
@@ -3454,7 +3454,7 @@ function ticketClose() {
 const calendar = $("#calendar")
 flatpickr(calendar, {
     inline: true,
-    locale: "en",
+    locale: "tr",
     defaultDate: new Date(),
     onChange: async function (selectedDates, dateStr, instance) {
         loadTripsList(dateStr, { autoSelect: true })
@@ -3462,7 +3462,7 @@ flatpickr(calendar, {
 })
 const tripCalendar = $(".trip-settings-calendar")
 flatpickr(tripCalendar, {
-    locale: "en",
+    locale: "tr",
     defaultDate: new Date(),
     altInput: true,
     altFormat: "d F Y",
@@ -3512,14 +3512,14 @@ flatpickr(tripCalendar, {
 
 const tripFirstDate = $(".trip-first-date")
 flatpickr(tripFirstDate, {
-    locale: "en",
+    locale: "tr",
     defaultDate: new Date(),
     altInput: true,
     altFormat: "d F Y",
 })
 const tripLastDate = $(".trip-last-date")
 flatpickr(tripLastDate, {
-    locale: "en",
+    locale: "tr",
     defaultDate: new Date(),
     altInput: true,
     altFormat: "d F Y",
@@ -3562,7 +3562,7 @@ const validateTicketForm = action => {
     const requiresIdentityNumber = action === "sell" || action === "complete";
 
     if (requiresPassengerInfo && !phoneValue) {
-        showError("Please enter a phone number.");
+        showError("Lütfen bir telefon numarası giriniz.");
         return false;
     }
 
@@ -3572,13 +3572,13 @@ const validateTicketForm = action => {
 
             const nameValue = getTrimmedValue($row.find(".name input").val());
             if (!nameValue) {
-                showError("Please enter a name.");
+                showError("Lütfen bir isim giriniz.");
                 return false;
             }
 
             const surnameValue = getTrimmedValue($row.find(".surname input").val());
             if (!surnameValue) {
-                showError("Please enter a surname.");
+                showError("Lütfen bir soyisim giriniz.");
                 return false;
             }
 
@@ -3594,7 +3594,7 @@ const validateTicketForm = action => {
                 if (nationalityValue === "tr") {
                     const sanitizedIdNumber = sanitizeTcknValue(idNumberValue);
                     if (!isValidSanitizedTckn(sanitizedIdNumber)) {
-                        showError("Please enter a valid T.C. identity number.");
+                        showError("Lütfen geçerli bir T.C. Kimlik numarası giriniz.");
                         return false;
                     }
 
@@ -3610,13 +3610,13 @@ const validateTicketForm = action => {
         if ($reservationWrapper.length) {
             const $dateInput = $reservationWrapper.find("input.date");
             if ($dateInput.length && !getTrimmedValue($dateInput.val())) {
-                showError("Please enter reservation expiration date.");
+                showError("Lütfen rezervasyon son tarihini giriniz.");
                 return false;
             }
 
             const $timeInput = $reservationWrapper.find("input.time");
             if ($timeInput.length && !getTrimmedValue($timeInput.val())) {
-                showError("Please enter reservation expiration time.");
+                showError("Lütfen rezervasyon saatini giriniz.");
                 return false;
             }
         }
@@ -3688,7 +3688,7 @@ $(".ticket-button-action").on("click", async e => {
         const pointOrPercent = span.data("pointorpercent");
         const pointAmount = Number(span.data("pointamount") || 0);
         if ($(".ticket-rows").find(".payment").find("select").val() == "point" && pointAmount < price) {
-            alert("Customer points are not enough. Try another payment method.");
+            alert("Müşterinin puanı yetersiz. Lütfen başka bir ödeme yöntemi seçin.");
         }
         else {
             let usePointPayment = false;
@@ -3773,6 +3773,8 @@ $(".ticket-button-action").on("click", async e => {
                 takeOn: takeOnValue,
                 takeOff: takeOffValue,
             }
+
+            console.log(ticketObj)
 
             tickets.push(ticketObj)
         }
@@ -4162,12 +4164,12 @@ $(".taken-ticket-op").on("click", async e => {
                 })
 
                 flatpickr($(".reservation-expire input.changable.date"), {
-                    locale: "en",
+                    locale: "tr",
                     altInput: true,
                     altFormat: "d F Y",
                 })
                 flatpickr($(".reservation-expire input.changable.time"), {
-                    locale: "en",
+                    locale: "tr",
                     enableTime: true,
                     noCalendar: true,
                 })
@@ -4241,12 +4243,12 @@ $(".taken-ticket-op").on("click", async e => {
                 })
 
                 flatpickr($(".reservation-expire input.changable.date"), {
-                    locale: "en",
+                    locale: "tr",
                     altInput: true,
                     altFormat: "d F Y",
                 })
                 flatpickr($(".reservation-expire input.changable.time"), {
-                    locale: "en",
+                    locale: "tr",
                     enableTime: true,
                     noCalendar: true,
                 })
@@ -4525,7 +4527,7 @@ $(".taken-ticket-op").on("click", async e => {
 
         if (!firstPnr && !ticketIds.length) {
             movingMode = null;
-            showError("Required information to attach open ticket not found.");
+            showError("Açık bileti bağlamak için gerekli bilgi bulunamadı.");
             return;
         }
 
@@ -4654,12 +4656,12 @@ $(".taken-ticket-op").on("click", async e => {
 $(".moving-confirm").on("click", async e => {
     if (movingMode === "attach_open") {
         if (!movingSelectedSeats.length) {
-            showError("Please select an open ticket to attach.");
+            showError("Lütfen bağlanacak bir açık bilet seçiniz.");
             return;
         }
 
         if (selectedSeats.length !== movingSelectedSeats.length) {
-            showError("The number of selected seats must match the number of tickets to attach.");
+            showError("Seçilen koltuk sayısı, bağlanacak bilet sayısına eşit olmalıdır.");
             return;
         }
 
@@ -4800,7 +4802,7 @@ $(".trip-cargo-list-close").on("click", e => {
 $(".trip-cargo-save").on("click", async e => {
     e.preventDefault();
     if (!currentTripId) {
-        showError("Trip information not found.");
+        showError("Sefer bilgisi bulunamadı.");
         return;
     }
 
@@ -4817,29 +4819,29 @@ $(".trip-cargo-save").on("click", async e => {
     };
 
     if (!data.fromStopId || !data.toStopId) {
-        showError("Please select origin and destination.");
+        showError("Lütfen kalkış ve varış noktalarını seçiniz.");
         return;
     }
     if (!data.senderName) {
-        showError("Enter sender name.");
+        showError("Gönderici adını giriniz.");
         return;
     }
     if (!data.senderPhone) {
-        showError("Enter sender phone.");
+        showError("Gönderici telefonunu giriniz.");
         return;
     }
     if (!data.senderIdentity) {
-        showError("Enter sender ID number.");
+        showError("Gönderici kimlik numarasını giriniz.");
         return;
     }
     if (!data.payment) {
-        showError("Select payment type.");
+        showError("Ödeme türünü seçiniz.");
         return;
     }
 
     const priceValue = Number(data.price);
     if (!data.price || Number.isNaN(priceValue) || priceValue <= 0) {
-        showError("Enter a valid price.");
+        showError("Geçerli bir fiyat giriniz.");
         return;
     }
 
@@ -5066,12 +5068,12 @@ $(".open-ticket-next").on("click", async e => {
     const count = $(".open-ticket-count").val()
 
     if (!fromId || !toId) {
-        showError("Please select origin and destination.")
+        showError("Lütfen kalkış ve varış noktalarını seçiniz.")
         return
     }
 
     if (!count || Number(count) <= 0) {
-        showError("Please enter a value greater than 0 for ticket quantity.")
+        showError("Lütfen bilet sayısı için 0'dan büyük bir değer giriniz.")
         return
     }
 
@@ -5384,12 +5386,12 @@ $(".add-transaction-button").on("click", async e => {
     const description = ($(".transaction-description").val() || "").toString().trim()
 
     if (Number.isNaN(normalizedAmount) || normalizedAmount <= 0) {
-        showError("Please enter an amount greater than 0.")
+        showError("Lütfen 0'dan büyük bir tutar giriniz.")
         return
     }
 
     if (!description) {
-        showError("Please enter a description.")
+        showError("Lütfen bir açıklama giriniz.")
         return
     }
 
@@ -5552,22 +5554,22 @@ $(".bus-transaction-button").on("click", async e => {
     const description = $(".bus-transaction-description").val();
 
     if (!busTransactionType) {
-        showError("Transaction type not determined.");
+        showError("İşlem türü belirlenemedi.");
         return;
     }
 
     if (!busId) {
-        showError("Please select a bus.");
+        showError("Lütfen bir otobüs seçiniz.");
         return;
     }
 
     if (!amountRaw || isNaN(Number(amountRaw))) {
-        showError("Please enter a valid amount.");
+        showError("Lütfen geçerli bir miktar giriniz.");
         return;
     }
 
     if (!description || !description.trim()) {
-        showError("Please enter a description.");
+        showError("Lütfen bir açıklama giriniz.");
         return;
     }
 
@@ -5588,7 +5590,7 @@ $(".bus-transaction-button").on("click", async e => {
         await loadBusTransactions(busId);
     } catch (err) {
         const message = err?.responseJSON?.message || err?.responseText || err?.statusText || err?.message;
-        showError(message || "Transaction could not be saved.");
+        showError(message || "İşlem kaydedilemedi.");
     }
 });
 
@@ -5622,14 +5624,14 @@ $(".bus-plans-nav").on("click", async e => {
                 e.stopPropagation()
 
                 if (activeBusPlanCount <= 1) {
-                    window.alert("You cannot delete the only existing bus plan. Please add a new plan before deleting this one.")
+                    window.alert("Mevcut olan tek otobüs planını silemezsiniz. Lütfen silmeden önce yeni bir plan ekleyin.")
                     return
                 }
 
                 const $button = $(this)
                 const title = $button.data("title")
-                window.alert("Deleting this bus plan will also affect buses and trips using this plan.")
-                const message = `Are you sure you want to delete ${title || "this plan"}?`
+                window.alert("Bu otobüs planını silmek, bu planı kullanan otobüsleri ve seferleri de etkileyecektir.")
+                const message = `"${title || "bu planı"}" silmek istediğinize emin misiniz?`
                 if (message && !window.confirm(message)) {
                     return
                 }
@@ -5666,7 +5668,7 @@ $(".bus-plans-nav").on("click", async e => {
                             const description = $(".bus-plan-description").val()
 
                             if (areAllBusPlanInputsEmpty() && (!title || !title.trim() || !description || !description.trim())) {
-                                showError("Name and description cannot be empty when the bus plan is empty.")
+                                showError("Otobüs planı boşken isim ve açıklama boş bırakılamaz.")
                                 return
                             }
 
@@ -5896,7 +5898,7 @@ $(".add-bus-plan").on("click", async e => {
                 const description = $(".bus-plan-description").val()
 
                 if (areAllBusPlanInputsEmpty() && (!title || !title.trim() || !description || !description.trim())) {
-                    showError("Name and description cannot be empty when the bus plan is empty.")
+                    showError("Otobüs planı boşken isim ve açıklama boş bırakılamaz.")
                     return
                 }
 
@@ -6094,8 +6096,8 @@ $(".bus-nav").on("click", async e => {
 
                 const $button = $(this)
                 const plate = $button.data("plate")
-                window.alert("Deleting this bus will also affect trips using this bus.")
-                const message = `Are you sure you want to delete ${plate || "this bus"}?`
+                window.alert("Bu otobüsü silmek, bu otobüsü kullanan seferleri de etkileyecektir.")
+                const message = `"${plate || "bu otobüsü"}" silmek istediğinize emin misiniz?`
                 if (message && !window.confirm(message)) {
                     return
                 }
@@ -6200,7 +6202,7 @@ $(".save-bus").on("click", async e => {
     const normalizedBusModelId = typeof busModelId === "string" ? busModelId.trim() : busModelId
 
     if (!trimmedLicensePlate || !normalizedBusModelId || !trimmedPhoneNumber) {
-        showError("Please fill in the license plate, bus model, and vehicle phone number fields.")
+        showError("Lütfen plaka, otobüs modeli ve araç telefonu alanlarını doldurunuz.")
         return
     }
 
@@ -6245,8 +6247,8 @@ $(".staff-nav").on("click", async e => {
 
                 const $button = $(this)
                 const name = $button.data("name")
-                window.alert("Deleting this staff member will also affect buses and trips using this staff member.")
-                const message = `Are you sure you want to delete ${name || "this staff member"}?`
+                window.alert("Bu personeli silmek, bu personeli kullanan otobüsleri ve seferleri de etkileyecektir.")
+                const message = `"${name || "bu personeli"}" silmek istediğinize emin misiniz?`
                 if (message && !window.confirm(message)) {
                     return
                 }
@@ -6345,37 +6347,37 @@ $(".save-staff").on("click", async e => {
     const nationality = $(".staff-nationality").val()
 
     if (!idNumber) {
-        showError("Please enter ID number.")
+        showError("Lütfen kimlik numarasını giriniz.")
         return
     }
 
     if (!duty) {
-        showError("Please select a duty.")
+        showError("Lütfen bir görev seçiniz.")
         return
     }
 
     if (!name) {
-        showError("Please enter a name.")
+        showError("Lütfen bir isim giriniz.")
         return
     }
 
     if (!surname) {
-        showError("Please enter a surname.")
+        showError("Lütfen bir soyisim giriniz.")
         return
     }
 
     if (!phoneNumber) {
-        showError("Please enter a phone number.")
+        showError("Lütfen bir telefon numarası giriniz.")
         return
     }
 
     if (!gender) {
-        showError("Please select a gender.")
+        showError("Lütfen bir cinsiyet seçiniz.")
         return
     }
 
     if (!nationality) {
-        showError("Please select nationality.")
+        showError("Lütfen uyruk seçiniz.")
         return
     }
 
@@ -6473,7 +6475,7 @@ $(".stops-nav").on("click", async e => {
                 e.stopPropagation()
 
                 const $button = $(this)
-                const warningMessage = "Deleting this stop will also delete routes, branches, branch users, and trips associated with this stop."
+                const warningMessage = "Bu durağı silmek, bu durakla ilişkili hatları, şubeleri, şube kullanıcılarını ve seferleri de silecektir."
                 if (!window.confirm(warningMessage)) {
                     return
                 }
@@ -6587,7 +6589,7 @@ $(".save-stop").on("click", async e => {
     const isActive = $(".stop-active").is(":checked")
 
     if (!title || !placeId || !rawUetdsValue) {
-        showError("Stop name, place, and UETDS code cannot be empty.")
+        showError("Durak adı, yer ve UETDS kodu boş bırakılamaz.")
         return
     }
 
@@ -6596,7 +6598,7 @@ $(".save-stop").on("click", async e => {
     const uetdsDistrictCode = (rawDistrictCode || "").trim()
 
     if (!uetdsProvinceCode || !uetdsDistrictCode) {
-        showError("Please select a valid UETDS code.")
+        showError("Lütfen geçerli bir UETDS kodu seçiniz.")
         return
     }
 
@@ -6990,12 +6992,12 @@ $(".save-route").on("click", async e => {
     syncRouteStopsState()
 
     if (!routeCode || !routeTitle || !routeDescription) {
-        showError("Route code, route title, and description fields cannot be empty.")
+        showError("Hat kodu, hat adı ve açıklama alanları boş bırakılamaz.")
         return
     }
 
     if (!routeStops.length) {
-        showError("Please add at least one stop for the route.")
+        showError("Lütfen hat için en az bir durak ekleyiniz.")
         return
     }
 
@@ -7224,8 +7226,8 @@ $(".price-nav").on("click", async e => {
                 const from = $button.data("from")
                 const to = $button.data("to")
                 const message = from && to
-                    ? `Are you sure you want to delete the price for ${from} - ${to}?`
-                    : "Are you sure you want to delete this price?"
+                    ? `"${from} - ${to}" arasındaki fiyatı silmek istediğinize emin misiniz?`
+                    : "Bu fiyatı silmek istediğinize emin misiniz?"
                 if (message && !window.confirm(message)) {
                     return
                 }
@@ -7319,7 +7321,7 @@ $(".price-nav").on("click", async e => {
 
 $(".price-close").on("click", e => {
     if ($(".price-list-nodes .price-button-inputs").length) {
-        const confirmClose = confirm("There are unsaved changes. Are you sure you want to close?");
+        const confirmClose = confirm("Kaydedilmemiş değişiklikler var. Çıkmak istediğinize emin misiniz?");
         if (!confirmClose) return;
     }
     $(".prices").css("display", "none");
@@ -7369,12 +7371,12 @@ const savePriceAdd = async closeAfterSave => {
     const data = collectPriceRowData(row, { includeId: false, appendTimeSuffix: false });
 
     if (!data.fromStopId) {
-        showError("Please select the 'From' location.");
+        showError("Please select the 'Nereden' location.");
         return;
     }
 
     if (!data.toStopId) {
-        showError("Please select the 'To' location.");
+        showError("Please select the 'Nereye' location.");
         return;
     }
 
@@ -7453,22 +7455,22 @@ $(".save-trip").on("click", async e => {
     }
 
     if (!firstDate) {
-        showError("Please select the start date.")
+        showError("Lütfen başlangıç tarihini seçiniz.")
         return
     }
 
     if (!lastDate) {
-        showError("Please select the end date.")
+        showError("Lütfen bitiş tarihini seçiniz.")
         return
     }
 
     if (!departureTime) {
-        showError("Please enter the departure time.")
+        showError("Lütfen kalkış saatini giriniz.")
         return
     }
 
     if (!busModelId) {
-        showError("Please select the bus plan.")
+        showError("Lütfen otobüs planını seçiniz.")
         return
     }
 
@@ -7510,7 +7512,7 @@ $(document)
         e.stopPropagation()
 
         const $button = $(this)
-        const message = "If you delete this branch, the users linked to this branch will also be deleted."
+        const message = "Bu şubeyi silerseniz, bu şubeye bağlı kullanıcılar da silinecektir."
         if (message && !window.confirm(message)) {
             return
         }
@@ -7695,17 +7697,17 @@ $(".save-branch").on("click", async e => {
     const defaultDeduction5 = $(".branch-deduction5").val()
 
     if (!title || !String(title).trim()) {
-        showError("Branch name is required.")
+        showError("Şube adı zorunludur.")
         return
     }
 
     if (!stop) {
-        showError("The stop it is located in must be selected.")
+        showError("Bulunduğu durak seçilmelidir.")
         return
     }
 
     if (!isMainBranch && (!mainBranch || !String(mainBranch).trim())) {
-        showError("Main branch must be selected.")
+        showError("Ana şube seçilmelidir.")
         return
     }
 
@@ -7844,7 +7846,7 @@ $(".user-settings-nav").on("click", async e => {
                 e.stopPropagation()
 
                 const $button = $(this)
-                if (!window.confirm("Are you sure you want to delete this user?")) {
+                if (!window.confirm("Bu kullanıcıyı silmek istediğinize emin misiniz?")) {
                     return
                 }
 
@@ -8007,7 +8009,7 @@ $(".customer-nav").on("click", async e => {
                 const tripTime = $btn.data("tripTime");
 
                 if (!tripId || !tripDate || !tripTime) {
-                    showMemberTicketFeedback($btn, "No active trip found for this ticket.");
+                    showMemberTicketFeedback($btn, "Bu bilet için aktif bir sefer bulunamadı.");
                     return;
                 }
 
@@ -8038,13 +8040,13 @@ $(".customer-nav").on("click", async e => {
                     const notFound = status === 404 || errorCode === "TRIP_NOT_FOUND";
 
                     if (notFound) {
-                        const fallbackMessage = "No active trip found for this ticket.";
+                        const fallbackMessage = "Bu bilet için aktif bir sefer bulunamadı.";
                         const message = error?.responseJSON?.message || fallbackMessage;
                         console.warn("Trip not found for ticket", { tripId, tripDate, tripTime, error });
                         showMemberTicketFeedback($btn, message);
                     } else {
                         console.error(error);
-                        showError("Trip information could not be loaded.");
+                        showError("Sefer bilgisi yüklenemedi.");
                     }
                 } finally {
                     $btn.prop("disabled", false);
@@ -8086,17 +8088,17 @@ $(".announcement-add-button").on("click", async e => {
     const showPopup = $(".announcement-show-popup").is(":checked")
 
     if (!message) {
-        showError("Please enter a message.")
+        showError("Lütfen bir mesaj giriniz.")
         return
     }
 
     if (!branchId) {
-        showError("Please select a branch.")
+        showError("Lütfen bir şube seçiniz.")
         return
     }
 
     if (!showTicker && !showPopup) {
-        showError("At least one display type must be selected.")
+        showError("En az bir gösterim tipi seçilmelidir.")
         return
     }
     await $.ajax({
@@ -8146,7 +8148,7 @@ $(".customer-search-btn").on("click", async e => {
                 const tripTime = $btn.data("tripTime");
 
                 if (!tripId || !tripDate || !tripTime) {
-                    showMemberTicketFeedback($btn, "No active trip found for this ticket.");
+                    showMemberTicketFeedback($btn, "Bu bilet için aktif bir sefer bulunamadı.");
                     return;
                 }
 
@@ -8177,13 +8179,13 @@ $(".customer-search-btn").on("click", async e => {
                     const notFound = status === 404 || errorCode === "TRIP_NOT_FOUND";
 
                     if (notFound) {
-                        const fallbackMessage = "No active trip found for this ticket.";
+                        const fallbackMessage = "Bu bilet için aktif bir sefer bulunamadı.";
                         const message = error?.responseJSON?.message || fallbackMessage;
                         console.warn("Trip not found for ticket", { tripId, tripDate, tripTime, error });
                         showMemberTicketFeedback($btn, message);
                     } else {
                         console.error(error);
-                        showError("Could not load trip info.");
+                        showError("Sefer bilgisi yüklenemedi.");
                     }
                 } finally {
                     $btn.prop("disabled", false);
@@ -8331,7 +8333,7 @@ $(".member-nav").on("click", async e => {
                 const tripTime = $btn.data("tripTime");
 
                 if (!tripId || !tripDate || !tripTime) {
-                    showMemberTicketFeedback($btn, "No active trip found for this ticket.");
+                    showMemberTicketFeedback($btn, "Bu bilet için aktif bir sefer bulunamadı.");
                     return;
                 }
 
@@ -8362,13 +8364,13 @@ $(".member-nav").on("click", async e => {
                     const notFound = status === 404 || errorCode === "TRIP_NOT_FOUND";
 
                     if (notFound) {
-                        const fallbackMessage = "No active trip found for this ticket.";
+                        const fallbackMessage = "Bu bilet için aktif bir sefer bulunamadı.";
                         const message = error?.responseJSON?.message || fallbackMessage;
                         console.warn("Trip not found for ticket", { tripId, tripDate, tripTime, error });
                         showMemberTicketFeedback($btn, message);
                     } else {
                         console.error(error);
-                        showError("Could not load trip info.");
+                        showError("Sefer bilgisi yüklenemedi.");
                     }
                 } finally {
                     $btn.prop("disabled", false);
@@ -8409,7 +8411,7 @@ const initializeReportPopup = async (reportKey, popup) => {
             time_24hr: true,
             altInput: true,
             altFormat: "d F Y H:i",
-            locale: "en",
+            locale: "tr",
         };
 
         if (defaultDate) {
@@ -8672,7 +8674,7 @@ $(".member-info-save").on("click", async e => {
         email: $(".member-info-email").val(),
         password: $(".member-info-password").val(),
         pointOrPercent: $(".member-info-pointorpercent").val(),
-        pointAmount: $(".member-info-pointamount").val(),
+        pointTutar: $(".member-info-pointamount").val(),
         percent: $(".member-info-percent").val()
     };
 
@@ -8858,7 +8860,7 @@ $(".save-user").on("click", async e => {
     $(".user-phone").val(phone)
 
     if (!name || !username || !password || !branchId) {
-        showError("Please fill in the Full Name, Username, Password, and Branch fields.")
+        showError("Lütfen İsim Soyisim, Kullanıcı Adı, Şifre ve Şube alanlarını doldurunuz.")
         return
     }
 
@@ -8888,7 +8890,7 @@ $(".save-user").on("click", async e => {
 })
 
 $(".register-reset-nav").on("click", async e => {
-    if (!confirm("Are you sure you want to reset the register?")) return
+    if (!confirm("Kasayı sıfırlamak istediğinize emin misiniz?")) return
     await $.ajax({
         url: "/post-reset-register",
         type: "POST",
@@ -9199,7 +9201,7 @@ $(loadAnnouncements);
 
         let lowered;
         try {
-            lowered = value.toLocaleLowerCase("en-US");
+            lowered = value.toLocaleLowerCase("tr-TR");
         } catch (error) {
             lowered = value.toLowerCase();
         }

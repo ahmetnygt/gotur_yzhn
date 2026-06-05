@@ -6,7 +6,7 @@ else
         - const amount = Number(t.amount || 0)
         .bus-transaction-item.d-flex.justify-content-between.align-items-start.border.rounded.p-2
             .d-flex.flex-column.gap-1
-                span.text-muted.small #{createdAt.toLocaleDateString('en-US')} #{createdAt.toLocaleTimeString('en-US')}
+                span.text-muted.small #{createdAt.toLocaleDateString('tr-TR')} #{createdAt.toLocaleTimeString('tr-TR')}
                 if t.description
                     span.small #{t.description}
-            span.fw-semibold(class=t.type === 'income' ? 'text-success' : 'text-danger') #{t.type === 'income' ? '+' : '-'}#{amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            span.fw-semibold(class=t.type === 'income' ? 'text-success' : 'text-danger') #{t.type === 'income' ? '+' : '-'}#{amount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

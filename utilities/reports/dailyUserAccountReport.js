@@ -6,10 +6,10 @@ const SUMMARY_COLUMNS = 3;
 
 const formatCurrency = (value) => {
   const amount = Number(value || 0);
-  return `${amount.toLocaleString('en-US', {
+  return `${amount.toLocaleString('tr-TR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  })} $`;
+  })} ₺`;
 };
 
 const chunk = (arr, size) => {
@@ -56,7 +56,7 @@ function generateDailyUserAccountReport(data, output) {
     }
   };
 
-  const title = 'DAILY USER ACCOUNT REPORT'.toUpperCase();
+  const title = 'GÜNLÜK KULLANICI KASASI RAPORU'.toUpperCase();
   doc.font('Bold').fontSize(14).text(title, xStart, doc.y, { width: pageWidth, align: 'center' });
   doc.moveDown(0.5);
 
@@ -103,12 +103,12 @@ function generateDailyUserAccountReport(data, output) {
   doc.moveDown();
 
   const columns = [
-    { key: 'date', header: 'Date', width: 85, align: 'center' },
-    { key: 'type', header: 'Transaction Type', width: 95 },
-    { key: 'description', header: 'Description', width: 160 },
-    { key: 'document', header: 'Document No', width: 90 },
-    { key: 'incomeOrExpense', header: 'Type', width: 45 },
-    { key: 'amount', header: 'Amount', width: 45 },
+    { key: 'date', header: 'Tarih', width: 85, align: 'center' },
+    { key: 'type', header: 'İşlem Türü', width: 95 },
+    { key: 'description', header: 'Açıklama', width: 160 },
+    { key: 'document', header: 'Belge No', width: 90 },
+    { key: 'incomeOrExpense', header: 'Tür', width: 45 },
+    { key: 'amount', header: 'Miktar', width: 45 },
   ];
 
   const totalWidth = columns.reduce((acc, c) => acc + c.width, 0);
@@ -177,7 +177,7 @@ function generateDailyUserAccountReport(data, output) {
 
   if (!rows.length) {
     ensureVerticalSpace(20);
-    doc.font('Bold').fontSize(9).text('No records found.', xStart, doc.y + 8);
+    doc.font('Bold').fontSize(9).text('Kayıt bulunamadı.', xStart, doc.y + 8);
     doc.font('Regular').fontSize(8);
   } else {
     rows.forEach((row) => {
@@ -216,8 +216,8 @@ if (require.main === module) {
       { label: 'Cash Sales Amount', value: formatCurrency(8800) },
     ],
     netSummary: [
-      { label: 'Cash', value: formatCurrency(-2302) },
-      { label: 'Credit Card', value: formatCurrency(0) },
+      { label: 'Nakit', value: formatCurrency(-2302) },
+      { label: 'Kredi Kartı', value: formatCurrency(0) },
       { label: 'Total', value: formatCurrency(-2302) },
     ],
     rows: [
