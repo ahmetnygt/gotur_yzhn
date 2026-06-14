@@ -29,4 +29,6 @@ router.get("/customer/:id/tickets", apiController.getCustomerTickets);
 
 router.post("/ticket/cancel", apiController.cancelTicket);
 
+router.get("/trips/:id/seats", apiController.getTripSeats); 
+
 module.exports = router;

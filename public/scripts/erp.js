@@ -3061,7 +3061,7 @@ async function loadTrip(date, time, tripId) {
                 deduction5: $(".account-cut-popup .account-deduction5").val(),
                 tip: $(".account-cut-popup .account-tip").val(),
                 description: $(".account-cut-popup .account-description").val(),
-                payedTutar: $(".account-cut-popup .account-payed").val()
+                payedAmount: $(".account-cut-popup .account-payed").val()
             };
             try {
                 await $.ajax({ url: "/post-bus-account-cut", type: "POST", data: data3 });
@@ -3752,7 +3752,7 @@ $(".ticket-button-action").on("click", async e => {
         const takeOnValue = ($(".ticket-rows").find(".take-on select").val() || "").toString().trim();
         const takeOffValue = ($(".ticket-rows").find(".take-off select").val() || "").toString().trim();
 
-        for (let i = 0; i < selectedTakenSeats.length; i++) {
+        for (let i = 0; i < $(".ticket-row").length; i++) {
 
             const ticket = $(".ticket-row")[i]
 
@@ -8674,7 +8674,7 @@ $(".member-info-save").on("click", async e => {
         email: $(".member-info-email").val(),
         password: $(".member-info-password").val(),
         pointOrPercent: $(".member-info-pointorpercent").val(),
-        pointTutar: $(".member-info-pointamount").val(),
+        pointAmount: $(".member-info-pointamount").val(),
         percent: $(".member-info-percent").val()
     };
 

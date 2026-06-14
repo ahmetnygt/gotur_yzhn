@@ -844,3 +844,47 @@ exports.cancelTicket = async (req, res) => {
         res.status(500).json({ error: "İşlem başarısız oldu." });
     }
 };
+
+exports.getTripSeats = async (req, res) => {
+    try {
+        const { Trip, BusModel, Ticket } = req.models;
+        const tripId = req.params.id;
+
+        // Seferi ve otobüs planını çekiyoruz
+        const trip = await Trip.findByPk(tripId, {
+            include: [{ model: BusModel, as: "busModel" }]
+        });
+
+        if (!trip) {
+            return res.status(404).json({ error: "Sefer bulunamadı amk, yanlış ID." });
+        }
+
+        // Otobüs şeması (1 ve 0'lardan oluşan o string)
+        const planBinary = trip.busModel?.planBinary || trip.busModel?.plan || "";
+
+        // Dolu koltukları bulalım (search metodundaki statüleri baz aldım)
+        const occupiedStatuses = ["web", "gotur", "completed", "reservation", "pending"];
+        const tickets = await Ticket.findAll({
+            where: { tripId: tripId, status: occupiedStatuses },
+            attributes: ["seatNo", "gender"]
+        });
+
+        // Frontend'in kolay okuması için obje formatına çeviriyoruz
+        const ticketsMap = {};
+        tickets.forEach(tic => {
+            if (tic.seatNo) {
+                ticketsMap[tic.seatNo] = { gender: tic.gender };
+            }
+        });
+
+        return res.json({
+            success: true,
+            busPlanBinary: planBinary,
+            tickets: ticketsMap
+        });
+
+    } catch (err) {
+        console.error("GET_SEATS_ERR:", err);
+        return res.status(500).json({ error: "Koltuklar alınırken backend sıçtı.", detail: err.message });
+    }
+};

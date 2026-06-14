@@ -2877,7 +2877,7 @@ exports.getTicketRow = async (req, res, next) => {
     if (isTaken) {
         const { seatNumbers } = req.query;
         const ticket = seatNumbers
-            ? await req.models.Ticket.findAll({ where: { tripId: trip.id, seatNo: { [Op.in]: seatNumbers }, fromRouteStopId: stopId, status: { [Op.notIn]: ["cancelled", "refund"] } } })
+            ? await req.models.Ticket.findAll({ where: { tripId: trip.id, seatNo: { [Op.in]: seatNumbers }, fromRouteStopId: stopId, status: { [Op.notIn]: ["canceled", "refund"] } } })
             : [];
 
         if (!ticket.length) {
