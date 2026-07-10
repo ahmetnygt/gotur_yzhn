@@ -1,6 +1,6 @@
 const { getTenantConnection } = require("../utilities/database");
 const { initGoturModels } = require("../utilities/goturDb");
-const { DEFAULT_TENANT_KEY, resolveTenantKey } = require("../utilities/tenantConfig");
+const { resolveTenantKey } = require("../utilities/tenantConfig");
 
 let cachedCommonModels;
 function getCommonModels() {
@@ -17,17 +17,16 @@ module.exports = async (req, res, next) => {
             req.path.startsWith("/api/");
 
         if (isApiRequest) {
-            tenantKey = req.get("x-tenant-key") || req.get("x-tenant");
-
-            if (!tenantKey) {
-                console.error("❌ API call but tenant not found via API key.");
-                return res.status(400).json({
-                    error: "API tenant not found — Is X-Api-Key correct?"
-                });
+            // API İsteklerinde tenantKey artık doğrudan apiKeyAuth'dan (güvenli kaynaktan) gelecek.
+            // Header'a güvenmek yerine, DB'den onaylanmış token'ın yetkili olduğu tenantı kullanıyoruz.
+            if (!req.apiClient || !req.apiClient.tenantKey) {
+                console.error("❌ Unauthorized API tenant request.");
+                return res.status(401).json({ error: "Unauthorized tenant." });
             }
+            tenantKey = req.apiClient.tenantKey;
         }
-
         else {
+            // Web isteklerinde subdomain üzerinden tenant tespiti
             tenantKey = resolveTenantKey(req.hostname);
 
             if (!tenantKey) {
@@ -36,6 +35,7 @@ module.exports = async (req, res, next) => {
             }
         }
 
+        // Veritabanı bağlantısını kur veya hazır olanı getir
         const { sequelize, models } = await getTenantConnection(tenantKey);
 
         req.db = sequelize;

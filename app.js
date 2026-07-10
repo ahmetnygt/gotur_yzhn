@@ -15,6 +15,7 @@ const { goturDB, initGoturModels } = require("./utilities/goturDb"); // ortak ku
 const SequelizeStore = require("connect-session-sequelize")(session.Store);
 const tenantMiddleware = require("./middlewares/tenantMiddleware");
 const tenantSessionMiddleware = require("./middlewares/tenantSessionMiddleware");
+const apiKeyAuth = require("./middlewares/apiKeyAuth");
 
 const commonModels = initGoturModels();
 
@@ -41,35 +42,29 @@ app.use(cookieParser());
 app.use(express.static(path.join(__dirname, "public")));
 app.use(express.static(path.join(__dirname, "node_modules")));
 
-// session middleware
+app.use((req, res, next) => {
+  req.commonModels = commonModels;
+  next();
+});
+
+app.use("/api", apiKeyAuth, tenantMiddleware, apiRouter);
+
+app.use(tenantMiddleware);
 app.use(
   session({
     secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     store: store,
-    cookie: {
-      maxAge: 86400000, // 1 gün
-    },
+    cookie: { maxAge: 86400000 },
   })
 );
 
-// tenant middleware (subdomain -> tenant DB)
-app.use(tenantMiddleware);
-
-// tenant bazlı session bilgisi
 app.use(tenantSessionMiddleware);
 
-// ortak modelleri (gotur DB) request içine ekle
-app.use((req, res, next) => {
-  req.commonModels = commonModels; // Place vs.
-  next();
-});
-
-// routerlar
+// Web Router'ları
 app.use("/users", usersRouter);
 app.use("/", erpRouter);
-app.use("/api", apiRouter);
 
 // catch 404 and forward to error handler
 app.use(function (req, res, next) {
