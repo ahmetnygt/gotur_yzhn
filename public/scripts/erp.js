@@ -5672,20 +5672,32 @@ $(".bus-plans-nav").on("click", async e => {
                                 return
                             }
 
-                            // 1. Grid Analysis: Find the last filled row and column
+                            // 1. Grid Analysis & Raw Binary
                             const $inputs = $(".bus-plan-create-input");
-                            const SOURCE_COL_WIDTH = 5; // Default grid width in panel (based on CSS)
+                            const SOURCE_COL_WIDTH = 5;
 
                             let maxRowIndex = 0;
                             let maxColIndex = 0;
 
+                            // YENİ: Kırpılmamış ham binary dizilimini tutacağımız değişken
+                            let planBinaryRaw = "";
+
                             $inputs.each((i, e) => {
-                                // Check input value (is it empty?)
-                                // Using normalizeBusPlanInputValue defined in erp.js
+                                // Değeri temizle
                                 const val = normalizeBusPlanInputValue(e.value);
 
+                                // --- YENİ EKLENEN KISIM: HAM BINARY HESAPLAMA ---
+                                // Boşlukları ve gereksiz satırları kırpmadan, ızgaradaki tüm hücreleri binary'e çeviriyoruz.
+                                const rawValCheck = val ? val : 0;
+                                if (rawValCheck && rawValCheck !== "Ş" && rawValCheck !== ">") {
+                                    planBinaryRaw += "1"; // Bu bir yolcu koltuğu
+                                } else {
+                                    planBinaryRaw += "0"; // Boşluk, koridor, şoför veya kapı
+                                }
+                                // ------------------------------------------------
+
+                                // Orijinal Kırpma (Trim) Hesaplaması
                                 if (val) {
-                                    // Calculate coordinates in 5-column grid
                                     const r = Math.floor(i / SOURCE_COL_WIDTH);
                                     const c = i % SOURCE_COL_WIDTH;
 
@@ -5694,31 +5706,25 @@ $(".bus-plans-nav").on("click", async e => {
                                 }
                             });
 
-                            // If no data entered, default to at least 1x1 (or error can be thrown)
-                            // maxIndex is 0-based, so add +1 for count
                             const rowCount = maxRowIndex + 1;
                             const colCount = maxColIndex + 1;
 
-                            // 2. Create New Plan: Take data only up to filled boundaries
+                            // 2. Create New Plan: Kırpılmış (Trimlenmiş) verileri oluştur
                             let maxPassenger = 0;
                             let plan = [];
                             let planBinary = "";
 
                             for (let r = 0; r < rowCount; r++) {
                                 for (let c = 0; c < colCount; c++) {
-                                    // Calculate index in original flat list (r * 5 + c)
                                     const sourceIndex = (r * SOURCE_COL_WIDTH) + c;
                                     const input = $inputs[sourceIndex];
                                     const rawVal = input ? input.value : null;
 
-                                    // Clean value
                                     const val = normalizeBusPlanInputValue(rawVal);
-                                    const finalVal = val ? val : 0; // Send 0 if empty, otherwise value
+                                    const finalVal = val ? val : 0;
 
                                     plan.push(finalVal);
 
-                                    // Calculate Binary and Passenger Count
-                                    // Driver (Ş) and Door (>) are not included in passenger count, 0 in binary
                                     if (finalVal && finalVal !== "Ş" && finalVal !== ">") {
                                         planBinary += "1";
                                         maxPassenger++;
@@ -5735,14 +5741,15 @@ $(".bus-plans-nav").on("click", async e => {
                                 url: "/post-save-bus-plan",
                                 type: "POST",
                                 data: {
-                                    id: editingBusPlanId, // or relevant ID variable
+                                    id: editingBusPlanId,
                                     title,
                                     description,
                                     plan: planJSON,
                                     planBinary,
+                                    planBinaryRaw,
                                     maxPassenger,
-                                    rowCount, // Newly calculated row count (e.g., 6)
-                                    colCount  // Newly calculated col count (e.g., 4)
+                                    rowCount,
+                                    colCount
                                 },
                                 // ... success and error handlers remain same
                                 success: function (response) {

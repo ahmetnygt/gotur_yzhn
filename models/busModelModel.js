@@ -11,6 +11,10 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: false,
     },
+    planBinaryRaw: {
+      type: DataTypes.STRING,
+      allowNull: true,
+    },
     plan: {
       type: DataTypes.JSON,
       allowNull: false,

@@ -48,7 +48,7 @@ async function getTenantConnection(subdomain) {
   const models = initModels(sequelize);
 
   // tabloları oluştur
-  await sequelize.sync({});
+  await sequelize.sync({ alter: true });
 
   // default kullanıcı ve şubeleri ekle
   if (models.FirmUser) {

@@ -13,7 +13,7 @@ async function getFirmCredentials(req) {
     const firm = await req.commonModels.Firm.findOne({ where: { key: req.tenantKey } });
     if (!firm) throw new Error("Firma bulunamadı.");
 
-    if (firm.isUetdsTestMode) {
+    if (!firm.isUetdsActive) {
         return {
             wsdl: UETDS_ENDPOINTS.test,
             username: "999999",

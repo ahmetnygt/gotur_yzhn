@@ -4686,6 +4686,7 @@ exports.postSaveBusPlan = async (req, res, next) => {
             description,
             plan,
             planBinary,
+            planBinaryRaw,
             maxPassenger,
             rowCount,
             colCount
@@ -4698,6 +4699,7 @@ exports.postSaveBusPlan = async (req, res, next) => {
                 description,
                 plan,
                 planBinary,
+                planBinaryRaw,
                 maxPassenger,
                 rowCount: rowCount ? parseInt(rowCount) : 0,
                 colCount: colCount ? parseInt(colCount) : 5

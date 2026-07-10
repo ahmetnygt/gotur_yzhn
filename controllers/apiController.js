@@ -2,6 +2,38 @@ const { Op } = require("sequelize");
 const bcrypt = require("bcrypt");
 const branchModel = require("../models/branchModel");
 
+// erpController'dan kopyalanan orijinal PNR oluşturucu
+async function generatePNR(models, fromId, toId, stops) {
+    const from = stops.find(s => s.id == fromId)?.title;
+    const to = stops.find(s => s.id == toId)?.title;
+    const turkishMap = { "Ç": "C", "Ş": "S", "İ": "I", "Ğ": "G", "Ü": "U", "Ö": "O", "ç": "C", "ş": "S", "ı": "I", "ğ": "G", "ü": "U", "ö": "O" };
+
+    const clean = str => {
+        if (!str) return "XX"; // Boş gelirse patlamaması için ufak bir koruma
+        return str
+            .split('')
+            .map(c => turkishMap[c] || c)
+            .join('')
+            .toUpperCase()
+            .substring(0, 2);
+    };
+
+    const fromCode = clean(from);
+    const toCode = clean(to);
+
+    let pnr;
+    let exists = true;
+
+    while (exists) {
+        const rand = Math.random().toString(36).substring(2, 6).toUpperCase();
+        pnr = `${fromCode}${toCode}${rand}`;
+        // PNR veritabanında zaten var mı diye kontrol ediyor
+        exists = await models.Ticket.findOne({ where: { pnr } });
+    }
+
+    return pnr;
+}
+
 function addMinutes(time, minutesToAdd) {
     if (!time) return null;
     const [h, m] = String(time).split(":").map(Number);
@@ -322,6 +354,15 @@ exports.search = async (req, res) => {
                 (trip.busModel && trip.busModel.plan) ||
                 "";
 
+            // --- YENİ EKLENEN KISIM ---
+            // Veritabanından satır, sütun ve ham binary verilerini çekiyoruz
+            const rowCount = (trip.busModel && trip.busModel.rowCount) || 0;
+            const colCount = (trip.busModel && trip.busModel.colCount) || 0;
+            console.log(colCount)
+            console.log(rowCount)
+            const planBinaryRaw = (trip.busModel && trip.busModel.planBinaryRaw) || "";
+            // --------------------------
+
             const busPlan = planBinary ? generateSeatPlan(planBinary) : [];
 
             const totalSeats = planBinary
@@ -364,6 +405,7 @@ exports.search = async (req, res) => {
                 (trip.route && trip.route.description) ||
                 `${fromStop.title} - ${toStop.title}`;
 
+            // BURASI GÜNCELLENDİ: Frontend'e giden JSON paketi
             formattedTrips.push({
                 tripId: trip.id,
                 routeId: trip.routeId,
@@ -386,7 +428,10 @@ exports.search = async (req, res) => {
 
                 busFeatures,
                 busPlanBinary: planBinary,
+                busPlanBinaryRaw: planBinaryRaw, // Ekledik
                 busPlan,
+                rowCount, // Ekledik
+                colCount, // Ekledik
                 tickets: ticketsMap,
 
                 routeDescription,
@@ -419,6 +464,8 @@ exports.createPayment = async (req, res) => {
         } = req.body;
 
         const { TicketPayment } = req.commonModels;
+        // Trip ve RouteStop modellerini de ekledik yeğenim
+        const { Ticket, FirmUser, TicketGroup, Trip, RouteStop } = req.models;
 
         if (!tripId || !fromStopId || !toStopId) {
             return res.status(400).json({
@@ -432,12 +479,34 @@ exports.createPayment = async (req, res) => {
             });
         }
 
-        if (!Array.isArray(genders) || genders.length !== seatNumbers.length) {
+        // 1. ADIM: SEFERİ BULUP ROUTE_ID ÜZERİNDEN DOĞRU DURAK ID'LERİNİ ÇÖZELİM
+        const trip = await Trip.findByPk(tripId);
+        if (!trip) {
+            return res.status(404).json({ error: "Sefer bulunamadı." });
+        }
+
+        const [fromRouteStop, toRouteStop] = await Promise.all([
+            RouteStop.findOne({ where: { routeId: trip.routeId, stopId: fromStopId } }),
+            RouteStop.findOne({ where: { routeId: trip.routeId, stopId: toStopId } })
+        ]);
+
+        // 2. ADIM: KOLTUKLAR HALA BOŞ MU KONTROL ET!
+        const occupiedStatuses = ["web", "gotur", "completed", "reservation", "pending"];
+        const existingTickets = await Ticket.findAll({
+            where: {
+                tripId: tripId,
+                seatNo: seatNumbers,
+                status: occupiedStatuses
+            }
+        });
+
+        if (existingTickets.length > 0) {
             return res.status(400).json({
-                error: "Cinsiyet dizisi koltuk numaralarıyla aynı uzunlukta olmalıdır."
+                error: "Seçtiğiniz koltuklardan biri veya birkaçı az önce satıldı veya işlemde. Lütfen farklı bir koltuk seçin."
             });
         }
 
+        // 3. ADIM: ÖDEME KAYDINI OLUŞTUR
         const payment = await TicketPayment.create({
             tripId,
             fromStopId,
@@ -446,6 +515,38 @@ exports.createPayment = async (req, res) => {
             genders,
             isSuccess: false
         });
+
+        // 4. ADIM: OPSİYON SÜRESİNİ HESAPLA (Şu an + 5 Dakika)
+        const now = new Date();
+        now.setMinutes(now.getMinutes() + 5);
+
+        const optionDateStr = now.toISOString().split('T')[0];
+
+        const hh = String(now.getHours()).padStart(2, "0");
+        const mm = String(now.getMinutes()).padStart(2, "0");
+        const optionTimeStr = `${hh}:${mm}`;
+
+        // 5. ADIM: TICKET GROUP OLUŞTUR
+        const tg = await TicketGroup.create({ tripId: tripId });
+
+        let webUser = await FirmUser.findOne({ where: { username: "WEB" } });
+
+        // 6. ADIM: KOLTUKLARI DURAK BİLGİLERİYLE BİRLİKTE "PENDING" OLARAK KİLİTLE
+        for (let i = 0; i < seatNumbers.length; i++) {
+            await Ticket.create({
+                tripId: tripId,
+                ticketGroupId: tg.id,
+                seatNo: seatNumbers[i],
+                gender: genders[i],
+                status: "pending",
+                nationality: "TR",
+                userId: webUser ? webUser.id : null,
+                optionDate: optionDateStr,
+                optionTime: optionTimeStr,
+                fromRouteStopId: fromRouteStop ? fromRouteStop.id : null, // Kalkış durak ID'si bağlandı
+                toRouteStopId: toRouteStop ? toRouteStop.id : null        // Varış durak ID'si bağlandı
+            });
+        }
 
         return res.json({
             success: true,
@@ -542,10 +643,16 @@ exports.getPaymentDetail = async (req, res) => {
 
 exports.paymentComplete = async (req, res) => {
     try {
-        const { Ticket, TicketGroup, FirmUser } = req.models;
+        const { Ticket, TicketGroup, FirmUser, Trip, RouteStop, Price, Stop } = req.models;
         const { TicketPayment } = req.commonModels;
 
-        const { phone, email, names, surnames, idNumbers } = req.body;
+        const { phone, email } = req.body;
+
+        // DÜZELTME 1: Frontend'den veriler "names", "name" veya "name[]" olarak gelebilir.
+        // Hepsini yakalayıp ne olursa olsun kopmaz bir diziye (array) çeviriyoruz.
+        const safeNames = [].concat(req.body.names || req.body.name || req.body["name[]"] || []);
+        const safeSurnames = [].concat(req.body.surnames || req.body.surname || req.body["surname[]"] || []);
+        const safeIdNumbers = [].concat(req.body.idNumbers || req.body.idNumber || req.body["idNumber[]"] || []);
 
         const pay = await TicketPayment.findByPk(req.params.id);
         if (!pay) return res.status(404).json({ error: "Ödeme kaydı bulunamadı." });
@@ -556,37 +663,89 @@ exports.paymentComplete = async (req, res) => {
 
         const tg = await TicketGroup.create({ tripId: pay.tripId });
 
-        for (const i in pay.seatNumbers) {
+        // --- PNR ÜRETİMİ ---
+        const stopsForPnr = await Stop.findAll({ where: { id: [pay.fromStopId, pay.toStopId] } });
+        const pnrCode = await generatePNR(req.models, pay.fromStopId, pay.toStopId, stopsForPnr);
 
-            const pName = names && names[i] ? names[i] : "";
-            const pSurname = surnames && surnames[i] ? surnames[i] : "";
-            const pIdNumber = idNumbers && idNumbers[i] ? idNumbers[i] : "";
+        // --- FİYAT HESAPLAMA ---
+        let priceRow = await Price.findOne({
+            where: { fromStopId: pay.fromStopId, toStopId: pay.toStopId }
+        });
 
-            await Ticket.create({
-                tripId: pay.tripId,
-                ticketGroupId: tg.id,
-                seatNo: pay.seatNumbers[i],
-                gender: pay.genders[i],
-                status: "web",
-                nationality: "TR",
-                phoneNumber: phone,
-                email: email,
-                name: pName.toLocaleUpperCase("tr-TR"),
-                surname: pSurname.toLocaleUpperCase("tr-TR"),
-                idNumber: pIdNumber,
-                userId: webUser.id,
+        if (!priceRow) {
+            priceRow = await Price.findOne({
+                where: { fromStopId: pay.toStopId, toStopId: pay.fromStopId, isBidirectional: true }
             });
+        }
+        const perSeatPrice = priceRow ? (priceRow.webPrice ?? priceRow.price1 ?? priceRow.price2 ?? 0) : 0;
+
+        const trip = await Trip.findByPk(pay.tripId);
+        const [fromRouteStop, toRouteStop] = trip ? await Promise.all([
+            RouteStop.findOne({ where: { routeId: trip.routeId, stopId: pay.fromStopId } }),
+            RouteStop.findOne({ where: { routeId: trip.routeId, stopId: pay.toStopId } })
+        ]) : [null, null];
+
+        // DÜZELTME 2: Sequelize'dan gelen JSON verisi bazen 'String' olarak döner.
+        // Array olup olmadığından emin olmak için parse ediyoruz.
+        const seatsArray = typeof pay.seatNumbers === "string" ? JSON.parse(pay.seatNumbers) : (pay.seatNumbers || []);
+        const gendersArray = typeof pay.genders === "string" ? JSON.parse(pay.genders) : (pay.genders || []);
+
+        for (let i = 0; i < seatsArray.length; i++) {
+
+            // Eğer frontend'den 3 koltuk alınıp sadece 1 isim geldiyse bile patlamaması için ilk index'i yedek (fallback) yapıyoruz.
+            const pName = safeNames[i] ? safeNames[i].trim() : (safeNames[0] ? safeNames[0].trim() : "");
+            const pSurname = safeSurnames[i] ? safeSurnames[i].trim() : (safeSurnames[0] ? safeSurnames[0].trim() : "");
+            const pIdNumber = safeIdNumbers[i] ? safeIdNumbers[i].trim() : (safeIdNumbers[0] ? safeIdNumbers[0].trim() : "");
+
+            const existingTicket = await Ticket.findOne({
+                where: {
+                    tripId: pay.tripId,
+                    seatNo: seatsArray[i],
+                    status: "pending"
+                }
+            });
+
+            // EKSİKSİZ TICKET VERİSİ
+            const ticketData = {
+                ticketGroupId: tg.id,
+                status: "web",
+                phoneNumber: phone || null,
+                email: email || null,
+                name: pName ? pName.toLocaleUpperCase("tr-TR") : null,
+                surname: pSurname ? pSurname.toLocaleUpperCase("tr-TR") : null,
+                idNumber: pIdNumber || null,
+                price: perSeatPrice,
+                pnr: pnrCode,
+                payment: "card",
+            };
+
+            if (existingTicket) {
+                // Pending bileti web kullanıcısına göre güncelle
+                await existingTicket.update(ticketData);
+            } else {
+                // Fallback (Pending silindiyse)
+                await Ticket.create({
+                    ...ticketData,
+                    tripId: pay.tripId,
+                    seatNo: seatsArray[i],
+                    gender: gendersArray[i],
+                    nationality: "TR",
+                    userId: webUser ? webUser.id : null,
+                    fromRouteStopId: fromRouteStop ? fromRouteStop.id : null,
+                    toRouteStopId: toRouteStop ? toRouteStop.id : null
+                });
+            }
         }
 
         await pay.update({ isSuccess: true });
 
-        res.json({ success: true, paymentId: pay.id, ticketGroupId: tg.id });
+        res.json({ success: true, paymentId: pay.id, ticketGroupId: tg.id, pnr: pnrCode });
 
     } catch (e) {
         console.error("API_PAYMENT_COMPLETE_ERR:", e);
         res.status(500).json({ error: e.message || "Bilet oluşturulurken hata meydana geldi." });
     }
-}
+};
 
 exports.register = async (req, res) => {
     try {
