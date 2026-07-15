@@ -18,6 +18,8 @@ const SequelizeStore = require("connect-session-sequelize")(session.Store);
 const tenantMiddleware = require("./middlewares/tenantMiddleware");
 const tenantSessionMiddleware = require("./middlewares/tenantSessionMiddleware");
 
+const { hasSubdomain } = require("./utilities/tenantConfig");
+
 const commonModels = initGoturModels();
 
 // session store (gotur DB üzerinde)
@@ -86,6 +88,23 @@ app.use((req, res, next) => {
 // zaten uyguluyor; burada tekrar uygulamak DB bağlantı çözümlemesinin ve API key
 // doğrulamasının istek başına iki kez çalışmasına neden oluyordu.
 app.use("/api", apiRouter);
+
+// Sistem, subdomain'i olmayan (örn. "goturyzhn.com", "www.goturyzhn.com" veya
+// lokalde çıplak "localhost") isteklerde artık bir tenant çözümlemeye
+// çalışıp hata döndürmek yerine, sistemi tanıtan bir one-pager gösteriyor.
+// Bu kontrol tenantMiddleware'den ÖNCE yapılıyor; aksi halde subdomain'i
+// olmayan istekler "Tenant could not be determined." hatasına düşüyordu.
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/")) {
+    return next();
+  }
+
+  if (!hasSubdomain(req.hostname)) {
+    return res.render("landing", { title: "Götür" });
+  }
+
+  next();
+});
 
 app.use(tenantMiddleware);
 app.use(

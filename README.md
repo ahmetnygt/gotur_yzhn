@@ -38,6 +38,18 @@ code falls back to the safe default that was used previously. When running in
 production, make sure the secrets are rotated and not left to their default
 values.
 
+## Accessing without a subdomain
+
+Every tenant is expected to be reached through its own subdomain (for example
+`acente1.goturyzhn.com`). If the application is accessed without a subdomain
+—the bare root domain (`goturyzhn.com`), `www.goturyzhn.com`, a bare
+`localhost`, or a direct IP address—it no longer tries (and fails) to resolve
+a tenant. Instead it renders a one-page overview of the system
+(`views/landing.pug`) that explains what Gotur VIP is and points visitors to
+their firm-specific address. This detection lives in
+`utilities/tenantConfig.js` (`hasSubdomain`) and is applied in `app.js` before
+`tenantMiddleware` runs.
+
 ## Tenant lifecycle tasks
 
 Most application features depend on tenant specific databases. A subdomain is
