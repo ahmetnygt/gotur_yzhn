@@ -100,7 +100,7 @@ app.use((req, res, next) => {
   }
 
   if (!hasSubdomain(req.hostname)) {
-    return res.render("landing", { title: "Gotur VIP" });
+    return res.render("landing", { title: "Götür" });
   }
 
   next();

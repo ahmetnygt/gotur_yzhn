@@ -4,7 +4,7 @@ html(lang="tr")
     meta(charset="utf-8")
     meta(name="viewport" content="width=device-width, initial-scale=1")
     title= title
-    meta(name="description" content="Gotur VIP; otobüs ve seyahat firmaları için bilet satışı, sefer, filo, kasa ve raporlama süreçlerini tek panelden yöneten çok kiracılı (multi-tenant) bir ERP ve online bilet satış platformudur.")
+    meta(name="description" content="Götür; otobüs ve seyahat firmaları için bilet satışı, sefer, filo, kasa ve raporlama süreçlerini tek panelden yöneten bir ERP ve online bilet satış platformudur.")
     link(rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png")
     link(rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png")
     link(rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png")
@@ -45,15 +45,12 @@ html(lang="tr")
       .gtr-brand-badge {
         display: inline-flex;
         align-items: center;
-        gap: 0.5rem;
-        background: rgba(255, 255, 255, 0.15);
-        border: 1px solid rgba(255, 255, 255, 0.3);
-        border-radius: 999px;
-        padding: 0.4rem 1rem;
-        font-size: 0.85rem;
-        font-weight: 600;
-        letter-spacing: 0.03em;
+        background: #fff;
+        border-radius: 0.85rem;
+        padding: 0.5rem 0.9rem;
+        box-shadow: 0 12px 28px -18px rgba(15, 23, 42, 0.55);
       }
+      .gtr-brand-badge img { height: 34px; width: auto; display: block; }
       .gtr-hero h1 { font-weight: 800; letter-spacing: -0.02em; }
       .gtr-hero-note {
         background: rgba(255, 255, 255, 0.12);
@@ -150,8 +147,7 @@ html(lang="tr")
       .container.py-5.gtr-hero-content
         nav.d-flex.justify-content-between.align-items-center.mb-5
           span.gtr-brand-badge
-            i.fa-solid.fa-bus-simple
-            span GOTUR VIP
+            img(src="/images/gotur_yzhn_logo.png" alt="Götür")
           a.text-white.text-decoration-none.small.d-none.d-md-inline-flex.align-items-center.gap-2(href="tel:+905441314013")
             i.fa-solid.fa-phone
             span 0544 131 40 13
@@ -159,9 +155,9 @@ html(lang="tr")
           .col-lg-7
             h1.display-5.mb-4 Turizm ve Ulaşım İşletmeniz İçin Tek Panelden Yönetim
             p.lead.mb-4(style="color:rgba(255,255,255,0.9)")
-              | Gotur VIP; otobüs ve seyahat firmalarının bilet satışını, seferlerini, filosunu, kasa/ödeme
-              |  süreçlerini ve raporlamasını tek bir sistemden yönettiği, her firmaya özel ve birbirinden
-              |  tamamen izole çalışan çok kiracılı (multi-tenant) bir ERP ve online bilet satış platformudur.
+              | Götür; otobüs ve seyahat firmalarının bilet satışını, seferlerini, filosunu, kasa/ödeme
+              |  süreçlerini ve raporlamasını tek bir sistemden yönettiği, her firmaya özel ve
+              |  güvenle kullanabileceği bir ERP ve online bilet satış platformudur.
             .d-flex.flex-wrap.gap-3.mb-4
               a.btn.gtr-btn-primary.btn-lg.px-4(href="#iletisim") Demo Talep Edin
               a.btn.gtr-btn-outline.btn-lg.px-4(href="#nasil-calisir") Nasıl Çalışır?
@@ -172,7 +168,7 @@ html(lang="tr")
                 |  #[code firmaniz.goturyzhn.com] adresinden erişebilirsiniz.
           .col-lg-5
             .gtr-hero-note
-              h2.h5.mb-3 Gotur VIP ile:
+              h2.h5.mb-3 Götür ile:
               ul.list-unstyled.mb-0.d-flex.flex-column.gap-3
                 li
                   i.fa-solid.fa-ticket.me-2
@@ -192,7 +188,7 @@ html(lang="tr")
         .text-center.mb-5
           h2.gtr-section-title.h1 Tek Platformda Uçtan Uca Otobüs İşletmeciliği
           p.gtr-section-subtitle.mx-auto(style="max-width:640px;")
-            | Satış öncesinden raporlamaya kadar tüm operasyon Gotur VIP içinde birleşiyor.
+            | Satış öncesinden raporlamaya kadar tüm operasyon Götür içinde birleşiyor.
         .row.g-4
           .col-md-6.col-lg-4
             .gtr-feature-card
@@ -253,17 +249,16 @@ html(lang="tr")
       .container
         .row.g-5.align-items-center
           .col-lg-6
-            h2.gtr-section-title.h1.mb-4 Çok Kiracılı (Multi-Tenant) Mimari, Tek Sistem
+            h2.gtr-section-title.h1.mb-4 Her Firmanın Verisi Kendine Özel, Sistem Tek
             p.gtr-section-subtitle.mb-4
-              | Gotur VIP'e kayıtlı her firma, kendi verilerinin tamamen izole tutulduğu ayrı bir veritabanına ve
-              |  kendine özel bir alt alan adına (subdomain) sahiptir. Bu sayede tüm firmalar aynı sistemi
-              |  kullanır, ancak birbirlerinin verilerini asla görmez.
+              | Götür'e kayıtlı her firmanın verileri birbirinden tamamen ayrı ve güvenli şekilde saklanır.
+              |  Tüm firmalar aynı güçlü sistemi kullanır, ancak hiçbir firma başka bir firmanın verisini görmez.
             .d-flex.flex-column.gap-3
               .gtr-step
                 .gtr-step-index 1
                 div
                   h3.h6.fw-bold.mb-1 Kayıt &amp; Kurulum
-                  p.gtr-section-subtitle.mb-0 Firmanız sisteme dahil edildiğinde size özel bir subdomain ve veritabanı otomatik olarak hazırlanır.
+                  p.gtr-section-subtitle.mb-0 Firmanız sisteme dahil edildiğinde size özel giriş adresiniz ve veritabanınız otomatik olarak hazırlanır.
               .gtr-step
                 .gtr-step-index 2
                 div
@@ -278,10 +273,10 @@ html(lang="tr")
             .p-4.p-lg-5.rounded-4(style="background:#0f172a;color:#fff;")
               h3.h5.mb-3
                 i.fa-solid.fa-lock.me-2
-                | Zaten bir Gotur VIP müşterisisiniz ve buraya mı yönlendirildiniz?
+                | Zaten bir Götür müşterisisiniz ve buraya mı yönlendirildiniz?
               p.mb-4(style="color:rgba(255,255,255,0.75);")
-                | Bu sayfa, subdomain belirtilmeden erişildiğinde gösterilen genel tanıtım sayfasıdır; firmanıza
-                |  özel giriş adresi bu sayfadan farklıdır.
+                | Bu sayfa, size özel adres belirtilmeden erişildiğinde gösterilen genel tanıtım sayfasıdır;
+                |  firmanıza özel giriş adresi bu sayfadan farklıdır.
               ul.list-unstyled.d-flex.flex-column.gap-2.mb-4
                 li
                   i.fa-solid.fa-check.text-success.me-2
@@ -319,7 +314,7 @@ html(lang="tr")
     section#iletisim
       .container
         .gtr-cta.p-4.p-lg-5.text-center
-          h2.h1.mb-3 Firmanız İçin Gotur VIP'i Deneyin
+          h2.h1.mb-3 Firmanız İçin Götür'ü Deneyin
           p.mb-4.mx-auto(style="max-width:560px;color:rgba(255,255,255,0.8);")
             | Firmanızı sisteme dahil etmek, mevcut hesabınızın adresini öğrenmek ya da genel bir sorunuz
             |  için bizimle iletişime geçebilirsiniz.
@@ -333,5 +328,5 @@ html(lang="tr")
 
     footer.py-4
       .container.d-flex.flex-wrap.justify-content-between.align-items-center.gap-2.gtr-footer
-        span © #{new Date().getFullYear()} Gotur VIP. Tüm hakları saklıdır.
-        span Otobüs &amp; Seyahat Firmaları İçin Çok Kiracılı ERP Platformu
+        span © #{new Date().getFullYear()} Götür. Tüm hakları saklıdır.
+        span Otobüs &amp; Seyahat Firmaları İçin ERP Platformu
