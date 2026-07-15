@@ -29,9 +29,9 @@ change them before deploying to any shared environment.
 | `PORT` | Port number Express listens on. |
 | `SESSION_SECRET` | Secret used to sign Express session cookies. |
 | `DB_*` | Connection settings for tenant specific databases. |
-| `DEFAULT_USER_PASSWORD` | Password for the seed tenant user that is created when a new tenant database is provisioned. |
 | `GOTUR_DB_*` | Connection settings for the common Gotur database that stores session and shared models. |
 | `RESERVATION_JOB_TENANT_KEYS` | A comma separated list of tenant identifiers processed by the reservation cleanup worker. |
+| `API_KEY_HASH_SECRET` | Secret used to HMAC-hash partner API keys before they are stored/compared (falls back to `SESSION_SECRET`). |
 
 All configuration keys are optional—if a value is missing in the `.env` file the
 code falls back to the safe default that was used previously. When running in
@@ -40,14 +40,21 @@ values.
 
 ## Tenant lifecycle tasks
 
-Most application features depend on tenant specific databases. When a new
-subdomain is requested for the first time the application will automatically:
+Most application features depend on tenant specific databases. A subdomain is
+only ever resolved to a tenant if there is a matching, `active` `Firm` record
+in the common Gotur database (see `utilities/database.js` and
+`utilities/tenantConfig.js`)—the subdomain itself is never used directly as a
+database name. When a new tenant's database is provisioned for the first time
+the application will automatically:
 
-- connect to the tenant database defined by `DB_*` using the subdomain as the
-  database name,
+- connect to the tenant database defined by `Firm.dbName` (resolved from the
+  `Firm.key` record, using the `DB_*` credentials),
 - run `sequelize.sync({ alter: true })` to ensure tables are created,
-- seed a default `FirmUser` with the username `GOTUR` and the password defined
-  by `DEFAULT_USER_PASSWORD`,
+- seed default `FirmUser` records (`GOTUR`, `WEB`, `goturbilet`) with a
+  randomly generated, unique-per-user password. The generated passwords are
+  printed to the server log **once** at creation time so an operator can hand
+  them to the firm; every seeded user has `forcePasswordReset: true` and must
+  change their password on first login,
 - populate the `Permission` table if it is empty.
 
 You can verify the connection by visiting a page under the tenant subdomain or
@@ -78,6 +85,21 @@ You can extend the job handler with any notification logic that your
 infrastructure requires (for example, sending alerts when reservations are
 canceled).
 Add notification hooks inside the job if a user/branch alert system is available.
+
+## Partner API keys
+
+Partner requests to `/api` must send a valid `X-Api-Key` (plus `X-Tenant-Key`)
+header, verified by `middlewares/apiKeyAuth.js`. Only a salted/HMAC **hash** of
+the key is ever stored in the `apiKey` table (`keyHash` column)—raw keys are
+never persisted. To issue a new key for a partner:
+
+```bash
+node build-scripts/generateApiKey.js
+```
+
+This prints a random raw key (hand it to the partner, it cannot be recovered
+later) and the corresponding hash, which should be inserted into the `apiKey`
+table's `keyHash` column for that tenant.
 
 ## Client Build Testing
 

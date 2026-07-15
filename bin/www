@@ -4,8 +4,6 @@
  * Module dependencies.
  */
 require('dotenv').config();
-const dotenvResult = require('dotenv').config();
-console.log("DOTENV TEST:", dotenvResult);
 var app = require('../app');
 var debug = require('debug')('gotur-vip:server');
 var http = require('http');

@@ -7,7 +7,6 @@ const TicketPaymentFactory = require("../models/ticketPaymentModel");
 const placesSeedData = require("../seeders/placeSeeder.json");
 const uetdsPlacesSeedData = require("../seeders/uetdsPlaceSeeder.json");
 
-console.log((process.env.GOTUR_DB_HOST, process.env.GOTUR_DB_PORT, process.env.GOTUR_DB_NAME, process.env.GOTUR_DB_USERNAME));
 const GOTUR_DB_NAME = process.env.GOTUR_DB_NAME
 const GOTUR_DB_USERNAME = process.env.GOTUR_DB_USERNAME
 const GOTUR_DB_PASSWORD = process.env.GOTUR_DB_PASSWORD
@@ -52,28 +51,30 @@ function initGoturModels() {
 
 async function getGoturSyncPromise() {
     if (!goturSyncPromise) {
-        try {
-            await goturDB.sync({});
+        // NOT: Daha önce burada `sync({})` kullanılıyordu; bu sadece eksik
+        // tabloları oluşturur, VAR OLAN tablolara yeni kolon eklemez (örn.
+        // TicketPayment.tenantKey). Tenant DB'lerinde zaten `alter: true`
+        // kullanıldığından, ortak DB'de de aynı stratejiyle tutarlı davranmak
+        // için `alter: true` kullanılıyor.
+        goturSyncPromise = goturDB.sync({ alter: true })
+            .then(async () => {
+                const placeCount = await goturModels.Place.count();
 
-            const placeCount = await goturModels.Place.count();
+                if (placeCount === 0 && Array.isArray(placesSeedData) && placesSeedData.length > 0) {
+                    await goturModels.Place.bulkCreate(placesSeedData, { ignoreDuplicates: true });
+                }
 
-            if (placeCount === 0 && Array.isArray(placesSeedData) && placesSeedData.length > 0) {
-                await goturModels.Place.bulkCreate(placesSeedData, { ignoreDuplicates: true });
-            }
+                const uetdsPlaceCount = await goturModels.UetdsPlace.count();
 
-            const uetdsPlaceCount = await goturModels.UetdsPlace.count();
-
-            if (uetdsPlaceCount === 0 && Array.isArray(uetdsPlacesSeedData) && uetdsPlacesSeedData.length > 0) {
-                await goturModels.UetdsPlace.bulkCreate(uetdsPlacesSeedData, { ignoreDuplicates: true });
-            }
-
-        } catch (error) {
-            console.error("Places tablosu başlangıç verileri yüklenirken hata oluştu:", error);
-        }
-        goturSyncPromise = goturDB.sync({}).catch((error) => {
-            goturSyncPromise = null;
-            throw error;
-        });
+                if (uetdsPlaceCount === 0 && Array.isArray(uetdsPlacesSeedData) && uetdsPlacesSeedData.length > 0) {
+                    await goturModels.UetdsPlace.bulkCreate(uetdsPlacesSeedData, { ignoreDuplicates: true });
+                }
+            })
+            .catch((error) => {
+                goturSyncPromise = null;
+                console.error("Ortak veritabanı senkronizasyonu/başlangıç verileri yüklenirken hata oluştu:", error);
+                throw error;
+            });
     }
 
     return goturSyncPromise;

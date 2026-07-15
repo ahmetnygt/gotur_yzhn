@@ -32,8 +32,11 @@ module.exports = (sequelize) => {
       type: DataTypes.BIGINT,
       allowNull: true,
     },
+    // FLOAT ikili (binary) kayan noktali bir sayi turudur; para tutarlari icin
+    // yuvarlama hatalarina (ornegin 19.99 + 0.01'in tam 20.00 cikmamasi) yol
+    // acabilir. DECIMAL(12,2), tam ondalikli aritmetik garanti eder.
     price: {
-      type: DataTypes.FLOAT,
+      type: DataTypes.DECIMAL(12, 2),
       allowNull: true,
     },
     status: {

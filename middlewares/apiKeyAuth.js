@@ -1,3 +1,6 @@
+const crypto = require("crypto");
+const { hashApiKey } = require("../utilities/apiKeyHash");
+
 module.exports = async (req, res, next) => {
     try {
         const ApiKey = req.commonModels.ApiKey; // Comes from initGoturModels
@@ -13,15 +16,32 @@ module.exports = async (req, res, next) => {
             return res.status(401).json({ error: "Tenant header is missing." });
         }
 
+        // GÜVENLİK DÜZELTMESİ: Artık düz metin `keyValue` ile eşleştirme
+        // yapılmıyor; gelen key hash'lenip `keyHash` ile karşılaştırılıyor.
+        // Böylece DB'de hiçbir zaman kullanılabilir/ham bir API key tutulmuyor.
+        const incomingKeyHash = hashApiKey(apiKey);
+
         const keyRecord = await ApiKey.findOne({
             where: {
-                keyValue: apiKey,
+                keyHash: incomingKeyHash,
                 tenantKey: tenant,
                 isActive: true
             }
         });
 
-        if (!keyRecord) {
+        if (!keyRecord || !keyRecord.keyHash) {
+            return res.status(403).json({ error: "Invalid or inactive API key." });
+        }
+
+        // Ekstra sabit zamanlı karşılaştırma: DB lookup zaten hash'e göre exact
+        // match yapıyor, ama bu ek kontrol savunma katmanı olarak korunuyor.
+        const storedHashBuffer = Buffer.from(keyRecord.keyHash);
+        const incomingHashBuffer = Buffer.from(incomingKeyHash);
+        const isMatch =
+            storedHashBuffer.length === incomingHashBuffer.length &&
+            crypto.timingSafeEqual(storedHashBuffer, incomingHashBuffer);
+
+        if (!isMatch) {
             return res.status(403).json({ error: "Invalid or inactive API key." });
         }
 

@@ -23,6 +23,45 @@ function __GTR_abortTripGroup() {
 }
 // --- end abort helpers ---
 
+// --- HTML escape helper (XSS mitigation) ---
+// Sunucudan gelen serbest metin alanları (title, name, description, plaka
+// vb.) template literal'lar içinde doğrudan `.html()`/`.append()`'e
+// veriliyordu; bu değerler HTML/attribute içine kaçış (escape) yapılmadan
+// basıldığında saklı XSS'e yol açar (örn. bir otobüs modeli başlığı
+// `"><img src=x onerror=...>` olsaydı çalışırdı). Bu yardımcı, metni HTML
+// içine güvenle gömülebilecek şekilde escape eder.
+function escapeHtml(value) {
+    if (value === null || value === undefined) return "";
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+// --- end HTML escape helper ---
+
+// --- CSRF token auto-attach (double submit cookie) ---
+// Sunucu her istekte "XSRF-TOKEN" adında (httpOnly=false) bir cookie
+// yazıyor (bkz. middlewares/csrf.js). Bu değeri okuyup her AJAX isteğine
+// header olarak ekleyerek, tüm mevcut $.ajax/$.post çağrılarını tek
+// merkezden CSRF korumasına dahil ediyoruz; her çağrıyı ayrı ayrı
+// değiştirmeye gerek kalmıyor.
+function getCookieValue(name) {
+    const escaped = name.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1");
+    const match = document.cookie.match(new RegExp("(?:^|; )" + escaped + "=([^;]*)"));
+    return match ? decodeURIComponent(match[1]) : null;
+}
+$.ajaxSetup({
+    beforeSend: function (xhr) {
+        const token = getCookieValue("XSRF-TOKEN");
+        if (token) {
+            xhr.setRequestHeader("X-CSRF-Token", token);
+        }
+    }
+});
+// --- end CSRF token auto-attach ---
+
 // --- Toast / Notification Utility (accessibility-friendly) ---
 (function () {
     if (!document.getElementById('gtr-toast-container')) {
@@ -1277,6 +1316,21 @@ if (userProfilePopupEl) {
     populateProfileForm();
 }
 
+// Sunucu, kullanıcının şifresini ilk girişte (veya bir yönetici tarafından)
+// değiştirmesi gerektiğini bildirdiyse, şifre değiştirme penceresini otomatik
+// aç ve kapatma yollarını devre dışı bırak. Sunucu tarafı (authentication.js)
+// zaten şifre değiştirilene kadar tüm veri değiştiren istekleri 403 ile
+// reddediyor; bu sadece kullanıcıya bunu net biçimde göstermek içindir.
+if (document.body?.dataset?.mustChangePassword === "true" && changePasswordPopupEl) {
+    showChangePasswordPopup();
+    $(".change-password-close, .change-password-cancel").css("display", "none");
+    if (!document.getElementById("changePasswordMandatoryNotice")) {
+        $(changePasswordPopupEl).find("form#changePasswordForm .p-3").prepend(
+            '<p id="changePasswordMandatoryNotice" class="text-danger mb-0">Devam etmeden önce şifrenizi değiştirmeniz gerekiyor.</p>'
+        );
+    }
+}
+
 $(".user-menu-profile").on("click", e => {
     e.preventDefault();
     showUserProfilePopup();
@@ -1856,7 +1910,7 @@ async function loadTrip(date, time, tripId) {
             // ---- Moving mode ----
             if (isMovingActive) {
                 $(".move-to-trip-date").html(`${new Date(currentTripDate).getDate()}/${Number(new Date(currentTripDate).getMonth()) + 1} | ${currentTripPlaceTime.split(":")[0] + "." + currentTripPlaceTime.split(":")[1]}`);
-                $(".move-to-trip-place").html(`${currentStopStr}`);
+                $(".move-to-trip-place").text(currentStopStr);
                 $(".move-to").css("display", "flex");
                 // TAKEN seats (group) behavior
                 if (isTaken) {
@@ -2108,8 +2162,8 @@ async function loadTrip(date, time, tripId) {
                     const busModelId = $(this).val();
 
                     $plateEl.val("");
-                    $(".captain-name").html("");
-                    $(".captain-phone").html("");
+                    $(".captain-name").text("");
+                    $(".captain-phone").text("");
 
                     try {
                         await $.post("/post-trip-bus-plan", { tripId: currentTripId, busModelId });
@@ -2152,8 +2206,8 @@ async function loadTrip(date, time, tripId) {
                     } else {
                         $planEl.val(busModelTitle || "");
                     }
-                    $(".captain-name").html(captainName || "");
-                    $(".captain-phone").html(captainPhone || "");
+                    $(".captain-name").text(captainName || "");
+                    $(".captain-phone").text(captainPhone || "");
 
                     try {
                         await $.post("/post-trip-bus", { tripId: currentTripId, busId });
@@ -2172,8 +2226,11 @@ async function loadTrip(date, time, tripId) {
                         const modelTitle = busModels.find(bm => bm.id === selectedBus.busModelId)?.title || "";
                         $planEl.val(modelTitle);
                     }
-                    $(".captain-name").html(selectedBus.captain ? `${selectedBus.captain.name} ${selectedBus.captain.surname}` : "");
-                    $(".captain-phone").html(selectedBus.captain ? selectedBus.captain.phoneNumber : "");
+                    // GUVENLIK DUZELTMESI (XSS): duz metin icin .html() yerine
+                    // .text() kullaniliyor; boylece kaptan adi/telefonu HTML
+                    // olarak yorumlanmiyor.
+                    $(".captain-name").text(selectedBus.captain ? `${selectedBus.captain.name} ${selectedBus.captain.surname}` : "");
+                    $(".captain-phone").text(selectedBus.captain ? selectedBus.captain.phoneNumber : "");
                 }
             }
         } catch (err) {
@@ -2223,7 +2280,7 @@ async function loadTrip(date, time, tripId) {
                     if (currentTripPlaceTime)
                         $(".move-to-trip-date").html(`${new Date(currentTripDate).getDate()}/${Number(new Date(currentTripDate).getMonth()) + 1} | ${currentTripPlaceTime.split(":")[0] + "." + currentTripPlaceTime.split(":")[1]}`);
                     if (currentStopStr)
-                        $(".move-to-trip-place").html(`${currentStopStr}`);
+                        $(".move-to-trip-place").text(currentStopStr);
                     $(".move-to-trip-place-select").val(targetValue);
                     $(".move-to").css("display", "flex");
                 }
@@ -2249,7 +2306,7 @@ async function loadTrip(date, time, tripId) {
                 revenues.branches.forEach(b => {
                     rows.push(`
                         <tr>
-                            <td>${b.title}</td>
+                            <td>${escapeHtml(b.title)}</td>
                             <td>${b.currentCount}</td>
                             <td>${b.currentAmount}₺</td>
                             <td>${b.totalCount}</td>
@@ -2278,9 +2335,9 @@ async function loadTrip(date, time, tripId) {
                     const drivers = staffs.filter(s => s.duty === "driver");
                     const assistants = staffs.filter(s => s.duty === "assistant");
                     const hostesses = staffs.filter(s => s.duty === "hostess");
-                    const driverOpts = drivers.map(d => `<option value="${d.id}">${d.name} ${d.surname}</option>`).join("");
-                    const assistantOpts = assistants.map(a => `<option value="${a.id}">${a.name} ${a.surname}</option>`).join("");
-                    const hostessOpts = hostesses.map(h => `<option value="${h.id}">${h.name} ${h.surname}</option>`).join("");
+                    const driverOpts = drivers.map(d => `<option value="${d.id}">${escapeHtml(d.name)} ${escapeHtml(d.surname)}</option>`).join("");
+                    const assistantOpts = assistants.map(a => `<option value="${a.id}">${escapeHtml(a.name)} ${escapeHtml(a.surname)}</option>`).join("");
+                    const hostessOpts = hostesses.map(h => `<option value="${h.id}">${escapeHtml(h.name)} ${escapeHtml(h.surname)}</option>`).join("");
                     $(".trip-staff-captain, .trip-staff-second, .trip-staff-third").html(`<option value="">Seçilmedi</option>` + driverOpts);
                     $(".trip-staff-assistant").html(`<option value="">Seçilmedi</option>` + assistantOpts);
                     $(".trip-staff-hostess").html(`<option value="">Seçilmedi</option>` + hostessOpts);
@@ -2644,7 +2701,11 @@ async function loadTrip(date, time, tripId) {
         });
 
         // Open/close Ticket operations menu
-        $(".ticket-op").on("click", e => {
+        // DÜZELTME: .off() eksikti; loadTrip her çağrıldığında (sefer
+        // değiştirildiğinde/yenilendiğinde) aynı elemente ek bir click
+        // handler'ı daha bağlanıyor, bu da tek tıklamada işlemin N kez
+        // tetiklenmesine (handler yığılmasına) yol açıyordu.
+        $(".ticket-op").off("click").on("click", e => {
             e.stopPropagation();
             $(".ticket-op ul").css("display", "none");
             const ul = e.currentTarget.querySelector("ul");
@@ -2660,12 +2721,17 @@ async function loadTrip(date, time, tripId) {
         });
 
         // Ticket-op button
-        $(".ticket-op-button").on("click", async e => {
+        $(".ticket-op-button").off("click").on("click", async e => {
             const button = e.currentTarget;
             const action = e.currentTarget.dataset.action;
             const fromIdLocal = currentStop;
             const toIdLocal = button.dataset.stopId;
 
+            // DÜZELTME: seatTypes handler başında sıfırlanmıyordu; önceki bir
+            // çağrıda hata olup "success" callback'ine ulaşılamazsa (satır
+            // ~2716'daki reset atlanır) dizi bir sonraki tıklamada da eski
+            // koltuk tiplerini biriktirmeye devam ediyordu.
+            seatTypes = [];
             for (let i = 0; i < selectedSeats.length; i++) {
                 const seat = selectedSeats[i];
                 seatTypes.push($(`.seat-${seat}`).data("seat-type"));
@@ -2690,8 +2756,8 @@ async function loadTrip(date, time, tripId) {
                         stopId: currentStop
                     },
                     success: function (response) {
-                        $(".ticket-info-pop-up_from").html(currentStopStr.toLocaleUpperCase());
-                        $(".ticket-info-pop-up_to").html(button.dataset.routeStop.toLocaleUpperCase());
+                        $(".ticket-info-pop-up_from").text(currentStopStr.toLocaleUpperCase());
+                        $(".ticket-info-pop-up_to").text(button.dataset.routeStop.toLocaleUpperCase());
                         $(".ticket-row").remove();
                         $(".ticket-info").remove();
                         $(".ticket-button-action").attr("data-action", action);
@@ -3086,7 +3152,10 @@ async function loadTrip(date, time, tripId) {
             $(".account-cut-popup .account-needtopay").val(need.toFixed(2));
         }
 
-        $(".account-cut-popup .account-deduction1, .account-cut-popup .account-deduction2, .account-cut-popup .account-deduction3, .account-cut-popup .account-deduction4, .account-cut-popup .account-deduction5, .account-cut-popup .account-tip").on("input", updateAccountNeedToPay);
+        // DUZELTME: .off("input") eksikti; loadTrip yeniden cagrildiginda
+        // ayni input alanina tekrar tekrar handler eklenip her tusa
+        // basista updateAccountNeedToPay() N kez calismaya basliyordu.
+        $(".account-cut-popup .account-deduction1, .account-cut-popup .account-deduction2, .account-cut-popup .account-deduction3, .account-cut-popup .account-deduction4, .account-cut-popup .account-deduction5, .account-cut-popup .account-tip").off("input").on("input", updateAccountNeedToPay);
 
     } catch (error) {
         console.log(error);
@@ -4296,11 +4365,16 @@ $(".taken-ticket-op").on("click", async e => {
 
                 selectedTakenSeats = []
 
-                $(".ticket-cancel-box").on("click", e => {
+                // .off() eksikti: bu popup her açıldığında (cancel akışı
+                // tekrar tetiklendiğinde) aynı elemente yeni bir click
+                // handler'ı ekleniyor, tıklamalar N kez tetikleniyordu.
+                $(".ticket-cancel-box").off("click").on("click", e => {
                     if (e.currentTarget.classList.contains("selected")) {
                         e.currentTarget.classList.remove("selected")
                         selectedTakenSeats = selectedTakenSeats.filter(i => i !== e.currentTarget.dataset.seatNumber);
-                        if (selectedTakenSeats > 0) {
+                        // BUG: dizi referansı (her zaman truthy) 0 ile
+                        // karşılaştırılıyordu; .length kontrolü doğru olan.
+                        if (selectedTakenSeats.length > 0) {
                             $(".cancel-action-button").html(`${selectedTakenSeats.length} BİLETİ İPTAL ET`)
                             $(".cancel-action-button").removeClass("disabled")
                         }
@@ -4350,11 +4424,16 @@ $(".taken-ticket-op").on("click", async e => {
 
                 selectedTakenSeats = []
 
-                $(".ticket-cancel-box").on("click", e => {
+                // .off() eksikti: bu popup her açıldığında (iade akışı
+                // tekrar tetiklendiğinde) aynı elemente yeni bir click
+                // handler'ı ekleniyor, tıklamalar N kez tetikleniyordu.
+                $(".ticket-cancel-box").off("click").on("click", e => {
                     if (e.currentTarget.classList.contains("selected")) {
                         e.currentTarget.classList.remove("selected")
                         selectedTakenSeats = selectedTakenSeats.filter(i => i !== e.currentTarget.dataset.seatNumber);
-                        if (selectedTakenSeats > 0) {
+                        // BUG: dizi referansı (her zaman truthy) 0 ile
+                        // karşılaştırılıyordu; .length kontrolü doğru olan.
+                        if (selectedTakenSeats.length > 0) {
                             $(".cancel-action-button").html(`${selectedTakenSeats.length} BİLETİ İADE ET`)
                             $(".cancel-action-button").removeClass("disabled")
                         }
@@ -4404,11 +4483,16 @@ $(".taken-ticket-op").on("click", async e => {
 
                 selectedTakenSeats = []
 
-                $(".ticket-cancel-box").on("click", e => {
+                // .off() eksikti: bu popup her açıldığında (açığa alma
+                // akışı tekrar tetiklendiğinde) aynı elemente yeni bir
+                // click handler'ı ekleniyor, tıklamalar N kez tetikleniyordu.
+                $(".ticket-cancel-box").off("click").on("click", e => {
                     if (e.currentTarget.classList.contains("selected")) {
                         e.currentTarget.classList.remove("selected")
                         selectedTakenSeats = selectedTakenSeats.filter(i => i !== e.currentTarget.dataset.seatNumber);
-                        if (selectedTakenSeats > 0) {
+                        // BUG: dizi referansı (her zaman truthy) 0 ile
+                        // karşılaştırılıyordu; .length kontrolü doğru olan.
+                        if (selectedTakenSeats.length > 0) {
                             $(".cancel-action-button").html(`${selectedTakenSeats.length} BİLETİ AÇIĞA AL`)
                             $(".cancel-action-button").removeClass("disabled")
                         }
@@ -4499,7 +4583,7 @@ $(".taken-ticket-op").on("click", async e => {
                             if (currentTripPlaceTime)
                                 $(".move-to-trip-date").html(`${new Date(currentTripDate).getDate()}/${Number(new Date(currentTripDate).getMonth()) + 1} | ${currentTripPlaceTime.split(":")[0] + "." + currentTripPlaceTime.split(":")[1]}`);
                             if (currentStopStr)
-                                $(".move-to-trip-place").html(`${currentStopStr}`);
+                                $(".move-to-trip-place").text(currentStopStr);
                             $(".move-to-trip-place-select").val(targetValue);
                             $(".move-to").css("display", "flex");
                         }
@@ -4602,7 +4686,7 @@ $(".taken-ticket-op").on("click", async e => {
                             if (currentTripPlaceTime)
                                 $(".move-to-trip-date").html(`${new Date(currentTripDate).getDate()}/${Number(new Date(currentTripDate).getMonth()) + 1} | ${currentTripPlaceTime.split(":")[0] + "." + currentTripPlaceTime.split(":")[1]}`);
                             if (currentStopStr)
-                                $(".move-to-trip-place").html(`${currentStopStr}`);
+                                $(".move-to-trip-place").text(currentStopStr);
                             $(".move-to-trip-place-select").val(targetValue);
                             $(".move-to").css("display", "flex");
                         }
@@ -5045,8 +5129,8 @@ $("a.open-ticket-nav").on("click", async e => {
             fromSelect.append(`<option value="" selected>Seçiniz</option>`)
             toSelect.append(`<option value="" selected>Seçiniz</option>`)
             stops.forEach(s => {
-                fromSelect.append(`<option value="${s.id}">${s.title}</option>`)
-                toSelect.append(`<option value="${s.id}">${s.title}</option>`)
+                fromSelect.append(`<option value="${s.id}">${escapeHtml(s.title)}</option>`)
+                toSelect.append(`<option value="${s.id}">${escapeHtml(s.title)}</option>`)
             })
         },
         error: function (xhr, status, error) {
@@ -5111,8 +5195,8 @@ $(".open-ticket-next").on("click", async e => {
                 }
             })
             $(".open-ticket-sale").css("display", "none")
-            $(".ticket-info-pop-up_from").html($(`.open-ticket-from option[value=${fromId}]`).text().toLocaleUpperCase())
-            $(".ticket-info-pop-up_to").html($(`.open-ticket-from option[value=${toId}]`).text().toLocaleUpperCase())
+            $(".ticket-info-pop-up_from").text($(`.open-ticket-from option[value=${fromId}]`).text().toLocaleUpperCase())
+            $(".ticket-info-pop-up_to").text($(`.open-ticket-from option[value=${toId}]`).text().toLocaleUpperCase())
             $(".ticket-header--date").html("AÇIK BİLET")
             $(".ticket-button-action").attr("data-action", "sell_open")
             $(".ticket-button-action").html("AÇIK BİLET SAT")
@@ -5297,7 +5381,7 @@ $(".other-register-nav").on("click", async e => {
         success: function (branches) {
             branchSelect.append(`<option value="">Şube Seçiniz</option>`)
             branches.forEach(b => {
-                branchSelect.append(`<option value="${b.id}">${b.title}</option>`)
+                branchSelect.append(`<option value="${b.id}">${escapeHtml(b.title)}</option>`)
             })
         },
         error: function (xhr, status, error) {
@@ -5325,7 +5409,7 @@ $(".other-register-branch").on("change", async e => {
             success: function (response) {
                 userSelect.append(`<option value="">Kullanıcı Seçiniz</option>`)
                 response.forEach(u => {
-                    userSelect.append(`<option value="${u.id}">${u.name}</option>`)
+                    userSelect.append(`<option value="${u.id}">${escapeHtml(u.name)}</option>`)
                 })
             }
         })
@@ -5431,10 +5515,6 @@ $(".add-transaction-button").on("click", async e => {
                                 const inSum = cashSales + cardSales + transferIn + otherIn
                                 const outSum = cashRefund + cardRefund + payedToBus + transferOut + otherOut
                                 const balance = inSum - outSum
-                                console.log(response)
-                                console.log(inSum)
-                                console.log(outSum)
-                                console.log(balance)
                                 $(".balance").val(balance)
                                 $(".income-summary").val(inSum)
                                 $(".expense-summary").val(outSum)
@@ -5506,7 +5586,7 @@ const openBusTransactionModal = async type => {
         const buses = await $.ajax({ url: "/get-buses-data", type: "GET" });
         buses.forEach(b => {
             const plate = b.licensePlate ? b.licensePlate : `Bus #${b.id}`;
-            select.append(`<option value="${b.id}">${plate}</option>`);
+            select.append(`<option value="${b.id}">${escapeHtml(plate)}</option>`);
         });
     } catch (err) {
         const message = err?.responseJSON?.message || err?.responseText || err?.statusText || err?.message;
@@ -5607,13 +5687,18 @@ $(".bus-plans-nav").on("click", async e => {
         success: function (busModels) {
             activeBusPlanCount = Array.isArray(busModels) ? busModels.length : 0
             busModels.forEach(b => {
+                // XSS DUZELTMESI: b.title/b.description sunucudan gelen
+                // serbest metin; escape edilmeden hem attribute (data-title)
+                // hem de element icerigine basiliyordu.
+                const safeTitle = escapeHtml(b.title);
+                const safeDescription = escapeHtml(b.description);
                 list.append(`
                     <div class="btn-group w-100">
-                        <button type="button" class="btn btn-outline-primary bus-plan-button d-flex col-11" data-id="${b.id}" data-title="${b.title}">
-                            <div class="col-6"><p class="text-center mb-0">${b.title}</p></div>
-                            <div class="col-6"><p class="text-center mb-0">${b.description}</p></div>
+                        <button type="button" class="btn btn-outline-primary bus-plan-button d-flex col-11" data-id="${b.id}" data-title="${safeTitle}">
+                            <div class="col-6"><p class="text-center mb-0">${safeTitle}</p></div>
+                            <div class="col-6"><p class="text-center mb-0">${safeDescription}</p></div>
                         </button>
-                        <button type="button" class="btn btn-outline-danger bus-plan-delete col-1" data-id="${b.id}" data-title="${b.title}">
+                        <button type="button" class="btn btn-outline-danger bus-plan-delete col-1" data-id="${b.id}" data-title="${safeTitle}">
                             <i class="fa-solid fa-trash"></i>
                         </button>
                     </div>
@@ -6073,7 +6158,7 @@ $(".bus-nav").on("click", async e => {
         success: function (models) {
             modelSelect.append(`<option value="" selected></option>`)
             models.forEach(b => {
-                modelSelect.append(`<option value="${b.id}">${b.title}</option>`)
+                modelSelect.append(`<option value="${b.id}">${escapeHtml(b.title)}</option>`)
             })
         }
     })
@@ -6085,7 +6170,7 @@ $(".bus-nav").on("click", async e => {
         success: function (staff) {
             captainSelect.append(`<option value="" selected></option>`)
             staff.filter(s => s.duty === "driver").forEach(s => {
-                captainSelect.append(`<option value="${s.id}">${s.name} ${s.surname}</option>`)
+                captainSelect.append(`<option value="${s.id}">${escapeHtml(s.name)} ${escapeHtml(s.surname)}</option>`)
             })
         }
     })
@@ -6416,7 +6501,7 @@ $(".stops-nav").on("click", async e => {
         success: function (places) {
             placeSelect.append(`<option value="" selected></option>`)
             places.forEach(p => {
-                placeSelect.append(`<option value="${p.id}">${p.title}</option>`)
+                placeSelect.append(`<option value="${p.id}">${escapeHtml(p.title)}</option>`)
             })
             refreshSearchableSelect(placeSelect)
         },
@@ -6756,7 +6841,7 @@ $(".route-nav").on("click", async e => {
                 success: function (stops) {
                     const opts = ['<option value="" selected></option>']
                     for (const s of stops) {
-                        opts.push(`<option value="${s.id}">${s.title}</option>`)
+                        opts.push(`<option value="${s.id}">${escapeHtml(s.title)}</option>`)
                     }
                     const routeStopPlaceSelect = $(".route-stop-place")
                     routeStopPlaceSelect.html(opts.join(""))
@@ -6858,44 +6943,51 @@ $(".add-route").on("click", e => {
 
 const timeInput = document.querySelector(".route-stop-duration");
 
-// Add ":" after 2 digits while typing
-timeInput.addEventListener("input", () => {
-    let val = timeInput.value.replace(/[^0-9]/g, ""); // numbers only
+// DUZELTME: Bu script her ERP sayfasinda yuklendigi icin, ".route-stop-duration"
+// elementi mevcut sayfada bulunmuyorsa `timeInput` null olur ve asagidaki
+// addEventListener cagrisi ust seviyede (top-level) yakalanmamis bir
+// TypeError firlatarak erp.js'in kalanini calistirmadan durdururdu. Asagidaki
+// null kontrolu satir ~6994'teki (.duration-input) ayni deseni takip ediyor.
+if (timeInput) {
+    // Add ":" after 2 digits while typing
+    timeInput.addEventListener("input", () => {
+        let val = timeInput.value.replace(/[^0-9]/g, ""); // numbers only
 
-    if (val.length > 2) {
-        val = val.slice(0, 2) + ":" + val.slice(2, 4);
-    }
+        if (val.length > 2) {
+            val = val.slice(0, 2) + ":" + val.slice(2, 4);
+        }
 
-    timeInput.value = val;
-});
+        timeInput.value = val;
+    });
 
 
-// Validate on blur
-timeInput.addEventListener("blur", () => {
-    let value = timeInput.value;
+    // Validate on blur
+    timeInput.addEventListener("blur", () => {
+        let value = timeInput.value;
 
-    if (!value.includes(":")) return (timeInput.value = "");
+        if (!value.includes(":")) return (timeInput.value = "");
 
-    let [hh, mm] = value.split(":").map(v => parseInt(v, 10));
+        let [hh, mm] = value.split(":").map(v => parseInt(v, 10));
 
-    if (isNaN(hh) || isNaN(mm)) {
-        timeInput.value = "";
-        return;
-    }
+        if (isNaN(hh) || isNaN(mm)) {
+            timeInput.value = "";
+            return;
+        }
 
-    // Fix hour range
-    if (hh < 0) hh = 0;
-    if (hh > 23) hh = 23;
+        // Fix hour range
+        if (hh < 0) hh = 0;
+        if (hh > 23) hh = 23;
 
-    // Fix minute range
-    if (mm < 0) mm = 0;
-    if (mm > 59) mm = 59;
+        // Fix minute range
+        if (mm < 0) mm = 0;
+        if (mm > 59) mm = 59;
 
-    // Pad single digits with 0
-    timeInput.value = `${hh.toString().padStart(2, "0")}:${mm
-        .toString()
-        .padStart(2, "0")}`;
-});
+        // Pad single digits with 0
+        timeInput.value = `${hh.toString().padStart(2, "0")}:${mm
+            .toString()
+            .padStart(2, "0")}`;
+    });
+}
 
 $(".add-route-stop-button").on("click", async e => {
     const stopId = $(".route-stop-place").val()
@@ -7194,7 +7286,7 @@ const resetPriceAddRow = () => {
         const field = select.data("field");
         let options = '<option value="">Seçiniz</option>';
         priceStops.forEach(pl => {
-            options += `<option value="${pl.id}">${pl.title}</option>`;
+            options += `<option value="${pl.id}">${escapeHtml(pl.title)}</option>`;
         });
         select.html(options);
         select.val("");
@@ -7434,15 +7526,15 @@ $(".add-trip").on("click", async e => {
 
         const routeSelect = $(".trip-route")
         routeSelect.empty().append('<option value="" selected></option>')
-        routes.forEach(r => routeSelect.append(`<option value="${r.id}">${r.title}</option>`))
+        routes.forEach(r => routeSelect.append(`<option value="${r.id}">${escapeHtml(r.title)}</option>`))
 
         const modelSelect = $(".trip-bus-model")
         modelSelect.empty().append('<option value="" selected></option>')
-        busModels.forEach(bm => modelSelect.append(`<option value="${bm.id}">${bm.title}</option>`))
+        busModels.forEach(bm => modelSelect.append(`<option value="${bm.id}">${escapeHtml(bm.title)}</option>`))
 
         const busSelect = $(".trip-bus")
         busSelect.empty().append('<option value="" selected></option>')
-        buses.forEach(b => busSelect.append(`<option value="${b.id}">${b.licensePlate}</option>`))
+        buses.forEach(b => busSelect.append(`<option value="${b.id}">${escapeHtml(b.licensePlate)}</option>`))
     } catch (err) {
         console.log(err)
     }
@@ -7558,7 +7650,7 @@ async function loadBranchOptions() {
 
     const stopOptions = ["<option value=\"\" selected></option>"];
     for (const s of stops) {
-        stopOptions.push(`<option value="${s.id}">${s.title}</option>`);
+        stopOptions.push(`<option value="${s.id}">${escapeHtml(s.title)}</option>`);
     }
     $(".branch-place").html(stopOptions);
 
@@ -7571,7 +7663,7 @@ async function loadBranchOptions() {
     const branchOptions = ["<option value=\"\" selected></option>"];
     for (const b of branches) {
         if (b.isMainBranch) {
-            branchOptions.push(`<option value="${b.id}">${b.title}</option>`);
+            branchOptions.push(`<option value="${b.id}">${escapeHtml(b.title)}</option>`);
         }
     }
     $(".branch-main-branch").html(branchOptions);
@@ -7797,7 +7889,7 @@ function renderPermissions(perms) {
         if (perms[m]) {
             perms[m].forEach(p => {
                 const id = `perm-${p.id}`;
-                container.append(`<div class="form-check"><input class="form-check-input permission-checkbox" type="checkbox" value="${p.id}" id="${id}" ${p.allow ? 'checked' : ''}><label class="form-check-label" for="${id}">${p.description}</label></div>`);
+                container.append(`<div class="form-check"><input class="form-check-input permission-checkbox" type="checkbox" value="${p.id}" id="${id}" ${p.allow ? 'checked' : ''}><label class="form-check-label" for="${id}">${escapeHtml(p.description)}</label></div>`);
             });
         }
         updateSelectAllCheckbox(m);
@@ -7828,7 +7920,7 @@ $(".user-settings-nav").on("click", async e => {
         success: function (branches) {
             branchSelect.append(`<option value="" selected></option>`)
             branches.forEach(b => {
-                branchSelect.append(`<option value="${b.id}">${b.title}</option>`)
+                branchSelect.append(`<option value="${b.id}">${escapeHtml(b.title)}</option>`)
             })
         },
         error: function (xhr, status, error) {
@@ -8006,59 +8098,6 @@ $(".customer-nav").on("click", async e => {
             });
             $(".member-info-pointorpercent").on("change", updateMemberPointInputsState);
             $(".member-info-category").on("change", updateMemberPointOrPercentAvailability);
-            $(".member-ticket-go-trip").on("click", async function (e) {
-                e.preventDefault();
-
-                const $btn = $(this);
-                clearMemberTicketFeedback($btn);
-                const tripId = $btn.data("tripId");
-                const tripDate = $btn.data("tripDate");
-                const tripTime = $btn.data("tripTime");
-
-                if (!tripId || !tripDate || !tripTime) {
-                    showMemberTicketFeedback($btn, "Bu bilet için aktif bir sefer bulunamadı.");
-                    return;
-                }
-
-                const previousTripState = {
-                    id: currentTripId,
-                    date: currentTripDate,
-                    time: currentTripTime
-                };
-
-                $btn.prop("disabled", true);
-
-                try {
-                    await loadTrip(tripDate, tripTime, tripId);
-
-                    currentTripId = tripId;
-                    currentTripDate = tripDate;
-                    currentTripTime = tripTime;
-
-                    $(".member-info").css("display", "none");
-                    $(".blackout").css("display", "none");
-                } catch (error) {
-                    currentTripId = previousTripState.id;
-                    currentTripDate = previousTripState.date;
-                    currentTripTime = previousTripState.time;
-
-                    const status = error?.status || error?.statusCode || error?.responseJSON?.status;
-                    const errorCode = error?.responseJSON?.code || error?.responseJSON?.errorCode;
-                    const notFound = status === 404 || errorCode === "TRIP_NOT_FOUND";
-
-                    if (notFound) {
-                        const fallbackMessage = "Bu bilet için aktif bir sefer bulunamadı.";
-                        const message = error?.responseJSON?.message || fallbackMessage;
-                        console.warn("Trip not found for ticket", { tripId, tripDate, tripTime, error });
-                        showMemberTicketFeedback($btn, message);
-                    } else {
-                        console.error(error);
-                        showError("Sefer bilgisi yüklenemedi.");
-                    }
-                } finally {
-                    $btn.prop("disabled", false);
-                }
-            });
         },
         error: function (xhr, status, error) {
             console.log(error);
@@ -8066,13 +8105,75 @@ $(".customer-nav").on("click", async e => {
     })
 })
 
+// DUZELTME: ".member-ticket-go-trip" butonlari bu callback calistiginda
+// henuz DOM'da yok (".member-ticket-list" icerigi ayri/sonraki bir ajax
+// cagrisiyla - openCustomerInfoPopup -> /get-member-tickets - doldurulur),
+// bu yuzden dogrudan .on("click") baglama hicbir zaman eslesmiyordu ve
+// "Sefere git" butonlari calismiyordu. document uzerinden event delegation
+// kullanmak, buton ne zaman eklenirse eklensin calismasini garanti eder.
+// Ayni handler tekrar tekrar baglanmamasi icin .off() ile once eski delege
+// handler kaldiriliyor (diger iki ayni-isim call site'i ile de tutarli).
+$(document).off("click.memberTicketGoTrip").on("click.memberTicketGoTrip", ".member-ticket-go-trip", async function (e) {
+    e.preventDefault();
+
+    const $btn = $(this);
+    clearMemberTicketFeedback($btn);
+    const tripId = $btn.data("tripId");
+    const tripDate = $btn.data("tripDate");
+    const tripTime = $btn.data("tripTime");
+
+    if (!tripId || !tripDate || !tripTime) {
+        showMemberTicketFeedback($btn, "Bu bilet için aktif bir sefer bulunamadı.");
+        return;
+    }
+
+    const previousTripState = {
+        id: currentTripId,
+        date: currentTripDate,
+        time: currentTripTime
+    };
+
+    $btn.prop("disabled", true);
+
+    try {
+        await loadTrip(tripDate, tripTime, tripId);
+
+        currentTripId = tripId;
+        currentTripDate = tripDate;
+        currentTripTime = tripTime;
+
+        $(".member-info").css("display", "none");
+        $(".blackout").css("display", "none");
+    } catch (error) {
+        currentTripId = previousTripState.id;
+        currentTripDate = previousTripState.date;
+        currentTripTime = previousTripState.time;
+
+        const status = error?.status || error?.statusCode || error?.responseJSON?.status;
+        const errorCode = error?.responseJSON?.code || error?.responseJSON?.errorCode;
+        const notFound = status === 404 || errorCode === "TRIP_NOT_FOUND";
+
+        if (notFound) {
+            const fallbackMessage = "Bu bilet için aktif bir sefer bulunamadı.";
+            const message = error?.responseJSON?.message || fallbackMessage;
+            console.warn("Trip not found for ticket", { tripId, tripDate, tripTime, error });
+            showMemberTicketFeedback($btn, message);
+        } else {
+            console.error(error);
+            showError("Sefer bilgisi yüklenemedi.");
+        }
+    } finally {
+        $btn.prop("disabled", false);
+    }
+});
+
 $(".announcement-add-nav").on("click", async e => {
     const branchSelect = $(".announcement-branch")
     branchSelect.empty()
     branchSelect.append(`<option value="" selected>Herkes</option>`)
     try {
         const branches = await $.ajax({ url: "/get-branches-list", type: "GET", data: { onlyData: true, isJustActives: false } })
-        branches.forEach(b => branchSelect.append(`<option value="${b.id}">${b.title}</option>`))
+        branches.forEach(b => branchSelect.append(`<option value="${b.id}">${escapeHtml(b.title)}</option>`))
     } catch (err) {
         console.log(err)
     }
@@ -8145,59 +8246,10 @@ $(".customer-search-btn").on("click", async e => {
             });
             $(".member-info-pointorpercent").on("change", updateMemberPointInputsState);
             $(".member-info-category").on("change", updateMemberPointOrPercentAvailability);
-            $(".member-ticket-go-trip").on("click", async function (e) {
-                e.preventDefault();
-
-                const $btn = $(this);
-                clearMemberTicketFeedback($btn);
-                const tripId = $btn.data("tripId");
-                const tripDate = $btn.data("tripDate");
-                const tripTime = $btn.data("tripTime");
-
-                if (!tripId || !tripDate || !tripTime) {
-                    showMemberTicketFeedback($btn, "Bu bilet için aktif bir sefer bulunamadı.");
-                    return;
-                }
-
-                const previousTripState = {
-                    id: currentTripId,
-                    date: currentTripDate,
-                    time: currentTripTime
-                };
-
-                $btn.prop("disabled", true);
-
-                try {
-                    await loadTrip(tripDate, tripTime, tripId);
-
-                    currentTripId = tripId;
-                    currentTripDate = tripDate;
-                    currentTripTime = tripTime;
-
-                    $(".member-info").css("display", "none");
-                    $(".blackout").css("display", "none");
-                } catch (error) {
-                    currentTripId = previousTripState.id;
-                    currentTripDate = previousTripState.date;
-                    currentTripTime = previousTripState.time;
-
-                    const status = error?.status || error?.statusCode || error?.responseJSON?.status;
-                    const errorCode = error?.responseJSON?.code || error?.responseJSON?.errorCode;
-                    const notFound = status === 404 || errorCode === "TRIP_NOT_FOUND";
-
-                    if (notFound) {
-                        const fallbackMessage = "Bu bilet için aktif bir sefer bulunamadı.";
-                        const message = error?.responseJSON?.message || fallbackMessage;
-                        console.warn("Trip not found for ticket", { tripId, tripDate, tripTime, error });
-                        showMemberTicketFeedback($btn, message);
-                    } else {
-                        console.error(error);
-                        showError("Sefer bilgisi yüklenemedi.");
-                    }
-                } finally {
-                    $btn.prop("disabled", false);
-                }
-            });
+            // NOT: ".member-ticket-go-trip" tıklamaları artık aşağıdaki global
+            // ".member-ticket-list" delegation handler'ı tarafından kapsanıyor;
+            // burada tekrar bağlamak sadece aynı tıklamanın iki kez işlenmesine
+            // (loadTrip'in iki kez çağrılmasına) yol açardı.
         },
         error: function (xhr, status, error) {
             console.log(error);
@@ -8330,59 +8382,10 @@ $(".member-nav").on("click", async e => {
 
             $(".member-info-pointorpercent").on("change", updateMemberPointInputsState);
             $(".member-info-category").on("change", updateMemberPointOrPercentAvailability);
-            $(".member-ticket-go-trip").on("click", async function (e) {
-                e.preventDefault();
-
-                const $btn = $(this);
-                clearMemberTicketFeedback($btn);
-                const tripId = $btn.data("tripId");
-                const tripDate = $btn.data("tripDate");
-                const tripTime = $btn.data("tripTime");
-
-                if (!tripId || !tripDate || !tripTime) {
-                    showMemberTicketFeedback($btn, "Bu bilet için aktif bir sefer bulunamadı.");
-                    return;
-                }
-
-                const previousTripState = {
-                    id: currentTripId,
-                    date: currentTripDate,
-                    time: currentTripTime
-                };
-
-                $btn.prop("disabled", true);
-
-                try {
-                    await loadTrip(tripDate, tripTime, tripId);
-
-                    currentTripId = tripId;
-                    currentTripDate = tripDate;
-                    currentTripTime = tripTime;
-
-                    $(".member-info").css("display", "none");
-                    $(".blackout").css("display", "none");
-                } catch (error) {
-                    currentTripId = previousTripState.id;
-                    currentTripDate = previousTripState.date;
-                    currentTripTime = previousTripState.time;
-
-                    const status = error?.status || error?.statusCode || error?.responseJSON?.status;
-                    const errorCode = error?.responseJSON?.code || error?.responseJSON?.errorCode;
-                    const notFound = status === 404 || errorCode === "TRIP_NOT_FOUND";
-
-                    if (notFound) {
-                        const fallbackMessage = "Bu bilet için aktif bir sefer bulunamadı.";
-                        const message = error?.responseJSON?.message || fallbackMessage;
-                        console.warn("Trip not found for ticket", { tripId, tripDate, tripTime, error });
-                        showMemberTicketFeedback($btn, message);
-                    } else {
-                        console.error(error);
-                        showError("Sefer bilgisi yüklenemedi.");
-                    }
-                } finally {
-                    $btn.prop("disabled", false);
-                }
-            });
+            // NOT: ".member-ticket-go-trip" tıklamaları artık aşağıdaki global
+            // ".member-ticket-list" delegation handler'ı tarafından kapsanıyor;
+            // burada tekrar bağlamak sadece aynı tıklamanın iki kez işlenmesine
+            // (loadTrip'in iki kez çağrılmasına) yol açardı.
         },
         error: function (xhr, status, error) {
             console.log(error);
@@ -8434,13 +8437,13 @@ const initializeReportPopup = async (reportKey, popup) => {
         ]);
 
         const branchSel = popup.find(".report-branch").empty().append('<option value="">Seçiniz</option>');
-        branches.forEach(b => branchSel.append(`<option value="${b.id}">${b.title}</option>`));
+        branches.forEach(b => branchSel.append(`<option value="${b.id}">${escapeHtml(b.title)}</option>`));
 
         const fromSel = popup.find(".report-from").empty().append('<option value="">Seçiniz</option>');
         const toSel = popup.find(".report-to").empty().append('<option value="">Seçiniz</option>');
         stops.forEach(s => {
-            fromSel.append(`<option value="${s.id}">${s.title}</option>`);
-            toSel.append(`<option value="${s.id}">${s.title}</option>`);
+            fromSel.append(`<option value="${s.id}">${escapeHtml(s.title)}</option>`);
+            toSel.append(`<option value="${s.id}">${escapeHtml(s.title)}</option>`);
         });
 
         branchSel.off("change").on("change", async function () {
@@ -8448,7 +8451,7 @@ const initializeReportPopup = async (reportKey, popup) => {
             const userSel = popup.find(".report-user").empty().append('<option value="">Seçiniz</option>');
             if (id) {
                 const users = await fetch(`/get-users-by-branch?id=${id}`).then(r => r.json());
-                users.forEach(u => userSel.append(`<option value="${u.id}">${u.name}</option>`));
+                users.forEach(u => userSel.append(`<option value="${u.id}">${escapeHtml(u.name)}</option>`));
             }
         });
 
@@ -8461,7 +8464,7 @@ const initializeReportPopup = async (reportKey, popup) => {
         try {
             const branches = await fetch("/get-branches-list?onlyData=true").then(r => r.json());
             const branchSel = popup.find(".report-branch").empty().append('<option value="">Seçiniz</option>');
-            branches.forEach(b => branchSel.append(`<option value="${b.id}">${b.title}</option>`));
+            branches.forEach(b => branchSel.append(`<option value="${b.id}">${escapeHtml(b.title)}</option>`));
 
             branchSel.off("change").on("change", async function () {
                 const id = $(this).val();
@@ -8469,7 +8472,7 @@ const initializeReportPopup = async (reportKey, popup) => {
                 if (id) {
                     try {
                         const users = await fetch(`/get-users-by-branch?id=${id}`).then(r => r.json());
-                        users.forEach(u => userSel.append(`<option value="${u.id}">${u.name}</option>`));
+                        users.forEach(u => userSel.append(`<option value="${u.id}">${escapeHtml(u.name)}</option>`));
                     } catch (err) {
                         console.error("externalReturnTickets users load error", err);
                     }
@@ -8492,7 +8495,7 @@ const initializeReportPopup = async (reportKey, popup) => {
         try {
             const branches = await fetch("/get-branches-list?onlyData=true").then(r => r.json());
             const branchSel = popup.find(".report-branch").empty().append('<option value="">Seçiniz</option>');
-            branches.forEach(b => branchSel.append(`<option value="${b.id}">${b.title}</option>`));
+            branches.forEach(b => branchSel.append(`<option value="${b.id}">${escapeHtml(b.title)}</option>`));
 
             branchSel.off("change").on("change", async function () {
                 const id = $(this).val();
@@ -8500,7 +8503,7 @@ const initializeReportPopup = async (reportKey, popup) => {
                 if (id) {
                     try {
                         const users = await fetch(`/get-users-by-branch?id=${id}`).then(r => r.json());
-                        users.forEach(u => userSel.append(`<option value="${u.id}">${u.name}</option>`));
+                        users.forEach(u => userSel.append(`<option value="${u.id}">${escapeHtml(u.name)}</option>`));
                     } catch (err) {
                         console.error("externalReturnTickets users load error", err);
                     }
@@ -8524,7 +8527,7 @@ const initializeReportPopup = async (reportKey, popup) => {
             const users = await fetch("/get-users-list?onlyData=true").then(r => r.json());
             const userSel = popup.find(".report-user").empty().append('<option value="">Seçiniz</option>');
             users.forEach(u => {
-                userSel.append(`<option value="${u.id}">${u.name}</option>`);
+                userSel.append(`<option value="${u.id}">${escapeHtml(u.name)}</option>`);
             });
         } catch (err) {
             console.error("dailyUserAccount users load error", err);
@@ -8545,7 +8548,7 @@ const initializeReportPopup = async (reportKey, popup) => {
             const busSelect = popup.find(".report-bus").empty().append('<option value="">All</option>');
             buses.forEach(bus => {
                 const title = bus.licensePlate ? bus.licensePlate : `Bus #${bus.id}`;
-                busSelect.append(`<option value="${bus.id}">${title}</option>`);
+                busSelect.append(`<option value="${bus.id}">${escapeHtml(title)}</option>`);
             });
         } catch (err) {
             console.error("busTransactions buses load error", err);
