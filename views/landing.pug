@@ -1,0 +1,337 @@
+doctype html
+html(lang="tr")
+  head
+    meta(charset="utf-8")
+    meta(name="viewport" content="width=device-width, initial-scale=1")
+    title= title
+    meta(name="description" content="Gotur VIP; otobüs ve seyahat firmaları için bilet satışı, sefer, filo, kasa ve raporlama süreçlerini tek panelden yöneten çok kiracılı (multi-tenant) bir ERP ve online bilet satış platformudur.")
+    link(rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png")
+    link(rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png")
+    link(rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png")
+    link(rel="shortcut icon" href="/images/favicon.ico" type="image/x-icon")
+    link(rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css")
+    link(rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css")
+    style.
+      :root {
+        --gtr-blue: #2563eb;
+        --gtr-blue-dark: #1e40af;
+        --gtr-green: #10b981;
+        --gtr-ink: #0f172a;
+        --gtr-muted: #475569;
+      }
+      html, body { min-width: 0 !important; }
+      body {
+        font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        color: var(--gtr-ink);
+        background: #f8fafc;
+        overflow-x: hidden;
+      }
+      .gtr-hero {
+        position: relative;
+        overflow: hidden;
+        background: linear-gradient(135deg, var(--gtr-blue-dark) 0%, var(--gtr-blue) 55%, #0ea5e9 100%);
+        color: #fff;
+      }
+      .gtr-hero-accent {
+        position: absolute;
+        border-radius: 999px;
+        filter: blur(90px);
+        opacity: 0.45;
+        z-index: 0;
+      }
+      .gtr-hero-accent-top { width: 420px; height: 420px; top: -160px; right: -120px; background: rgba(16, 185, 129, 0.55); }
+      .gtr-hero-accent-bottom { width: 360px; height: 360px; bottom: -180px; left: -140px; background: rgba(255, 255, 255, 0.25); }
+      .gtr-hero-content { position: relative; z-index: 1; }
+      .gtr-brand-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: rgba(255, 255, 255, 0.15);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 999px;
+        padding: 0.4rem 1rem;
+        font-size: 0.85rem;
+        font-weight: 600;
+        letter-spacing: 0.03em;
+      }
+      .gtr-hero h1 { font-weight: 800; letter-spacing: -0.02em; }
+      .gtr-hero-note {
+        background: rgba(255, 255, 255, 0.12);
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 1rem;
+        padding: 1rem 1.25rem;
+        backdrop-filter: blur(6px);
+      }
+      .gtr-hero-note code {
+        background: rgba(255, 255, 255, 0.18);
+        color: #fff;
+        padding: 0.1rem 0.45rem;
+        border-radius: 0.4rem;
+      }
+      .gtr-btn-primary {
+        background: #fff;
+        color: var(--gtr-blue-dark);
+        border: none;
+        font-weight: 600;
+      }
+      .gtr-btn-primary:hover { background: #e2e8f0; color: var(--gtr-blue-dark); }
+      .gtr-btn-outline {
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        color: #fff;
+        font-weight: 600;
+      }
+      .gtr-btn-outline:hover { background: rgba(255, 255, 255, 0.15); color: #fff; }
+      .gtr-section-title { font-weight: 700; letter-spacing: -0.01em; }
+      .gtr-section-subtitle { color: var(--gtr-muted); }
+      .gtr-feature-card {
+        height: 100%;
+        border: 1px solid #e2e8f0;
+        border-radius: 1rem;
+        padding: 1.75rem;
+        background: #fff;
+        box-shadow: 0 12px 32px -24px rgba(15, 23, 42, 0.25);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+      }
+      .gtr-feature-card:hover { transform: translateY(-4px); box-shadow: 0 20px 40px -24px rgba(15, 23, 42, 0.35); }
+      .gtr-feature-icon {
+        width: 48px;
+        height: 48px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 0.85rem;
+        background: rgba(37, 99, 235, 0.1);
+        color: var(--gtr-blue);
+        font-size: 1.25rem;
+        margin-bottom: 1rem;
+      }
+      .gtr-feature-card h3 { font-size: 1.05rem; font-weight: 700; }
+      .gtr-feature-card p { color: var(--gtr-muted); font-size: 0.92rem; margin-bottom: 0; }
+      .gtr-step {
+        display: flex;
+        gap: 1rem;
+        align-items: flex-start;
+      }
+      .gtr-step-index {
+        flex: none;
+        width: 2.5rem;
+        height: 2.5rem;
+        border-radius: 999px;
+        background: var(--gtr-blue);
+        color: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+      }
+      .gtr-audience-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6rem;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 999px;
+        padding: 0.6rem 1.1rem;
+        font-weight: 500;
+        box-shadow: 0 10px 24px -18px rgba(15, 23, 42, 0.3);
+      }
+      .gtr-audience-pill i { color: var(--gtr-green); }
+      .gtr-cta {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        border-radius: 1.5rem;
+        color: #fff;
+      }
+      .gtr-footer { color: var(--gtr-muted); font-size: 0.9rem; }
+      section { padding: clamp(3rem, 6vw, 5.5rem) 0; }
+  body
+    header.gtr-hero
+      .gtr-hero-accent.gtr-hero-accent-top
+      .gtr-hero-accent.gtr-hero-accent-bottom
+      .container.py-5.gtr-hero-content
+        nav.d-flex.justify-content-between.align-items-center.mb-5
+          span.gtr-brand-badge
+            i.fa-solid.fa-bus-simple
+            span GOTUR VIP
+          a.text-white.text-decoration-none.small.d-none.d-md-inline-flex.align-items-center.gap-2(href="tel:+905441314013")
+            i.fa-solid.fa-phone
+            span 0544 131 40 13
+        .row.align-items-center.g-5
+          .col-lg-7
+            h1.display-5.mb-4 Turizm ve Ulaşım İşletmeniz İçin Tek Panelden Yönetim
+            p.lead.mb-4(style="color:rgba(255,255,255,0.9)")
+              | Gotur VIP; otobüs ve seyahat firmalarının bilet satışını, seferlerini, filosunu, kasa/ödeme
+              |  süreçlerini ve raporlamasını tek bir sistemden yönettiği, her firmaya özel ve birbirinden
+              |  tamamen izole çalışan çok kiracılı (multi-tenant) bir ERP ve online bilet satış platformudur.
+            .d-flex.flex-wrap.gap-3.mb-4
+              a.btn.gtr-btn-primary.btn-lg.px-4(href="#iletisim") Demo Talep Edin
+              a.btn.gtr-btn-outline.btn-lg.px-4(href="#nasil-calisir") Nasıl Çalışır?
+            .gtr-hero-note
+              p.mb-0
+                i.fa-solid.fa-circle-info.me-2
+                | Bu adres genel tanıtım sayfasıdır. Firmanızın ERP paneline, size özel tahsis edilmiş
+                |  #[code firmaniz.goturyzhn.com] adresinden erişebilirsiniz.
+          .col-lg-5
+            .gtr-hero-note
+              h2.h5.mb-3 Gotur VIP ile:
+              ul.list-unstyled.mb-0.d-flex.flex-column.gap-3
+                li
+                  i.fa-solid.fa-ticket.me-2
+                  | Online ve gişe bilet satışını aynı anda yönetin
+                li
+                  i.fa-solid.fa-route.me-2
+                  | Hat, sefer ve koltuk planlarını gerçek zamanlı takip edin
+                li
+                  i.fa-solid.fa-sitemap.me-2
+                  | Birden çok şube ve kullanıcıyı yetki bazlı yönetin
+                li
+                  i.fa-solid.fa-chart-line.me-2
+                  | Kasa, ödeme ve gelir/gider raporlarını tek ekrandan görün
+
+    section#ozellikler
+      .container
+        .text-center.mb-5
+          h2.gtr-section-title.h1 Tek Platformda Uçtan Uca Otobüs İşletmeciliği
+          p.gtr-section-subtitle.mx-auto(style="max-width:640px;")
+            | Satış öncesinden raporlamaya kadar tüm operasyon Gotur VIP içinde birleşiyor.
+        .row.g-4
+          .col-md-6.col-lg-4
+            .gtr-feature-card
+              .gtr-feature-icon
+                i.fa-solid.fa-ticket
+              h3 Bilet Satışı &amp; Rezervasyon
+              p Gişeden ve web'den anlık koltuk seçimi, opsiyon/rezervasyon, PNR üretimi ve iade/iptal işlemleri.
+          .col-md-6.col-lg-4
+            .gtr-feature-card
+              .gtr-feature-icon
+                i.fa-solid.fa-route
+              h3 Sefer &amp; Hat Yönetimi
+              p Hat, durak, sefer saatleri ve koltuk planlarının; sefer bazlı doluluk ve durak kısıtlarıyla yönetimi.
+          .col-md-6.col-lg-4
+            .gtr-feature-card
+              .gtr-feature-icon
+                i.fa-solid.fa-bus
+              h3 Filo Yönetimi
+              p Otobüs, koltuk planı ve donanım (Wi-Fi, USB, ikram, koltuk ekranı gibi) bilgilerinin takibi.
+          .col-md-6.col-lg-4
+            .gtr-feature-card
+              .gtr-feature-icon
+                i.fa-solid.fa-cash-register
+              h3 Kasa &amp; Ödeme Takibi
+              p Kullanıcı bazlı kasa, gelir/gider, ödeme talebi-gönderimi ve bekleyen tahsilat/ödeme yönetimi.
+          .col-md-6.col-lg-4
+            .gtr-feature-card
+              .gtr-feature-icon
+                i.fa-solid.fa-users
+              h3 Şube, Personel &amp; Yetkilendirme
+              p Çok şubeli yapı, kullanıcı bazlı yetki (permission) kontrolü ve personel kayıtlarının yönetimi.
+          .col-md-6.col-lg-4
+            .gtr-feature-card
+              .gtr-feature-icon
+                i.fa-solid.fa-chart-column
+              h3 Raporlama &amp; Analiz
+              p Satış/iade, web bileti, günlük kasa, bekleyen bilet ve otobüs hesap raporları tek ekrandan.
+          .col-md-6.col-lg-4
+            .gtr-feature-card
+              .gtr-feature-icon
+                i.fa-solid.fa-id-card
+              h3 Müşteri &amp; Abonelik
+              p Müşteri/abone kayıtları, bilet geçmişi, kara liste ve sadakat/abonelik süreçlerinin yönetimi.
+          .col-md-6.col-lg-4
+            .gtr-feature-card
+              .gtr-feature-icon
+                i.fa-solid.fa-plug
+              h3 Partner API Entegrasyonu
+              p API anahtarı ile üçüncü taraf sistemlerin sefer arama, koltuk sorgulama ve bilet satışına entegrasyonu.
+          .col-md-6.col-lg-4
+            .gtr-feature-card
+              .gtr-feature-icon
+                i.fa-solid.fa-shield-halved
+              h3 UETDS Uyumluluğu
+              p Sefer ve yolcu bilgilerinin, mevzuata uygun şekilde UETDS'e elektronik raporlanması.
+
+    section.bg-white(id="nasil-calisir")
+      .container
+        .row.g-5.align-items-center
+          .col-lg-6
+            h2.gtr-section-title.h1.mb-4 Çok Kiracılı (Multi-Tenant) Mimari, Tek Sistem
+            p.gtr-section-subtitle.mb-4
+              | Gotur VIP'e kayıtlı her firma, kendi verilerinin tamamen izole tutulduğu ayrı bir veritabanına ve
+              |  kendine özel bir alt alan adına (subdomain) sahiptir. Bu sayede tüm firmalar aynı sistemi
+              |  kullanır, ancak birbirlerinin verilerini asla görmez.
+            .d-flex.flex-column.gap-3
+              .gtr-step
+                .gtr-step-index 1
+                div
+                  h3.h6.fw-bold.mb-1 Kayıt &amp; Kurulum
+                  p.gtr-section-subtitle.mb-0 Firmanız sisteme dahil edildiğinde size özel bir subdomain ve veritabanı otomatik olarak hazırlanır.
+              .gtr-step
+                .gtr-step-index 2
+                div
+                  h3.h6.fw-bold.mb-1 Kendi Adresinizden Giriş
+                  p.gtr-section-subtitle.mb-0 ERP panelinize #[code firmaniz.goturyzhn.com] adresi üzerinden, yetkilendirilmiş kullanıcı hesabınızla giriş yaparsınız.
+              .gtr-step
+                .gtr-step-index 3
+                div
+                  h3.h6.fw-bold.mb-1 Operasyonu Yönetin
+                  p.gtr-section-subtitle.mb-0 Bilet satışından raporlamaya kadar tüm süreçleri tek panelden, şubeleriniz ve personelinizle birlikte yönetirsiniz.
+          .col-lg-6
+            .p-4.p-lg-5.rounded-4(style="background:#0f172a;color:#fff;")
+              h3.h5.mb-3
+                i.fa-solid.fa-lock.me-2
+                | Zaten bir Gotur VIP müşterisisiniz ve buraya mı yönlendirildiniz?
+              p.mb-4(style="color:rgba(255,255,255,0.75);")
+                | Bu sayfa, subdomain belirtilmeden erişildiğinde gösterilen genel tanıtım sayfasıdır; firmanıza
+                |  özel giriş adresi bu sayfadan farklıdır.
+              ul.list-unstyled.d-flex.flex-column.gap-2.mb-4
+                li
+                  i.fa-solid.fa-check.text-success.me-2
+                  | Doğru adres için firma yöneticinizle veya sistem yetkiliniz ile iletişime geçin.
+                li
+                  i.fa-solid.fa-check.text-success.me-2
+                  | Adresi genellikle #[code firmaadi.goturyzhn.com] formatında hatırlayabilirsiniz.
+                li
+                  i.fa-solid.fa-check.text-success.me-2
+                  | Emin değilseniz destek hattımızdan yardım alabilirsiniz.
+              a.btn.btn-outline-light.w-100(href="tel:+905441314013")
+                i.fa-solid.fa-phone.me-2
+                | 0544 131 40 13
+
+    section
+      .container
+        .text-center.mb-5
+          h2.gtr-section-title.h1 Kimler İçin?
+          p.gtr-section-subtitle.mx-auto(style="max-width:600px;")
+            | Yolcu taşımacılığı yapan, bilet satan ve filo işleten her ölçekten firma için tasarlandı.
+        .d-flex.flex-wrap.justify-content-center.gap-3
+          span.gtr-audience-pill
+            i.fa-solid.fa-check
+            span Şehirlerarası otobüs firmaları
+          span.gtr-audience-pill
+            i.fa-solid.fa-check
+            span Seyahat / turizm acenteleri
+          span.gtr-audience-pill
+            i.fa-solid.fa-check
+            span Bilet bayileri ve gişe ağları
+          span.gtr-audience-pill
+            i.fa-solid.fa-check
+            span Filo ve şube bazlı çalışan işletmeler
+
+    section#iletisim
+      .container
+        .gtr-cta.p-4.p-lg-5.text-center
+          h2.h1.mb-3 Firmanız İçin Gotur VIP'i Deneyin
+          p.mb-4.mx-auto(style="max-width:560px;color:rgba(255,255,255,0.8);")
+            | Firmanızı sisteme dahil etmek, mevcut hesabınızın adresini öğrenmek ya da genel bir sorunuz
+            |  için bizimle iletişime geçebilirsiniz.
+          .d-flex.flex-wrap.justify-content-center.gap-3
+            a.btn.gtr-btn-primary.btn-lg.px-4(href="tel:+905441314013")
+              i.fa-solid.fa-phone.me-2
+              | 0544 131 40 13
+            a.btn.gtr-btn-outline.btn-lg.px-4(href="mailto:info@goturyzhn.com")
+              i.fa-solid.fa-envelope.me-2
+              | info@goturyzhn.com
+
+    footer.py-4
+      .container.d-flex.flex-wrap.justify-content-between.align-items-center.gap-2.gtr-footer
+        span © #{new Date().getFullYear()} Gotur VIP. Tüm hakları saklıdır.
+        span Otobüs &amp; Seyahat Firmaları İçin Çok Kiracılı ERP Platformu
