@@ -15,36 +15,39 @@ module.exports = (sequelize) => {
       type: DataTypes.BIGINT,
       allowNull: false,
     },
+    // NOT: Parametresiz DECIMAL, MySQL'de DECIMAL(10,0)'a denk gelir; yani
+    // kuruş/ondalık hane TAMAMEN kesilir (örn. 123.45 -> 123). Tüm para
+    // alanları artık açıkça DECIMAL(12,2) olarak tanımlanıyor.
     comissionPercent: {
-      type: DataTypes.DECIMAL,
+      type: DataTypes.DECIMAL(5, 2),
       allowNull: false,
     },
     comissionAmount: {
-      type: DataTypes.DECIMAL,
+      type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
     },
     deduction1: {
-      type: DataTypes.DECIMAL,
+      type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
     },
     deduction2: {
-      type: DataTypes.DECIMAL,
+      type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
     },
     deduction3: {
-      type: DataTypes.DECIMAL,
+      type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
     },
     deduction4: {
-      type: DataTypes.DECIMAL,
+      type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
     },
     deduction5: {
-      type: DataTypes.DECIMAL,
+      type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
     },
     tip: {
-      type: DataTypes.DECIMAL,
+      type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
     },
     description: {
@@ -52,11 +55,11 @@ module.exports = (sequelize) => {
       allowNull: true,
     },
     needToPayAmount: {
-      type: DataTypes.DECIMAL,
+      type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
     },
     payedAmount: {
-      type: DataTypes.DECIMAL,
+      type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
     },
   });

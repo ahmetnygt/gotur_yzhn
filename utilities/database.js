@@ -1,6 +1,8 @@
 const { Sequelize } = require("sequelize");
 const initModels = require("./initModels");
 const bcrypt = require("bcrypt");
+const crypto = require("crypto");
+const { isValidTenantKey } = require("./tenantConfig");
 
 // Bellek ve Bağlantı Yönetimi Objeleri
 const connections = {};
@@ -9,7 +11,45 @@ const connectionLastUsed = {}; // Bağlantıların son kullanım zamanını tuta
 
 const DB_USERNAME = process.env.DB_USERNAME;
 const DB_PASSWORD = process.env.DB_PASSWORD;
-const DEFAULT_USER_PASSWORD = process.env.DEFAULT_USER_PASSWORD;
+
+// NOT: Daha önce burada tüm tenant'lar için paylaşılan sabit bir
+// DEFAULT_USER_PASSWORD kullanılıyordu. Bu, bir tenant'ın şifresini bilen
+// herkesin TÜM tenant'lara sızabilmesi anlamına geliyordu. Artık her tenant
+// için tek seferlik, rastgele ve benzersiz bir şifre üretiliyor (bkz.
+// generateDefaultUserPassword) ve kullanıcılar ilk girişte şifre değiştirmeye
+// zorlanıyor (bkz. models/firmUserModel.js -> forcePasswordReset).
+function generateDefaultUserPassword() {
+  return crypto.randomBytes(18).toString("base64url");
+}
+
+// Tenant'ın gerçek veritabanı bağlantı bilgisini ortak `Firm` kaydından
+// çözer. Böylece istekten gelen (host header türevli) tenantKey artık asla
+// doğrudan bir veritabanı adı olarak kullanılmıyor; sadece Firm.key
+// üzerinden whitelisted bir lookup yapılıyor.
+async function resolveFirmForTenant(tenantKey) {
+  // Lazy require: goturDb.js henüz initialize edilmemiş modülleri
+  // içerdiğinden ve circular require riskini azaltmak için burada alınıyor.
+  const { initGoturModels, getGoturSyncPromise } = require("./goturDb");
+
+  await getGoturSyncPromise();
+  const { Firm } = initGoturModels();
+
+  const firm = await Firm.findOne({ where: { key: tenantKey } });
+
+  if (!firm) {
+    throw new Error(`Tanımsız tenant: '${tenantKey}'`);
+  }
+
+  if (firm.status !== "active") {
+    throw new Error(`Tenant aktif değil: '${tenantKey}'`);
+  }
+
+  if (!isValidTenantKey(firm.dbName)) {
+    throw new Error(`Tenant için geçersiz veritabanı adı yapılandırılmış: '${tenantKey}'`);
+  }
+
+  return firm;
+}
 
 function buildConnectionOptions() {
   const options = {
@@ -58,10 +98,10 @@ setInterval(() => {
 }, 60 * 60 * 1000).unref();
 
 async function getTenantConnection(subdomain) {
-  const tenantKey = typeof subdomain === "string" ? subdomain.trim() : "";
+  const tenantKey = typeof subdomain === "string" ? subdomain.trim().toLowerCase() : "";
 
-  if (!tenantKey) {
-    throw new Error("Tenant veritabanı adı belirtilmedi.");
+  if (!tenantKey || !isValidTenantKey(tenantKey)) {
+    throw new Error("Geçersiz veya tanımsız tenant anahtarı.");
   }
 
   // 1. ADIM: Bağlantı zaten kurulu ve aktifse, son kullanım zamanını GÜNCELLE ve döndür
@@ -79,8 +119,12 @@ async function getTenantConnection(subdomain) {
   // 3. ADIM: Yeni Bağlantı Kurulumu ve Veritabanı Hazırlığı
   connectionPromises[tenantKey] = (async () => {
     try {
+      // tenantKey artık ASLA doğrudan DB adı olarak kullanılmıyor: gerçek
+      // bağlantı bilgisi (dbName) `Firm` kaydından güvenli biçimde çözülüyor.
+      const firm = await resolveFirmForTenant(tenantKey);
+
       const sequelize = new Sequelize(
-        tenantKey,
+        firm.dbName,
         DB_USERNAME,
         DB_PASSWORD,
         buildConnectionOptions()
@@ -119,16 +163,24 @@ async function getTenantConnection(subdomain) {
             }
           }
 
-          const hashedPassword = await bcrypt.hash(DEFAULT_USER_PASSWORD, 10);
-
           const defaultUsers = [
             { branchId: goturComBranchId, username: "GOTUR", name: "Götür Sistem Kullanıcısı", phoneNumber: "0850 840 1915" },
             { branchId: webBranchId, username: "WEB", name: "Web" },
             { branchId: goturComBranchId, username: "goturbilet", name: "goturbilet.com" },
           ];
 
+          // Her tenant/kullanıcı için BENZERSİZ rastgele bir şifre üretiliyor
+          // (artık tüm tenant'larda aynı olan tek bir DEFAULT_USER_PASSWORD yok).
+          // Üretilen şifreler bir defaya mahsus konsola yazdırılır ki kurulumu
+          // yapan kişi bunu ilgili firmaya iletebilsin; kullanıcı ilk girişte
+          // forcePasswordReset sayesinde şifresini değiştirmeye zorlanır.
+          const generatedCredentials = [];
+
           for (const user of defaultUsers) {
             if (user.branchId == null) continue;
+
+            const plainPassword = generateDefaultUserPassword();
+            const hashedPassword = await bcrypt.hash(plainPassword, 10);
 
             await models.FirmUser.create({
               branchId: user.branchId,
@@ -136,9 +188,16 @@ async function getTenantConnection(subdomain) {
               password: hashedPassword,
               name: user.name,
               phoneNumber: user.phoneNumber ?? null,
+              forcePasswordReset: true,
             });
+
+            generatedCredentials.push({ username: user.username, password: plainPassword });
           }
-          console.log(`[${tenantKey}] için default kullanıcılar eklendi.`);
+
+          console.log(`[${tenantKey}] için benzersiz varsayılan kullanıcılar oluşturuldu. Bu şifreler SADECE bir defa gösterilir, güvenli şekilde ilgili firmaya iletilmeli ve ilk girişte değiştirilmesi zorunludur:`);
+          for (const cred of generatedCredentials) {
+            console.log(`  [${tenantKey}] kullanıcı: ${cred.username} | tek seferlik şifre: ${cred.password}`);
+          }
         }
       }
 

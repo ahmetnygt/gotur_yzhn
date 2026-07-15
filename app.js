@@ -6,6 +6,8 @@ var path = require("path");
 const session = require("express-session");
 var cookieParser = require("cookie-parser");
 var logger = require("morgan");
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
 
 var usersRouter = require("./routes/users");
 var erpRouter = require("./routes/erp");
@@ -15,7 +17,6 @@ const { goturDB, initGoturModels } = require("./utilities/goturDb"); // ortak ku
 const SequelizeStore = require("connect-session-sequelize")(session.Store);
 const tenantMiddleware = require("./middlewares/tenantMiddleware");
 const tenantSessionMiddleware = require("./middlewares/tenantSessionMiddleware");
-const apiKeyAuth = require("./middlewares/apiKeyAuth");
 
 const commonModels = initGoturModels();
 
@@ -29,11 +30,45 @@ store.sync();
 
 var app = express();
 
+const isProduction = app.get("env") === "production";
+
+if (isProduction && (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === "anadolutat")) {
+  // eslint-disable-next-line no-console
+  console.error(
+    "UYARI: SESSION_SECRET .env üzerinde tanımlanmamış veya varsayılan değerde. " +
+    "Production ortamında güçlü, benzersiz bir SESSION_SECRET ayarlanmalı."
+  );
+}
 const sessionSecret = process.env.SESSION_SECRET || "anadolutat";
 
 // view engine setup
 app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "pug");
+
+if (isProduction) {
+  app.set("trust proxy", 1);
+}
+
+// GÜVENLİK: helmet ile temel HTTP güvenlik başlıkları (X-Frame-Options,
+// X-Content-Type-Options, HSTS vb.) ekleniyor. CSP kapalı bırakıldı çünkü
+// mevcut Pug şablonları geniş çapta satır-içi <script>/<style> kullanıyor;
+// varsayılan CSP tüm arayüzü kırardı. Ayrı bir görev olarak, şablonlar
+// nonce/hash tabanlı CSP'ye uyumlu hale getirildikten sonra etkinleştirilebilir.
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+
+// GÜVENLİK: Brute-force login denemelerini sınırlamak için rate limit.
+// routes/erp.js'deki POST /login rotasında req.app.get("loginRateLimiter")
+// ile okunuyor.
+app.set(
+  "loginRateLimiter",
+  rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: "Çok fazla giriş denemesi yapıldı. Lütfen daha sonra tekrar deneyin." },
+  })
+);
 
 app.use(logger("dev"));
 app.use(express.json());
@@ -47,7 +82,10 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use("/api", apiKeyAuth, tenantMiddleware, apiRouter);
+// /api rotaları kendi router'ı içinde (routes/api.js) apiKeyAuth + tenantMiddleware'i
+// zaten uyguluyor; burada tekrar uygulamak DB bağlantı çözümlemesinin ve API key
+// doğrulamasının istek başına iki kez çalışmasına neden oluyordu.
+app.use("/api", apiRouter);
 
 app.use(tenantMiddleware);
 app.use(
@@ -56,7 +94,16 @@ app.use(
     resave: false,
     saveUninitialized: false,
     store: store,
-    cookie: { maxAge: 86400000 },
+    // GÜVENLİK: cookie'ler production'da secure (HTTPS-only) ve sameSite=lax
+    // olarak işaretleniyor; CSRF ve HTTP üzerinden çalınma riskini azaltır.
+    // Local/geliştirme ortamı HTTPS kullanmadığından secure orada kapalı
+    // bırakılıyor (aksi halde session hiç kalıcı olmazdı).
+    cookie: {
+      maxAge: 86400000,
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "lax",
+    },
   })
 );
 

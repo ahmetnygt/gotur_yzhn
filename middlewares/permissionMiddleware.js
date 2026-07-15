@@ -5,11 +5,21 @@ module.exports = (requiredPermissions = []) => {
 
   return (req, res, next) => {
     try {
-      if (!req.session || !req.session.user) {
+      // Oturum, tenant başına req.session.tenants[tenantKey] içinde tutuluyor
+      // (bkz. middlewares/tenantSessionMiddleware.js); req.session.firmUser /
+      // req.session.permissions bu tenant'a ait veriye proxy'lenmiş
+      // getter'lardır. Eskiden burada var olmayan `req.session.user` kontrol
+      // ediliyordu, bu yüzden bu middleware her zaman 401 dönüyordu.
+      const tenantKey = req.tenantKey;
+      const tenantSession = tenantKey && req.session && req.session.tenants
+        ? req.session.tenants[tenantKey]
+        : null;
+
+      if (!tenantSession?.isAuthenticated || !tenantSession?.firmUser) {
         return res.status(401).json({ message: "You must be logged in." });
       }
 
-      const userPermissions = req.session.permissions || [];
+      const userPermissions = Array.isArray(tenantSession.permissions) ? tenantSession.permissions : [];
       const hasAll = codes.every(code => userPermissions.includes(code));
 
       if (!hasAll) {

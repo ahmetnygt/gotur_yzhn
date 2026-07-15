@@ -1,7 +1,7 @@
 var express = require('express');
 var router = express.Router();
 const bcrypt = require("bcrypt")
-const { Op } = require('sequelize');
+const { Op, fn, col } = require('sequelize');
 const fs = require("fs");
 const path = require("path");
 const { generateAccountReceiptFromDb } = require('../utilities/reports/accountCutRecipe');
@@ -964,6 +964,56 @@ exports.getDayTripsList = async (req, res, next) => {
 
         const busModels = await req.models.BusModel.findAll({ where: { id: { [Op.in]: [...new Set(trips.map(t => t.busModelId))] } } })
 
+        // N+1 DÜZELTMESİ: Önceden bu bilgiler her sefer için tek tek (döngü
+        // içinde) sorgulanıyordu (bilet sayısı, rota durakları, kısıtlamalar,
+        // durak zaman offset'leri); bir günde çok sefer varsa bu 4*N ekstra
+        // sorgu anlamına geliyordu. Artık tüm seferler için gereken veriler
+        // döngüden önce toplu olarak çekiliyor ve JS içinde gruplanıyor.
+        const tripIds = trips.map(t => t.id);
+        const routeIds2 = [...new Set(trips.map(t => t.routeId))];
+
+        const [ticketCountsRaw, allRouteStops, allRestrictions, allOffsets] = await Promise.all([
+            tripIds.length
+                ? req.models.Ticket.findAll({
+                    where: { tripId: { [Op.in]: tripIds } },
+                    attributes: ["tripId", [fn("COUNT", col("id")), "count"]],
+                    group: ["tripId"],
+                    raw: true,
+                })
+                : [],
+            req.models.RouteStop.findAll({ where: { routeId: { [Op.in]: routeIds2 } }, order: [["order", "ASC"]] }),
+            tripIds.length
+                ? req.models.RouteStopRestriction.findAll({
+                    where: { tripId: { [Op.in]: tripIds } },
+                    attributes: ["tripId", "fromRouteStopId", "toRouteStopId", "isAllowed"],
+                    raw: true,
+                })
+                : [],
+            tripIds.length
+                ? req.models.TripStopTime.findAll({ where: { tripId: { [Op.in]: tripIds } }, raw: true })
+                : [],
+        ]);
+
+        const ticketCountByTripId = new Map(ticketCountsRaw.map(r => [String(r.tripId), Number(r.count) || 0]));
+        const routeStopsByRouteId = new Map();
+        for (const rs of allRouteStops) {
+            const key = String(rs.routeId);
+            if (!routeStopsByRouteId.has(key)) routeStopsByRouteId.set(key, []);
+            routeStopsByRouteId.get(key).push(rs);
+        }
+        const restrictionsByTripAndFromStop = new Map();
+        for (const r of allRestrictions) {
+            const key = `${r.tripId}:${r.fromRouteStopId}`;
+            if (!restrictionsByTripAndFromStop.has(key)) restrictionsByTripAndFromStop.set(key, []);
+            restrictionsByTripAndFromStop.get(key).push(r);
+        }
+        const offsetsByTripId = new Map();
+        for (const o of allOffsets) {
+            const key = String(o.tripId);
+            if (!offsetsByTripId.has(key)) offsetsByTripId.set(key, []);
+            offsetsByTripId.get(key).push(o);
+        }
+
         var newTrips = []
         for (let i = 0; i < trips.length; i++) {
             const t = trips[i];
@@ -985,11 +1035,11 @@ exports.getDayTripsList = async (req, res, next) => {
 
             t.modifiedTime = t.time
 
-            const ticketCount = await req.models.Ticket.count({ where: { tripId: t.id } })
+            const ticketCount = ticketCountByTripId.get(String(t.id)) || 0
 
             t.fullness = `${ticketCount}/${busModels.find(bm => bm.id == t.busModelId).maxPassenger}`
 
-            const routeStops = await req.models.RouteStop.findAll({ where: { routeId: t.routeId }, order: [["order", "ASC"]] })
+            const routeStops = routeStopsByRouteId.get(String(t.routeId)) || []
             const matchedRouteStop = routeStops.find(rs => rs.stopId == stopId)
             if (!matchedRouteStop) {
                 continue
@@ -998,11 +1048,7 @@ exports.getDayTripsList = async (req, res, next) => {
 
             const futureRouteStops = routeStops.filter(rs => rs.order > routeStopOrder)
             if (futureRouteStops.length) {
-                const restrictions = await req.models.RouteStopRestriction.findAll({
-                    where: { tripId: t.id, fromRouteStopId: matchedRouteStop.id },
-                    attributes: ["toRouteStopId", "isAllowed"],
-                    raw: true
-                })
+                const restrictions = restrictionsByTripAndFromStop.get(`${t.id}:${matchedRouteStop.id}`) || []
 
                 const restrictionMap = new Map(
                     restrictions.map(r => [String(r.toRouteStopId), r.isAllowed])
@@ -1023,7 +1069,7 @@ exports.getDayTripsList = async (req, res, next) => {
             }
 
             if (routeStopOrder !== routeStops.length - 1) {
-                const offsets = await req.models.TripStopTime.findAll({ where: { tripId: t.id }, raw: true })
+                const offsets = offsetsByTripId.get(String(t.id)) || []
                 const offsetMap = buildOffsetMap(offsets)
                 const stopTimes = computeRouteStopTimes(t, routeStops, offsetMap)
                 const currentStopTime = stopTimes.find(st => st.order === routeStopOrder)
@@ -1461,47 +1507,53 @@ exports.postBusAccountCut = async (req, res, next) => {
         const comissionAmount = data.allTotal * BUS_COMISSION_PERCENT / 100;
         const needToPay = data.allTotal - comissionAmount - d1 - d2 - d3 - d4 - d5 - tip;
 
-        await req.models.BusAccountCut.create({
-            tripId,
-            stopId,
-            comissionPercent: BUS_COMISSION_PERCENT,
-            comissionAmount,
-            deduction1: d1,
-            deduction2: d2,
-            deduction3: d3,
-            deduction4: d4,
-            deduction5: d5,
-            tip,
-            description,
-            needToPayAmount: needToPay,
-            payedAmount
-        });
-
         const baseDescription = await buildBusTransactionDescription(req.models, trip, stopId, bus, routeStops, stops);
 
-        await req.models.Transaction.create({
-            userId: req.session.firmUser.id,
-            type: "expense",
-            category: "payed_to_bus",
-            amount: payedAmount,
-            description: baseDescription
-        });
+        // Hesap kesme; gelir/gider kaydı, otobüs hakediş kaydı ve kasa
+        // bakiyesi güncellemesi ARTIK tek bir transaction içinde: aradaki bir
+        // adım başarısız olursa hiçbiri kalıcı olmaz (yarım kalmış finansal veri riski yok).
+        await req.db.transaction(async (t) => {
+            await req.models.BusAccountCut.create({
+                tripId,
+                stopId,
+                comissionPercent: BUS_COMISSION_PERCENT,
+                comissionAmount,
+                deduction1: d1,
+                deduction2: d2,
+                deduction3: d3,
+                deduction4: d4,
+                deduction5: d5,
+                tip,
+                description,
+                needToPayAmount: needToPay,
+                payedAmount
+            }, { transaction: t });
 
-        if (bus && payedAmount > 0) {
-            await req.models.BusTransaction.create({
-                busId: bus.id,
+            await req.models.Transaction.create({
                 userId: req.session.firmUser.id,
-                type: "income",
+                type: "expense",
+                category: "payed_to_bus",
                 amount: payedAmount,
                 description: baseDescription
-            });
-        }
+            }, { transaction: t });
 
-        const register = await req.models.CashRegister.findOne({ where: { userId: req.session.firmUser.id } });
-        if (register) {
-            register.cash_balance = (register.cash_balance || 0) - (payedAmount || 0);
-            await register.save();
-        }
+            if (bus && payedAmount > 0) {
+                await req.models.BusTransaction.create({
+                    busId: bus.id,
+                    userId: req.session.firmUser.id,
+                    type: "income",
+                    amount: payedAmount,
+                    description: baseDescription
+                }, { transaction: t });
+            }
+
+            const register = await req.models.CashRegister.findOne({ where: { userId: req.session.firmUser.id }, transaction: t });
+            if (register) {
+                // read-modify-write yerine atomik decrement (eşzamanlı istekler
+                // arasında kaybolan güncelleme riskini ortadan kaldırır).
+                await register.decrement("cash_balance", { by: payedAmount || 0, transaction: t });
+            }
+        });
 
         res.json({ message: "OK" });
     } catch (err) {
@@ -1563,31 +1615,35 @@ exports.postDeleteBusAccountCut = async (req, res, next) => {
         const baseDescription = await buildBusTransactionDescription(req.models, trip, accountCut.stopId, bus, routeStops, stops);
         const fullDescription = baseDescription ? `Account cut reverted | ${baseDescription}` : "Hesap kesimi geri alındı";
 
-        await req.models.Transaction.create({
-            userId: req.session.firmUser.id,
-            type: "income",
-            category: "payed_to_bus",
-            amount: payedAmount,
-            description: fullDescription
-        });
-
-        if (bus && payedAmount > 0) {
-            await req.models.BusTransaction.create({
-                busId: bus.id,
+        // Geri alma işlemi de tek bir transaction içinde: gelir/gider kaydı,
+        // otobüs hakediş kaydı, kasa bakiyesi ve hesap kesim satırının silinmesi
+        // hep birlikte başarılı olur veya hiçbiri uygulanmaz.
+        await req.db.transaction(async (t) => {
+            await req.models.Transaction.create({
                 userId: req.session.firmUser.id,
-                type: "expense",
+                type: "income",
+                category: "payed_to_bus",
                 amount: payedAmount,
                 description: fullDescription
-            });
-        }
+            }, { transaction: t });
 
-        const register = await req.models.CashRegister.findOne({ where: { userId: req.session.firmUser.id } });
-        if (register) {
-            register.cash_balance = (register.cash_balance || 0) + payedAmount;
-            await register.save();
-        }
+            if (bus && payedAmount > 0) {
+                await req.models.BusTransaction.create({
+                    busId: bus.id,
+                    userId: req.session.firmUser.id,
+                    type: "expense",
+                    amount: payedAmount,
+                    description: fullDescription
+                }, { transaction: t });
+            }
 
-        await accountCut.destroy();
+            const register = await req.models.CashRegister.findOne({ where: { userId: req.session.firmUser.id }, transaction: t });
+            if (register) {
+                await register.increment("cash_balance", { by: payedAmount, transaction: t });
+            }
+
+            await accountCut.destroy({ transaction: t });
+        });
 
         res.json({ message: "OK" });
     } catch (err) {
@@ -2358,42 +2414,45 @@ exports.postAddCargo = async (req, res, next) => {
             return res.status(404).json({ message: "Sefer bulunamadı." });
         }
 
-        const cargo = await req.models.Cargo.create({
-            userId: req.session.firmUser.id,
-            tripId,
-            fromStopId,
-            toStopId,
-            senderName,
-            senderPhone,
-            senderIdentity,
-            description,
-            payment,
-            price
-        });
-
         const stops = await req.models.Stop.findAll({ where: { id: { [Op.in]: [fromStopId, toStopId] } } });
         const fromStop = stops.find(s => s.id == fromStopId);
         const toStop = stops.find(s => s.id == toStopId);
 
-        await req.models.Transaction.create({
-            userId: req.session.firmUser.id,
-            type: "income",
-            category: payment === "cash" ? "cash_sale" : "card_sale",
-            amount: price,
-            description: `Cargo | ${trip.date} ${trip.time} | ${(fromStop ? fromStop.title : "")} - ${(toStop ? toStop.title : "")}`
+        const cargoId = await req.db.transaction(async (t) => {
+            const cargo = await req.models.Cargo.create({
+                userId: req.session.firmUser.id,
+                tripId,
+                fromStopId,
+                toStopId,
+                senderName,
+                senderPhone,
+                senderIdentity,
+                description,
+                payment,
+                price
+            }, { transaction: t });
+
+            await req.models.Transaction.create({
+                userId: req.session.firmUser.id,
+                type: "income",
+                category: payment === "cash" ? "cash_sale" : "card_sale",
+                amount: price,
+                description: `Cargo | ${trip.date} ${trip.time} | ${(fromStop ? fromStop.title : "")} - ${(toStop ? toStop.title : "")}`
+            }, { transaction: t });
+
+            const register = await req.models.CashRegister.findOne({ where: { userId: req.session.firmUser.id }, transaction: t });
+            if (register) {
+                if (payment === "cash") {
+                    await register.increment("cash_balance", { by: price, transaction: t });
+                } else {
+                    await register.increment("card_balance", { by: price, transaction: t });
+                }
+            }
+
+            return cargo.id;
         });
 
-        const register = await req.models.CashRegister.findOne({ where: { userId: req.session.firmUser.id } });
-        if (register) {
-            if (payment === "cash") {
-                register.cash_balance = Number(register.cash_balance) + price;
-            } else {
-                register.card_balance = Number(register.card_balance) + price;
-            }
-            await register.save();
-        }
-
-        res.json({ success: true, cargoId: cargo.id });
+        res.json({ success: true, cargoId });
     } catch (err) {
         console.error("Cargo add error:", err);
         res.status(500).json({ success: false, message: err.message });
@@ -2458,25 +2517,26 @@ exports.postRefundCargo = async (req, res, next) => {
         if (routeInfo) descriptionParts.push(routeInfo);
         const description = descriptionParts.join(" | ");
 
-        await req.models.Transaction.create({
-            userId: req.session.firmUser.id,
-            type: "expense",
-            category: cargo.payment === "card" ? "card_refund" : "cash_refund",
-            amount: amount,
-            description
-        });
+        await req.db.transaction(async (t) => {
+            await req.models.Transaction.create({
+                userId: req.session.firmUser.id,
+                type: "expense",
+                category: cargo.payment === "card" ? "card_refund" : "cash_refund",
+                amount: amount,
+                description
+            }, { transaction: t });
 
-        const register = await req.models.CashRegister.findOne({ where: { userId: req.session.firmUser.id } });
-        if (register && amount > 0) {
-            if (cargo.payment === "cash") {
-                register.cash_balance = Number(register.cash_balance) - amount;
-            } else if (cargo.payment === "card") {
-                register.card_balance = Number(register.card_balance) - amount;
+            const register = await req.models.CashRegister.findOne({ where: { userId: req.session.firmUser.id }, transaction: t });
+            if (register && amount > 0) {
+                if (cargo.payment === "cash") {
+                    await register.decrement("cash_balance", { by: amount, transaction: t });
+                } else if (cargo.payment === "card") {
+                    await register.decrement("card_balance", { by: amount, transaction: t });
+                }
             }
-            await register.save();
-        }
 
-        await cargo.destroy();
+            await cargo.destroy({ transaction: t });
+        });
 
         res.json({ success: true });
     } catch (err) {
@@ -2695,8 +2755,6 @@ exports.getErpLogin = async (req, res, next) => {
 
     const title = firmRecord?.displayName || DEFAULT_TITLE;
 
-    console.log(DEFAULT_LOGIN_LOGO)
-
     try {
         const firmLogo = await resolveFirmLoginLogo(req, firmRecord);
         res.render("erplogin", { isNoNavbar: true, firmLogo, title });
@@ -2715,6 +2773,15 @@ exports.postErpLogin = async (req, res, next) => {
             return res.redirect("/login?error=1");
         }
 
+        // isActive=false olan (pasife alınmış) kullanıcıların şifresi doğru
+        // bile olsa giriş yapamamasını sağlar; daha önce bu kontrol hiç
+        // yapılmıyordu, yani devre dışı bırakılan kullanıcılar giriş yapabiliyordu.
+        // isDeleted=true (silinmiş) kullanıcılar da aynı şekilde reddedilir;
+        // postDeleteUser kaydı sadece isDeleted=true yapar, satırı silmez.
+        if (u.isActive === false || u.isDeleted === true) {
+            return res.redirect("/login?error=1");
+        }
+
         const success = await bcrypt.compare(password, u.password);
         if (!success) {
             return res.redirect("/login?error=1");
@@ -2722,6 +2789,7 @@ exports.postErpLogin = async (req, res, next) => {
 
         req.session.firmUser = u;
         req.session.isAuthenticated = true;
+        req.session.forcePasswordReset = !!u.forcePasswordReset;
         req.session.firm = await req.commonModels.Firm.findOne({ where: { key: req.tenantKey } })
 
         const userPerms = await req.models.FirmUserPermission.findAll({
@@ -2741,10 +2809,7 @@ exports.postErpLogin = async (req, res, next) => {
         }
 
         req.session.save(() => {
-            const url = "/";
-
-            console.log("Logged in user:", u.name);
-            res.redirect(url);
+            res.redirect("/");
         });
 
 
@@ -3213,127 +3278,138 @@ exports.postTickets = async (req, res, next) => {
             const t = tickets[i];
             if (!t) continue;
 
-            const pendingTicket = await req.models.Ticket.findOne({
-                where: {
-                    id: pendingIds[i],
-                    tripId: trip.id,
-                    seatNo: t.seatNumber,
-                    userId: req.session.firmUser.id,
-                },
-            });
-
-            const pendingTicketGroupId = pendingTicket?.ticketGroupId;
-            if (pendingTicket) await pendingTicket.destroy().then(() => console.log("pending deleted"));
-
-            if (pendingTicketGroupId) {
-                const remainingTicketsInGroup = await req.models.Ticket.count({
-                    where: { ticketGroupId: pendingTicketGroupId },
-                });
-
-                if (remainingTicketsInGroup === 0) {
-                    await req.models.TicketGroup.destroy({ where: { id: pendingTicketGroupId } }).then(() =>
-                        console.log("pending group deleted")
-                    );
-                }
-            }
-
             const takeOnTitle = await ensureTakeValue(takeOnCache, t.takeOn);
             const takeOffTitle = await ensureTakeValue(takeOffCache, t.takeOff);
 
-            const ticket = await req.models.Ticket.create({
-                seatNo: t.seatNumber,
-                gender: t.gender,
-                nationality: t.nationality,
-                idNumber: t.idNumber,
-                name: (t.name || "").toLocaleUpperCase("tr-TR"),
-                surname: (t.surname || "").toLocaleUpperCase("tr-TR"),
-                price: t.price ? t.price : null,
-                tripId: trip.id,
-                ticketGroupId: ticketGroupId,
-                status: status,
-                phoneNumber: t.phoneNumber,
-                customerType: t.type,
-                customerCategory: t.category,
-                optionTime: t.optionTime,
-                optionDate: t.optionDate,
-                fromRouteStopId: fromId,
-                toRouteStopId: toId,
-                userId: req.session.firmUser.id,
-                pnr: pnr,
-                payment: t.payment,
-                takeOnText: takeOnTitle,
-                takeOffText: takeOffTitle,
-            });
-
-            const nameUp = (t.name || "").toLocaleUpperCase("tr-TR");
-            const surnameUp = (t.surname || "").toLocaleUpperCase("tr-TR");
-
-            const orConds = [];
-            if (t.idNumber) orConds.push({ idNumber: t.idNumber });
-            if (nameUp && surnameUp) orConds.push({ name: nameUp, surname: surnameUp });
-
-            let existingCustomer = null;
-            if (orConds.length) {
-                existingCustomer = await req.models.Customer.findOne({ where: { [Op.or]: orConds } });
-            }
-
-            if (!existingCustomer && !isReservationStatus) {
-                await req.models.Customer.create({
-                    idNumber: t.idNumber || null,
-                    name: nameUp || null,
-                    surname: surnameUp || null,
-                    phoneNumber: t.phoneNumber || null,
-                    gender: t.gender || null,
-                    nationality: t.nationality || null,
-                    customerType: t.type || null,
-                    customerCategory: t.category || null,
+            // Bilet oluşturma + müşteri/puan güncellemesi + gelir kaydı + kasa
+            // bakiyesi güncellemesi ARTIK tek bir transaction içinde yapılıyor.
+            // UETDS (SOAP) çağrısı bilerek transaction DIŞINDA tutuluyor: dış bir
+            // servise yapılan ağ çağrısı sırasında DB satır kilitlerini uzun süre
+            // tutmak (ve olası timeout'larda transaction'ı beklemede bırakmak)
+            // istemiyoruz.
+            const ticket = await req.db.transaction(async (t2) => {
+                const pendingTicket = await req.models.Ticket.findOne({
+                    where: {
+                        id: pendingIds[i],
+                        tripId: trip.id,
+                        seatNo: t.seatNumber,
+                        userId: req.session.firmUser.id,
+                    },
+                    transaction: t2,
                 });
-            } else if (existingCustomer) {
-                ticket.customerId = existingCustomer.id;
-                if (
-                    existingCustomer.customerCategory == "member" &&
-                    existingCustomer.pointOrPercent == "point"
-                ) {
-                    if (ticket.payment === "point") {
-                        existingCustomer.point_amount -= Number(ticket.price);
-                    } else {
-                        existingCustomer.point_amount += Number(ticket.price) * 0.05;
+
+                const pendingTicketGroupId = pendingTicket?.ticketGroupId;
+                if (pendingTicket) await pendingTicket.destroy({ transaction: t2 });
+
+                if (pendingTicketGroupId) {
+                    const remainingTicketsInGroup = await req.models.Ticket.count({
+                        where: { ticketGroupId: pendingTicketGroupId },
+                        transaction: t2,
+                    });
+
+                    if (remainingTicketsInGroup === 0) {
+                        await req.models.TicketGroup.destroy({ where: { id: pendingTicketGroupId }, transaction: t2 });
                     }
                 }
-                await ticket.save();
-                await existingCustomer.save();
-            }
 
-            if (ticket.status === "completed" && ticket.payment !== "point") {
-                const fromTitle = stops.find((s) => s.id == ticket.fromRouteStopId)?.title || "";
-                const toTitle = stops.find((s) => s.id == ticket.toRouteStopId)?.title || "";
-
-                await req.models.Transaction.create({
+                const ticket = await req.models.Ticket.create({
+                    seatNo: t.seatNumber,
+                    gender: t.gender,
+                    nationality: t.nationality,
+                    idNumber: t.idNumber,
+                    name: (t.name || "").toLocaleUpperCase("tr-TR"),
+                    surname: (t.surname || "").toLocaleUpperCase("tr-TR"),
+                    price: t.price ? t.price : null,
+                    tripId: trip.id,
+                    ticketGroupId: ticketGroupId,
+                    status: status,
+                    phoneNumber: t.phoneNumber,
+                    customerType: t.type,
+                    customerCategory: t.category,
+                    optionTime: t.optionTime,
+                    optionDate: t.optionDate,
+                    fromRouteStopId: fromId,
+                    toRouteStopId: toId,
                     userId: req.session.firmUser.id,
-                    type: "income",
-                    category:
-                        ticket.payment === "cash"
-                            ? "cash_sale"
-                            : ticket.payment === "card"
-                                ? "card_sale"
-                                : "point_sale",
-                    amount: ticket.price,
-                    description: `${trip.date} ${trip.time} | ${fromTitle} - ${toTitle}`,
-                    ticketId: ticket.id,
-                });
+                    pnr: pnr,
+                    payment: t.payment,
+                    takeOnText: takeOnTitle,
+                    takeOffText: takeOffTitle,
+                }, { transaction: t2 });
 
-                const register = await req.models.CashRegister.findOne({
-                    where: { userId: req.session.firmUser.id },
-                });
-                if (register) {
-                    if (ticket.payment === "cash") {
-                        register.cash_balance += Number(ticket.price) || 0;
-                    } else if (ticket.payment === "card") {
-                        register.card_balance += Number(ticket.price) || 0;
-                    }
-                    await register.save();
+                const nameUp = (t.name || "").toLocaleUpperCase("tr-TR");
+                const surnameUp = (t.surname || "").toLocaleUpperCase("tr-TR");
+
+                const orConds = [];
+                if (t.idNumber) orConds.push({ idNumber: t.idNumber });
+                if (nameUp && surnameUp) orConds.push({ name: nameUp, surname: surnameUp });
+
+                let existingCustomer = null;
+                if (orConds.length) {
+                    existingCustomer = await req.models.Customer.findOne({ where: { [Op.or]: orConds }, transaction: t2 });
                 }
-            }
+
+                if (!existingCustomer && !isReservationStatus) {
+                    await req.models.Customer.create({
+                        idNumber: t.idNumber || null,
+                        name: nameUp || null,
+                        surname: surnameUp || null,
+                        phoneNumber: t.phoneNumber || null,
+                        gender: t.gender || null,
+                        nationality: t.nationality || null,
+                        customerType: t.type || null,
+                        customerCategory: t.category || null,
+                    }, { transaction: t2 });
+                } else if (existingCustomer) {
+                    ticket.customerId = existingCustomer.id;
+                    if (
+                        existingCustomer.customerCategory == "member" &&
+                        existingCustomer.pointOrPercent == "point"
+                    ) {
+                        if (ticket.payment === "point") {
+                            existingCustomer.point_amount -= Number(ticket.price);
+                        } else {
+                            existingCustomer.point_amount += Number(ticket.price) * 0.05;
+                        }
+                    }
+                    await ticket.save({ transaction: t2 });
+                    await existingCustomer.save({ transaction: t2 });
+                }
+
+                if (ticket.status === "completed" && ticket.payment !== "point") {
+                    const fromTitle = stops.find((s) => s.id == ticket.fromRouteStopId)?.title || "";
+                    const toTitle = stops.find((s) => s.id == ticket.toRouteStopId)?.title || "";
+
+                    await req.models.Transaction.create({
+                        userId: req.session.firmUser.id,
+                        type: "income",
+                        category:
+                            ticket.payment === "cash"
+                                ? "cash_sale"
+                                : ticket.payment === "card"
+                                    ? "card_sale"
+                                    : "point_sale",
+                        amount: ticket.price,
+                        description: `${trip.date} ${trip.time} | ${fromTitle} - ${toTitle}`,
+                        ticketId: ticket.id,
+                    }, { transaction: t2 });
+
+                    const register = await req.models.CashRegister.findOne({
+                        where: { userId: req.session.firmUser.id },
+                        transaction: t2,
+                    });
+                    if (register) {
+                        const priceNum = Number(ticket.price) || 0;
+                        if (ticket.payment === "cash") {
+                            await register.increment("cash_balance", { by: priceNum, transaction: t2 });
+                        } else if (ticket.payment === "card") {
+                            await register.increment("card_balance", { by: priceNum, transaction: t2 });
+                        }
+                    }
+                }
+
+                return ticket;
+            });
 
             if (status === "completed" && trip.uetdsRefNo) {
                 try {
@@ -3388,8 +3464,6 @@ exports.postCompleteTickets = async (req, res, next) => {
             ? req.body.tickets
             : JSON.parse(req.body.tickets || "[]");
 
-        console.log(tickets)
-
         const tripDate = req.body.tripDate;
         const tripTime = req.body.tripTime;
         const tripId = req.body.tripId;
@@ -3441,8 +3515,13 @@ exports.postCompleteTickets = async (req, res, next) => {
             ? await req.models.Stop.findAll({ where: { id: { [Op.in]: stopIds } } })
             : [];
 
+        // SIRA EŞLEŞTİRME BUG DÜZELTMESİ: order olmadan MySQL, satırları rastgele/ekleme
+        // sırasına göre döndürebilir; bu da foundTickets[i]'nin tickets[i]'ye
+        // (frontend'den gelen ve koltuk numarasına göre sıralı listeye) yanlış
+        // eşleşmesine (örn. yolcu bilgilerinin başka bir koltuğa yazılmasına) yol açıyordu.
         const foundTickets = await req.models.Ticket.findAll({
             where: { tripId: trip.id, pnr: pnr, seatNo: { [Op.in]: seatNumbers } },
+            order: [["seatNo", "ASC"]],
         });
 
         if (normalizedIdNumbers.length) {
@@ -3511,55 +3590,61 @@ exports.postCompleteTickets = async (req, res, next) => {
             if (ticket.idNumber) orConds.push({ idNumber: ticket.idNumber });
             if (nameUp && surnameUp) orConds.push({ name: nameUp, surname: surnameUp });
 
-            let existingCustomer = null;
-            if (orConds.length) {
-                existingCustomer = await req.models.Customer.findOne({ where: { [Op.or]: orConds } });
-            }
-
-            if (!existingCustomer) {
-                const customer = await req.models.Customer.create({
-                    idNumber: ticket.idNumber || null,
-                    name: nameUp || null,
-                    surname: surnameUp || null,
-                    phoneNumber: ticket.phoneNumber || null,
-                    gender: ticket.gender || null,
-                    nationality: ticket.nationality || null,
-                    customerType: ticket.customerType || null,
-                    customerCategory: ticket.customerCategory || null,
-                });
-                ticket.customerId = customer.id;
-            }
-
-            await ticket.save();
-
-            const fromTitle = stops.find((s) => s.id == ticket.fromRouteStopId)?.title || "";
-            const toTitle = stops.find((s) => s.id == ticket.toRouteStopId)?.title || "";
-
-            await req.models.Transaction.create({
-                userId: req.session.firmUser.id,
-                type: "income",
-                category:
-                    ticket.payment === "cash"
-                        ? "cash_sale"
-                        : ticket.payment === "card"
-                            ? "card_sale"
-                            : "point_sale",
-                amount: ticket.price,
-                description: `${trip.date} ${trip.time} | ${fromTitle} - ${toTitle}`,
-                ticketId: ticket.id,
-            });
-
-            const register = await req.models.CashRegister.findOne({
-                where: { userId: req.session.firmUser.id },
-            });
-            if (register) {
-                if (ticket.payment === "cash") {
-                    register.cash_balance = Number(register.cash_balance) + (Number(ticket.price) || 0);
-                } else if (ticket.payment === "card") {
-                    register.card_balance = Number(register.card_balance) + (Number(ticket.price) || 0);
+            // Bilet g├╝ncellemesi, m├╝┼şteri kayd─▒, gelir kayd─▒ ve kasa bakiyesi
+            // g├╝ncellemesi tek bir transaction i├ğinde: biri ba┼şar─▒s─▒z olursa
+            // yar─▒m kalm─▒┼ş finansal veri olu┼şmaz.
+            await req.db.transaction(async (t) => {
+                let existingCustomer = null;
+                if (orConds.length) {
+                    existingCustomer = await req.models.Customer.findOne({ where: { [Op.or]: orConds }, transaction: t });
                 }
-                await register.save();
-            }
+
+                if (!existingCustomer) {
+                    const customer = await req.models.Customer.create({
+                        idNumber: ticket.idNumber || null,
+                        name: nameUp || null,
+                        surname: surnameUp || null,
+                        phoneNumber: ticket.phoneNumber || null,
+                        gender: ticket.gender || null,
+                        nationality: ticket.nationality || null,
+                        customerType: ticket.customerType || null,
+                        customerCategory: ticket.customerCategory || null,
+                    }, { transaction: t });
+                    ticket.customerId = customer.id;
+                }
+
+                await ticket.save({ transaction: t });
+
+                const fromTitle = stops.find((s) => s.id == ticket.fromRouteStopId)?.title || "";
+                const toTitle = stops.find((s) => s.id == ticket.toRouteStopId)?.title || "";
+
+                await req.models.Transaction.create({
+                    userId: req.session.firmUser.id,
+                    type: "income",
+                    category:
+                        ticket.payment === "cash"
+                            ? "cash_sale"
+                            : ticket.payment === "card"
+                                ? "card_sale"
+                                : "point_sale",
+                    amount: ticket.price,
+                    description: `${trip.date} ${trip.time} | ${fromTitle} - ${toTitle}`,
+                    ticketId: ticket.id,
+                }, { transaction: t });
+
+                const register = await req.models.CashRegister.findOne({
+                    where: { userId: req.session.firmUser.id },
+                    transaction: t,
+                });
+                if (register) {
+                    // read-modify-write yerine atomik increment.
+                    if (ticket.payment === "cash") {
+                        await register.increment("cash_balance", { by: Number(ticket.price) || 0, transaction: t });
+                    } else if (ticket.payment === "card") {
+                        await register.increment("card_balance", { by: Number(ticket.price) || 0, transaction: t });
+                    }
+                }
+            });
         }
 
         return res.status(200).json({ message: "Biletler başarıyla kaydedildi." });
@@ -4069,8 +4154,6 @@ exports.postDeletePendingTickets = async (req, res, next) => {
         const seats = JSON.parse(req.body.seats);
         const pendingIds = JSON.parse(req.body.pendingIds);
 
-        console.log(pendingIds)
-
         const trip = await req.models.Trip.findOne({
             where: {
                 date,
@@ -4364,12 +4447,23 @@ exports.postMoveTickets = async (req, res, next) => {
 
         const oldTripIds = [...new Set(tickets.map((t) => t.tripId))];
 
+        // BUG DÜZELTMESİ: Ticket modelinde `tripUetdsRefNo` diye bir alan yok
+        // (her zaman undefined), bu yüzden aşağıdaki UETDS iptal çağrısı
+        // "Seferin UETDS referans numarası yok" hatasıyla her zaman sessizce
+        // başarısız oluyordu; yolcu eski seferin UETDS grubundan asla
+        // silinmiyordu. Eski seferlerin gerçek uetdsRefNo'sunu önceden çekiyoruz.
+        const oldTripsForUetds = oldTripIds.length
+            ? await req.models.Trip.findAll({ where: { id: { [Op.in]: oldTripIds } } })
+            : [];
+        const oldTripsByIdForUetds = new Map(oldTripsForUetds.map((ot) => [ot.id, ot]));
+
         for (let i = 0; i < tickets.length; i++) {
             const t = tickets[i];
 
             if (t.uetdsRefNo && t.tripId) {
                 try {
-                    await yolcuIptalUetdsYolcuRefNoIle(req, { uetdsRefNo: t.tripUetdsRefNo }, t.uetdsRefNo, "Ticket moved");
+                    const oldTripForUetds = oldTripsByIdForUetds.get(t.tripId);
+                    await yolcuIptalUetdsYolcuRefNoIle(req, oldTripForUetds, t.uetdsRefNo, "Ticket moved");
                     console.log(`🧾 [UETDS] Old passenger removed: Ticket #${t.id}`);
                 } catch (e) {
                     console.error(`❌ [UETDS] Old passenger removal error (#${t.id}):`, e.message);
@@ -4676,8 +4770,6 @@ exports.getBusPlanPanel = async (req, res, next) => {
 
 exports.postSaveBusPlan = async (req, res, next) => {
     try {
-        console.log("Incoming data:", req.body);
-
         const data = convertEmptyFieldsToNull(req.body);
 
         const {
@@ -5003,7 +5095,6 @@ exports.getBus = async (req, res, next) => {
 
 exports.postSaveBus = async (req, res, next) => {
     try {
-        console.log("Incoming data:", req.body);
 
         const data = convertEmptyFieldsToNull(req.body);
 
@@ -5225,9 +5316,6 @@ exports.postTripStaff = async (req, res, next) => {
             { where: { id: tripId } }
         );
 
-        console.log("🟢 Old staff:", oldIds);
-        console.log("🔵 New staff:", newIds);
-
         const tripAfter = await req.models.Trip.findByPk(tripId);
         if (!tripAfter || !tripAfter.uetdsRefNo) {
             return res.json({
@@ -5238,9 +5326,6 @@ exports.postTripStaff = async (req, res, next) => {
 
         const toRemove = oldIds.filter((id) => !newIds.includes(id));
         const toAdd = newIds.filter((id) => !oldIds.includes(id));
-
-        console.log("🟥 To remove:", toRemove);
-        console.log("🟩 To add:", toAdd);
 
         const results = { removed: [], added: [] };
 
@@ -6273,7 +6358,14 @@ exports.postUpdateCustomer = async (req, res, next) => {
         }
 
         if (password !== undefined) {
-            customer.password = await bcrypt.hash(password, 12)
+            const trimmedPassword = typeof password === "string" ? password.trim() : "";
+            if (!trimmedPassword) {
+                return res.status(400).json({ success: false, message: "Şifre boş olamaz." });
+            }
+            if (trimmedPassword.length < 6) {
+                return res.status(400).json({ success: false, message: "Şifre en az 6 karakter olmalıdır." });
+            }
+            customer.password = await bcrypt.hash(trimmedPassword, 12)
         }
 
         if (email !== undefined) {
@@ -6535,6 +6627,9 @@ exports.postSaveUser = async (req, res, next) => {
         let hashedPassword;
 
         if (password) {
+            if (String(password).trim().length < 6) {
+                return res.status(400).json({ message: "Şifre en az 6 karakter olmalıdır." });
+            }
             hashedPassword = await bcrypt.hash(password, 12);
         } else if (id) {
             const existingUser = await req.models.FirmUser.findByPk(id);
@@ -6604,6 +6699,8 @@ exports.postSaveUser = async (req, res, next) => {
     }
 };
 
+const PROTECTED_SYSTEM_USERNAMES = new Set(["GOTUR", "WEB", "goturbilet"]);
+
 exports.postDeleteUser = async (req, res, next) => {
     try {
         const id = Number(req.body.id);
@@ -6611,9 +6708,17 @@ exports.postDeleteUser = async (req, res, next) => {
             return res.status(400).json({ message: "Geçersiz kullanıcı bilgisi." });
         }
 
+        if (id === req.session.firmUser?.id) {
+            return res.status(400).json({ message: "Kendi hesabınızı silemezsiniz." });
+        }
+
         const user = await req.models.FirmUser.findByPk(id);
         if (!user) {
             return res.status(404).json({ message: "Kullanıcı bulunamadı." });
+        }
+
+        if (PROTECTED_SYSTEM_USERNAMES.has(user.username)) {
+            return res.status(400).json({ message: "Bu sistem kullanıcısı silinemez." });
         }
 
         await req.models.FirmUserPermission.destroy({ where: { firmUserId: id } });
@@ -6645,15 +6750,25 @@ exports.getTransactions = async (req, res, next) => {
             transactions[transactions.length - 1].amount = ""
         }
 
-        await Promise.all(transactions.map(async (t) => {
+        // N+1 DÜZELTMESİ: Önceden her transaction için ayrı bir Ticket.findOne
+        // sorgusu çalışıyordu (N sorgu); artık tüm ticketId'ler tek bir
+        // findAll ile toplu çekiliyor ve JS içinde eşleniyor.
+        const ticketIds = [...new Set(transactions.filter(t => t.ticketId).map(t => t.ticketId))];
+        const ticketsById = new Map();
+        if (ticketIds.length) {
+            const tickets = await req.models.Ticket.findAll({ where: { id: { [Op.in]: ticketIds } } });
+            tickets.forEach(ticket => ticketsById.set(ticket.id, ticket));
+        }
+
+        transactions.forEach(t => {
             if (t.ticketId) {
-                const ticket = await req.models.Ticket.findOne({ where: { id: t.ticketId } });
+                const ticket = ticketsById.get(t.ticketId);
                 if (ticket) {
                     t.pnr = ticket.pnr;
                     t.seatNumber = ticket.seatNo;
                 }
             }
-        }));
+        });
 
         res.render("mixins/transactionsList", { transactions });
     } catch (err) {
@@ -6852,26 +6967,42 @@ exports.postAddBusTransaction = async (req, res, next) => {
 
 exports.postResetRegister = async (req, res, next) => {
     try {
-        const register = await req.models.CashRegister.findOne({ where: { userId: req.session.firmUser.id } });
-        if (!register) return res.status(404).json({ message: "Kasa kaydı bulunamadı." });
+        // Gider kaydı ve kasa sıfırlama tek bir transaction içinde: aradaki
+        // adım başarısız olursa (örn. kayıt eklendi ama kasa sıfırlanamadı)
+        // yarım kalmış finansal veri oluşmaz.
+        await req.db.transaction(async (t) => {
+            const register = await req.models.CashRegister.findOne({
+                where: { userId: req.session.firmUser.id },
+                transaction: t,
+            });
+            if (!register) {
+                const notFoundErr = new Error("Kasa kaydı bulunamadı.");
+                notFoundErr.code = "REGISTER_NOT_FOUND";
+                throw notFoundErr;
+            }
 
-        const total = Number(register.cash_balance) + Number(register.card_balance);
+            const total = Number(register.cash_balance) + Number(register.card_balance);
 
-        await req.models.Transaction.create({
-            userId: req.session.firmUser.id,
-            type: "expense",
-            category: "register_reset",
-            amount: total,
-            description: "Kasa sıfırlandı. Önceki bakiye: " + total + "₺"
+            await req.models.Transaction.create({
+                userId: req.session.firmUser.id,
+                type: "expense",
+                category: "register_reset",
+                amount: total,
+                description: "Kasa sıfırlandı. Önceki bakiye: " + total + "₺"
+            }, { transaction: t });
+
+            await register.update({
+                cash_balance: 0,
+                card_balance: 0,
+                reset_date_time: new Date(),
+            }, { transaction: t });
         });
-
-        register.cash_balance = 0;
-        register.card_balance = 0;
-        register.reset_date_time = new Date();
-        await register.save();
 
         res.json({ success: true });
     } catch (err) {
+        if (err.code === "REGISTER_NOT_FOUND") {
+            return res.status(404).json({ message: err.message });
+        }
         console.error("Reset register error:", err);
         res.status(500).json({ success: false, message: err.message });
     }
@@ -6888,12 +7019,21 @@ exports.postTransferRegister = async (req, res, next) => {
         const sender = users.find(u => u.id == senderId);
         const receiver = users.find(u => u.id == targetUserId);
 
+        if (!sender || !receiver) {
+            return res.status(404).json({ message: "Kullanıcı bulunamadı." });
+        }
+
         const senderRegister = await req.models.CashRegister.findOne({ where: { userId: senderId } });
+        if (!senderRegister) {
+            return res.status(404).json({ message: "Kasa kaydı bulunamadı." });
+        }
 
         const cashBalance = Number(senderRegister.cash_balance) || 0;
         const cardBalance = Number(senderRegister.card_balance) || 0;
         const total = cashBalance + cardBalance;
 
+        // Bu adım sadece bir devir TALEBİ oluşturur; bakiyeler alıcı
+        // postConfirmPayment ile onaylayana kadar değişmez.
         await req.models.Payment.create({
             initiatorId: receiver.id,
             payerId: sender.id,
@@ -6903,7 +7043,6 @@ exports.postTransferRegister = async (req, res, next) => {
             cash_amount: cashBalance,
             isWholeTransfer: true
         });
-        console.log(senderRegister.cash_balance)
 
         res.json({ success: true });
     } catch (err) {
@@ -6971,8 +7110,11 @@ exports.getPendingPayments = async (req, res, next) => {
 
 exports.getPendingCollections = async (req, res, next) => {
     try {
-        console.log(req.session.firmUser.id)
-        const payments = await req.models.Payment.findAll({ where: { receiverId: req.session.firmUser.id, initiatorId: req.session.firmUser.id, status: "pending" } });
+        // DÜZELTME: `initiatorId: req.session.firmUser.id` koşulu, receiverId ile
+        // birlikte kullanıcının kendi başlattığı VE kendisine gelen ödemeleri
+        // arıyordu; bu da normal (başkasının başlattığı) tahsilatların listede
+        // hiç görünmemesine yol açıyordu. Bekleyen tahsilat = alıcının ben olduğum kayıt.
+        const payments = await req.models.Payment.findAll({ where: { receiverId: req.session.firmUser.id, status: "pending" } });
         if (!payments.length) {
             res.status(404);
         }
@@ -6994,60 +7136,86 @@ exports.getPendingCollections = async (req, res, next) => {
 exports.postConfirmPayment = async (req, res, next) => {
     try {
         const { id, action } = req.body;
-        const payment = await req.models.Payment.findOne({ where: { id } });
-        const users = await req.models.FirmUser.findAll({ where: { id: { [Op.in]: [payment.payerId, payment.receiverId] } } })
 
+        // DÜZELTME: Önceden `payment` bulunamadan (null) hemen kullanıcı
+        // sorgusunda payment.payerId/receiverId'ye erişiliyordu; bu, geçersiz
+        // bir id gönderildiğinde 404 yerine ham bir TypeError/500 fırlatıyordu.
+        const payment = await req.models.Payment.findOne({ where: { id } });
         if (!payment) return res.status(404).json({ message: "Ödeme kaydı bulunamadı." });
         if (payment.status !== "pending") return res.status(400).json({ message: "Ödeme zaten işlenmiş." });
         if (payment.initiatorId !== req.session.firmUser.id) return res.status(403).json({ message: "Bunu onaylamaya yetkiniz yok." });
 
-        if (Number(payment.amount) === 0) {
-            payment.status = action == "approve" ? "approved" : "rejected";
-            await payment.save();
-            return res.json({ success: true });
-        }
+        const users = await req.models.FirmUser.findAll({ where: { id: { [Op.in]: [payment.payerId, payment.receiverId] } } })
+        const payer = users.find(u => u.id == payment.payerId);
+        const receiver = users.find(u => u.id == payment.receiverId);
 
-        payment.status = action == "approve" ? "approved" : "rejected";
-        await payment.save();
+        // RACE CONDITION DÜZELTMESİ: Onay/red işlemi ve (onaylanırsa) tüm
+        // gelir/gider kayıtları + kasa bakiyesi güncellemeleri artık tek bir
+        // transaction içinde; ayrıca durum güncellemesi sadece hâlâ
+        // status="pending" olan satırda atomik olarak yapılıyor (UPDATE ...
+        // WHERE status='pending'), böylece aynı ödeme eşzamanlı iki istekle
+        // iki kez onaylanıp bakiye iki kez işlenemez.
+        const newStatus = action == "approve" ? "approved" : "rejected";
 
-        if (action == "approve") {
+        const result = await req.db.transaction(async (t) => {
+            const [claimedCount] = await req.models.Payment.update(
+                { status: newStatus },
+                { where: { id: payment.id, status: "pending" }, transaction: t }
+            );
+
+            if (claimedCount === 0) {
+                return { alreadyProcessed: true };
+            }
+
+            if (Number(payment.amount) === 0 || action !== "approve") {
+                return { alreadyProcessed: false };
+            }
+
             await req.models.Transaction.create({
-                userId: users.find(u => u.id == payment.receiverId).id,
+                userId: receiver.id,
                 type: "income",
                 category: "transfer_in",
                 amount: Number(payment.amount),
                 description: payment.isWholeTransfer ?
-                    `${users.find(u => u.id == payment.payerId).name} adlı kullanıcıdan kasa devralındı.` : `${users.find(u => u.id == payment.payerId).name} adlı kullanıcıdan ödeme alındı.`,
-            })
+                    `${payer?.name || ""} adlı kullanıcıdan kasa devralındı.` : `${payer?.name || ""} adlı kullanıcıdan ödeme alındı.`,
+            }, { transaction: t })
 
             await req.models.Transaction.create({
-                userId: users.find(u => u.id == payment.payerId).id,
+                userId: payer.id,
                 type: "expense",
                 category: "transfer_out",
                 amount: Number(payment.amount),
                 description: payment.isWholeTransfer ?
-                    `${users.find(u => u.id == payment.receiverId).name} adlı kullanıcıya kasa devredildi. Tutar: ${payment.amount}₺` :
-                    `${users.find(u => u.id == payment.receiverId).name} adlı kullanıcıya ödeme yapıldı.`
-            })
+                    `${receiver?.name || ""} adlı kullanıcıya kasa devredildi. Tutar: ${payment.amount}₺` :
+                    `${receiver?.name || ""} adlı kullanıcıya ödeme yapıldı.`
+            }, { transaction: t })
 
-            await req.models.CashRegister.findOne({ where: { userId: payment.receiverId } }).then(async cr => {
-                if (cr) {
-                    cr.cash_balance = Number(cr.cash_balance) + Number(payment.cash_amount);
-                    cr.card_balance = Number(cr.card_balance) + Number(payment.card_amount);
-                    await cr.save();
-                }
-            })
+            const receiverRegister = await req.models.CashRegister.findOne({ where: { userId: payment.receiverId }, transaction: t });
+            if (receiverRegister) {
+                await receiverRegister.increment(
+                    { cash_balance: Number(payment.cash_amount) || 0, card_balance: Number(payment.card_amount) || 0 },
+                    { transaction: t }
+                );
+            }
 
-            await req.models.CashRegister.findOne({ where: { userId: payment.payerId } }).then(async cr => {
-                if (cr) {
-                    cr.cash_balance = Number(cr.cash_balance) - Number(payment.cash_amount);
-                    cr.card_balance = Number(cr.card_balance) - Number(payment.card_amount);
-                    if (payment.isWholeTransfer)
-                        cr.reset_date_time = new Date()
-                    await cr.save();
+            const payerRegister = await req.models.CashRegister.findOne({ where: { userId: payment.payerId }, transaction: t });
+            if (payerRegister) {
+                await payerRegister.decrement(
+                    { cash_balance: Number(payment.cash_amount) || 0, card_balance: Number(payment.card_amount) || 0 },
+                    { transaction: t }
+                );
+                if (payment.isWholeTransfer) {
+                    await payerRegister.update({ reset_date_time: new Date() }, { transaction: t });
                 }
-            })
+            }
+
+            return { alreadyProcessed: false };
+        });
+
+        if (result.alreadyProcessed) {
+            return res.status(400).json({ message: "Ödeme zaten işlenmiş." });
         }
+
         res.json({ success: true });
     } catch (err) {
         console.error("Confirm payment error:", err);
@@ -7358,8 +7526,6 @@ exports.getSalesRefundsReport = async (req, res, next) => {
             to: toStopRecord?.title || "Tümü",
         };
 
-        console.log(start)
-        console.log(end)
         const where = {
             createdAt: { [Op.between]: [start, end] },
             status: { [Op.in]: ['completed', 'web', 'gotur', 'refund'] }
@@ -8167,8 +8333,6 @@ exports.getUpcomingTicketsReport = async (req, res, next) => {
             raw: true
         }) : [];
 
-        console.log([...new Set(routeStops.map(rs => rs.id).filter(Boolean))])
-
         const stopIds = [...new Set(routeStops.map(rs => rs.stopId).filter(Boolean))];
         const stops = stopIds.length ? await req.models.Stop.findAll({
             where: { id: { [Op.in]: stopIds } },
@@ -8653,7 +8817,7 @@ exports.postChangePassword = async (req, res, next) => {
         }
 
         const hashedPassword = await bcrypt.hash(newPassword, 10);
-        await user.update({ password: hashedPassword });
+        await user.update({ password: hashedPassword, forcePasswordReset: false });
 
         return destroySessionAndRespond(req, res);
     } catch (err) {

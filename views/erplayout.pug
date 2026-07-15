@@ -12,7 +12,7 @@ html
     link(rel='stylesheet' href='/flatpickr/dist/flatpickr.min.css')
     link(rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css')
     link(rel='stylesheet' href='https://cdnjs.cloudflare.com/SearchableSelect.js/6.7.2/css/all.min.css')
-  body
+  body(data-must-change-password=(mustChangePassword ? "true" : "false"))
     .loading
       .loader
     .error-popup
@@ -132,6 +132,7 @@ html
                     button.user-menu-password.dropdown-item(type="button") Şifre Değiştir
                   li
                     form(action="/logout" method="post" class="m-0")
+                      input(type="hidden" name="_csrf" value=csrfToken)
                       button.dropdown-item.d-flex.align-items-center.gap-2.text-danger(type="submit")
                         i.fa-solid.fa-right-from-bracket
                         span Çıkış

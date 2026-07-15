@@ -43,8 +43,10 @@ module.exports = (sequelize) => {
       type: DataTypes.ENUM("cash", "card"),
       allowNull: false,
     },
+    // Parametresiz DECIMAL, MySQL'de DECIMAL(10,0)'a denk gelir ve ondalık
+    // haneleri (kuruşu) tamamen keser; bu yüzden açıkça DECIMAL(12,2) kullanılıyor.
     price: {
-      type: DataTypes.DECIMAL,
+      type: DataTypes.DECIMAL(12, 2),
       allowNull: false,
     },
   });

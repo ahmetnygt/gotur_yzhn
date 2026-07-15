@@ -7,9 +7,18 @@ module.exports = (sequelize) => {
             autoIncrement: true,
             primaryKey: true
         },
+        // GÜVENLİK DÜZELTMESİ: API key artık düz metin (`keyValue`) olarak
+        // saklanmıyor; sadece HMAC-SHA256 hash'i (`keyHash`) saklanıyor, böylece
+        // veritabanı sızıntısında ham key'ler ifşa olmuyor. `keyValue` geriye
+        // dönük uyumluluk için tutuluyor ama artık kimlik doğrulamada
+        // kullanılmıyor; mevcut kayıtlar `keyHash` ile yeniden oluşturulmalı.
         keyValue: {
             type: DataTypes.STRING,
-            allowNull: false
+            allowNull: true
+        },
+        keyHash: {
+            type: DataTypes.STRING,
+            allowNull: true,
         },
         tenantKey: {
             type: DataTypes.STRING,

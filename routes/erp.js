@@ -3,22 +3,43 @@ const router = express.Router();
 
 const autoLogMiddleware = require("../middlewares/autoLogMiddleware");
 const auth = require("../middlewares/authentication")
+const requirePermission = require("../middlewares/permissionMiddleware")
+const { ensureCsrfToken, verifyCsrfToken } = require("../middlewares/csrf")
 const erpController = require("../controllers/erpController")
 
 // Tüm POST/PUT/DELETE işlemleri için global middleware
 // router.use(autoLogMiddleware);
 
-router.get('/', auth, erpController.getErp);
+// GÜVENLİK: CSRF koruması login dahil TÜM rotalara uygulanıyor. ensureCsrfToken
+// her istekte (login sayfası dahil) token'ı oturuma/cookie'ye yazıyor;
+// verifyCsrfToken durum değiştiren isteklerde bunu doğruluyor.
+router.use(ensureCsrfToken);
+router.use(verifyCsrfToken);
 
-router.get('/test', erpController.test);
-
+// --- Login öncesi erişilebilmesi gereken tek rotalar ---
 router.get('/login', erpController.getErpLogin);
-router.post('/login', erpController.postErpLogin);
-router.post('/logout', auth, erpController.postErpLogout);
-router.post('/post-update-profile', auth, erpController.postUpdateProfile);
-router.post('/post-change-password', auth, erpController.postChangePassword);
+// GÜVENLİK: app.js'de tanımlanan loginRateLimiter buraya kadar hiçbir route'a
+// bağlanmamıştı (sadece app.set ile saklanıyordu), bu yüzden brute-force login
+// denemeleri hiçbir şekilde sınırlanmıyordu.
+router.post('/login', (req, res, next) => {
+    const limiter = req.app.get("loginRateLimiter");
+    if (limiter) return limiter(req, res, next);
+    return next();
+}, erpController.postErpLogin);
 
-router.get('/permissions', auth, erpController.getPermissions);
+// Bundan sonraki TÜM rotalar için oturum açmış olmak zorunludur.
+// Önceden her rota kendi başına "auth" middleware'ini opt-in olarak
+// ekliyordu; bu da çoğu ERP verisinin (sefer, bilet, müşteri, kullanıcı vb.)
+// hiçbir kimlik doğrulaması olmadan erişilebilir olmasına yol açıyordu.
+router.use(auth);
+
+router.get('/', erpController.getErp);
+
+router.post('/logout', erpController.postErpLogout);
+router.post('/post-update-profile', erpController.postUpdateProfile);
+router.post('/post-change-password', erpController.postChangePassword);
+
+router.get('/permissions', erpController.getPermissions);
 
 router.get('/get-day-trips-list', erpController.getDayTripsList);
 
@@ -38,12 +59,12 @@ router.post('/post-trip-note', erpController.postTripNote);
 router.post('/post-edit-trip-note', erpController.postEditTripNote);
 router.post('/post-delete-trip-note', erpController.postDeleteTripNote);
 
-router.get('/get-bus-account-cut', auth, erpController.getBusAccountCutData);
-router.post('/post-bus-account-cut', auth, erpController.postBusAccountCut);
-router.get('/get-bus-account-cut-record', auth, erpController.getBusAccountCutRecord);
-router.post('/post-delete-bus-account-cut', auth, erpController.postDeleteBusAccountCut);
-router.get('/get-bus-account-cut-receipt', auth, erpController.getBusAccountCutReceipt);
-router.get('/trip-seat-plan', auth, erpController.getTripSeatPlanReport);
+router.get('/get-bus-account-cut', erpController.getBusAccountCutData);
+router.post('/post-bus-account-cut', erpController.postBusAccountCut);
+router.get('/get-bus-account-cut-record', erpController.getBusAccountCutRecord);
+router.post('/post-delete-bus-account-cut', erpController.postDeleteBusAccountCut);
+router.get('/get-bus-account-cut-receipt', erpController.getBusAccountCutReceipt);
+router.get('/trip-seat-plan', erpController.getTripSeatPlanReport);
 
 router.get('/get-ticketops-popup', erpController.getTicketOpsPopUp);
 
@@ -121,8 +142,8 @@ router.post('/post-delete-branch', erpController.postDeleteBranch);
 router.get('/get-users-list', erpController.getUsersList);
 router.get('/get-user', erpController.getUser);
 router.get('/get-users-by-branch', erpController.getUsersByBranch);
-router.post('/post-save-user', erpController.postSaveUser);
-router.post('/post-delete-user', erpController.postDeleteUser);
+router.post('/post-save-user', requirePermission("USER_PERMISSION_MANAGE"), erpController.postSaveUser);
+router.post('/post-delete-user', requirePermission("USER_PERMISSION_MANAGE"), erpController.postDeleteUser);
 
 router.get('/get-customers-list', erpController.getCustomersList);
 router.get('/get-customer', erpController.getCustomer);
@@ -132,31 +153,31 @@ router.post('/post-add-member', erpController.postAddMember);
 router.post('/post-update-customer', erpController.postUpdateCustomer);
 router.post('/post-customer-blacklist', erpController.postCustomerBlacklist);
 
-router.get('/get-transactions-list', auth, erpController.getTransactions);
-router.get('/get-transaction-data', auth, erpController.getTransactionData);
-router.get('/get-user-register-balance', auth, erpController.getUserRegisterBalance);
-router.post('/post-add-transaction', auth, erpController.postAddTransaction);
-router.get('/get-bus-transactions', auth, erpController.getBusTransactions);
-router.post('/post-add-bus-transaction', auth, erpController.postAddBusTransaction);
-router.post('/post-reset-register', auth, erpController.postResetRegister);
-router.post('/post-transfer-register', auth, erpController.postTransferRegister);
+router.get('/get-transactions-list', erpController.getTransactions);
+router.get('/get-transaction-data', erpController.getTransactionData);
+router.get('/get-user-register-balance', erpController.getUserRegisterBalance);
+router.post('/post-add-transaction', erpController.postAddTransaction);
+router.get('/get-bus-transactions', erpController.getBusTransactions);
+router.post('/post-add-bus-transaction', erpController.postAddBusTransaction);
+router.post('/post-reset-register', erpController.postResetRegister);
+router.post('/post-transfer-register', erpController.postTransferRegister);
 
-router.post('/post-request-payment', auth, erpController.postRequestPayment);
-router.post('/post-send-payment', auth, erpController.postSendPayment);
-router.get('/get-pending-payments', auth, erpController.getPendingPayments);
-router.get('/get-pending-collections', auth, erpController.getPendingCollections);
-router.post('/post-confirm-payment', auth, erpController.postConfirmPayment);
+router.post('/post-request-payment', erpController.postRequestPayment);
+router.post('/post-send-payment', erpController.postSendPayment);
+router.get('/get-pending-payments', erpController.getPendingPayments);
+router.get('/get-pending-collections', erpController.getPendingCollections);
+router.post('/post-confirm-payment', erpController.postConfirmPayment);
 
-router.get('/get-announcements', auth, erpController.getAnnouncements);
-router.post('/post-save-announcement', auth, erpController.postSaveAnnouncement);
-router.post('/post-announcement-seen', auth, erpController.postAnnouncementSeen);
+router.get('/get-announcements', erpController.getAnnouncements);
+router.post('/post-save-announcement', erpController.postSaveAnnouncement);
+router.post('/post-announcement-seen', erpController.postAnnouncementSeen);
 
-router.get('/salesAndRefunds', auth, erpController.getSalesRefundsReport);
-router.get('/webTickets', auth, erpController.getWebTicketsReport);
-router.get('/dailyUserAccount', auth, erpController.getDailyUserAccountReport);
-router.get('/upcomingTickets', auth, erpController.getUpcomingTicketsReport);
-router.get('/externalReturnTickets', auth, erpController.getExternalReturnTicketsReport);
-router.get('/busTransactions', auth, erpController.getBusTransactionsReport);
+router.get('/salesAndRefunds', erpController.getSalesRefundsReport);
+router.get('/webTickets', erpController.getWebTicketsReport);
+router.get('/dailyUserAccount', erpController.getDailyUserAccountReport);
+router.get('/upcomingTickets', erpController.getUpcomingTicketsReport);
+router.get('/externalReturnTickets', erpController.getExternalReturnTicketsReport);
+router.get('/busTransactions', erpController.getBusTransactionsReport);
 router.get("/uetdsTripDetail/:tripId", erpController.getSeferDetayCiktisi);
 
 module.exports = router;

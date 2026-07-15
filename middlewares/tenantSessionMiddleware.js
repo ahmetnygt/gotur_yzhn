@@ -16,6 +16,7 @@ function ensureTenantEntry(session, tenantKey) {
             firmUser: null,
             permissions: [],
             firm: null,
+            forcePasswordReset: false,
         };
     }
 
@@ -62,6 +63,7 @@ module.exports = (req, res, next) => {
     if (!tenantKey || !req.session) {
         res.locals.firmUser = null;
         res.locals.permissions = DEFAULT_ARRAY;
+        res.locals.mustChangePassword = false;
         return next();
     }
 
@@ -71,12 +73,15 @@ module.exports = (req, res, next) => {
     defineTenantProxy(req.session, tenantKey, "permissions", DEFAULT_ARRAY);
     defineTenantProxy(req.session, tenantKey, "firm", null);
     defineTenantProxy(req.session, tenantKey, "isAuthenticated", false);
+    defineTenantProxy(req.session, tenantKey, "forcePasswordReset", false);
 
     req.tenantSession = tenantSession;
     res.locals.firmUser = tenantSession.firmUser || null;
     res.locals.permissions = Array.isArray(tenantSession.permissions)
         ? tenantSession.permissions
         : DEFAULT_ARRAY;
+    // Görünüme "şifrenizi değiştirmelisiniz" uyarısını gösterebilmesi için aktarılıyor.
+    res.locals.mustChangePassword = !!tenantSession.forcePasswordReset;
 
     next();
 };
