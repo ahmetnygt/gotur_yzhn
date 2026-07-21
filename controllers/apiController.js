@@ -137,7 +137,7 @@ exports.getStops = async (req, res) => {
         const tenantKey = req.tenantKey;
 
         const stops = await Stop.findAll({
-            where: { isActive: true },
+            where: { isActive: true, isDeleted: false },
             attributes: ["id", "placeId", "title", "isActive"],
             order: [["title", "ASC"]]
         });
