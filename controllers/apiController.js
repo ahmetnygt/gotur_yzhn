@@ -507,6 +507,14 @@ exports.createPayment = async (req, res) => {
                     RouteStop.findOne({ where: { routeId: trip.routeId, stopId: toStopId }, transaction: t })
                 ]);
 
+                // tickets.fromRouteStopId / toRouteStopId kolonları adı yanıltıcı:
+                // ERP ve FK stops.id bekler (routeStops.id değil).
+                if (!fromRouteStop || !toRouteStop) {
+                    const stopErr = new Error("Seçilen duraklar bu seferin güzergahında bulunamadı.");
+                    stopErr.code = "STOPS_NOT_ON_ROUTE";
+                    throw stopErr;
+                }
+
                 // 2. ADIM: KOLTUKLAR HALA BOŞ MU KONTROL ET! (Trip kilidi altında)
                 const existingTickets = await Ticket.findAll({
                     where: {
@@ -550,8 +558,8 @@ exports.createPayment = async (req, res) => {
                         userId: webUser ? webUser.id : null,
                         optionDate: optionDateStr,
                         optionTime: optionTimeStr,
-                        fromRouteStopId: fromRouteStop ? fromRouteStop.id : null, // Kalkış durak ID'si bağlandı
-                        toRouteStopId: toRouteStop ? toRouteStop.id : null        // Varış durak ID'si bağlandı
+                        fromRouteStopId: fromStopId,
+                        toRouteStopId: toStopId
                     }, { transaction: t });
                 }
 
@@ -560,6 +568,9 @@ exports.createPayment = async (req, res) => {
         } catch (err) {
             if (err.code === "TRIP_NOT_FOUND") {
                 return res.status(404).json({ error: err.message });
+            }
+            if (err.code === "STOPS_NOT_ON_ROUTE") {
+                return res.status(400).json({ error: err.message });
             }
             if (err.code === "SEATS_TAKEN") {
                 return res.status(400).json({ error: err.message });
@@ -679,7 +690,7 @@ exports.getPaymentDetail = async (req, res) => {
 
 exports.paymentComplete = async (req, res) => {
     try {
-        const { Ticket, TicketGroup, FirmUser, Trip, RouteStop, Price, Stop } = req.models;
+        const { Ticket, TicketGroup, FirmUser, Price, Stop } = req.models;
         const { TicketPayment } = req.commonModels;
 
         const { phone, email } = req.body;
@@ -747,12 +758,6 @@ exports.paymentComplete = async (req, res) => {
                 }
                 const perSeatPrice = priceRow ? (priceRow.webPrice ?? priceRow.price1 ?? priceRow.price2 ?? 0) : 0;
 
-                const trip = await Trip.findByPk(pay.tripId, { transaction: t });
-                const [fromRouteStop, toRouteStop] = trip ? await Promise.all([
-                    RouteStop.findOne({ where: { routeId: trip.routeId, stopId: pay.fromStopId }, transaction: t }),
-                    RouteStop.findOne({ where: { routeId: trip.routeId, stopId: pay.toStopId }, transaction: t })
-                ]) : [null, null];
-
                 // DÜZELTME: Sequelize'dan gelen JSON verisi bazen 'String' olarak döner.
                 // Array olup olmadığından emin olmak için parse ediyoruz.
                 const seatsArray = typeof pay.seatNumbers === "string" ? JSON.parse(pay.seatNumbers) : (pay.seatNumbers || []);
@@ -801,8 +806,8 @@ exports.paymentComplete = async (req, res) => {
                             gender: gendersArray[i],
                             nationality: "TR",
                             userId: webUser ? webUser.id : null,
-                            fromRouteStopId: fromRouteStop ? fromRouteStop.id : null,
-                            toRouteStopId: toRouteStop ? toRouteStop.id : null
+                            fromRouteStopId: pay.fromStopId,
+                            toRouteStopId: pay.toStopId
                         }, { transaction: t });
                     }
                 }
@@ -1024,7 +1029,7 @@ exports.getCustomerTickets = async (req, res) => {
                                 {
                                     model: RouteStop,
                                     as: "stops",
-                                    attributes: ["id", "order", "duration"],
+                                    attributes: ["id", "stopId", "order", "duration"],
                                     include: [{ model: Stop, as: "stop", attributes: ["title"] }]
                                 }
                             ]
@@ -1045,7 +1050,8 @@ exports.getCustomerTickets = async (req, res) => {
 
             routeStops.sort((a, b) => a.order - b.order);
 
-            const fromRS = routeStops.find(rs => rs.id == ticket.fromRouteStopId);
+            // tickets.fromRouteStopId aslında stops.id tutar
+            const fromRS = routeStops.find(rs => rs.stopId == ticket.fromRouteStopId);
             let depMinutesToAdd = 0;
 
             if (fromRS) {
@@ -1053,7 +1059,7 @@ exports.getCustomerTickets = async (req, res) => {
                     if (rs.order > fromRS.order) break;
                     depMinutesToAdd += durationToMinutes(rs.duration);
                 }
-                const offset = trip.stopTimes?.find(st => st.routeStopId == ticket.fromRouteStopId)?.offsetMinutes || 0;
+                const offset = trip.stopTimes?.find(st => st.routeStopId == fromRS.id)?.offsetMinutes || 0;
                 depMinutesToAdd += offset;
 
                 ticket.fromStopTitle = fromRS.stop?.title;
@@ -1061,7 +1067,7 @@ exports.getCustomerTickets = async (req, res) => {
             ticket.calculatedDeparture = addMinutes(trip.time, depMinutesToAdd);
 
 
-            const toRS = routeStops.find(rs => rs.id == ticket.toRouteStopId);
+            const toRS = routeStops.find(rs => rs.stopId == ticket.toRouteStopId);
             let arrMinutesToAdd = 0;
 
             if (toRS) {
@@ -1069,7 +1075,7 @@ exports.getCustomerTickets = async (req, res) => {
                     if (rs.order > toRS.order) break;
                     arrMinutesToAdd += durationToMinutes(rs.duration);
                 }
-                const offset = trip.stopTimes?.find(st => st.routeStopId == ticket.toRouteStopId)?.offsetMinutes || 0;
+                const offset = trip.stopTimes?.find(st => st.routeStopId == toRS.id)?.offsetMinutes || 0;
                 arrMinutesToAdd += offset;
 
                 ticket.toStopTitle = toRS.stop?.title;
