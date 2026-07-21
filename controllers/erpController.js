@@ -3950,6 +3950,15 @@ exports.getCancelOpenTicket = async (req, res, next) => {
     let targetRouteStopId = null;
     let targetRouteStopOrder = Number.POSITIVE_INFINITY;
 
+    // DÜZELTME: Bilet(ler)i satan kullanıcı/şube görüntü şablonunda ("İşlem
+    // Yapan") sabit "Ahmet / Çanakkale" olarak yazılıydı; burada gerçek
+    // satıcı/şube bilgisini çekiyoruz.
+    const sellerUsers = await req.models.FirmUser.findAll({ where: { id: { [Op.in]: [...new Set(foundTickets.map(t => t.userId).filter(Boolean))] } } });
+    const sellerUserMap = new Map(sellerUsers.map(u => [Number(u.id), u]));
+    const sellerBranches = await req.models.Branch.findAll({ where: { id: { [Op.in]: [...new Set(sellerUsers.map(u => u.branchId).filter(Boolean))] } } });
+    const sellerBranchMap = new Map(sellerBranches.map(b => [Number(b.id), b]));
+    const paymentLabels = { cash: "Nakit", card: "Kredi Kartı", point: "Puan" };
+
     const tickets = [];
 
     for (const ticketInstance of foundTickets) {
@@ -3963,6 +3972,11 @@ exports.getCancelOpenTicket = async (req, res, next) => {
         const toStopTitle = stopTitleMap.get(Number(ticket.toRouteStopId));
         ticket.from = fromStopTitle;
         ticket.to = toStopTitle;
+
+        const sellerUser = sellerUserMap.get(Number(ticket.userId));
+        ticket.sellerName = sellerUser ? sellerUser.name : "-";
+        ticket.sellerBranch = sellerUser ? (sellerBranchMap.get(Number(sellerUser.branchId))?.title || "-") : "-";
+        ticket.paymentLabel = paymentLabels[ticket.payment] || ticket.payment || "-";
 
         tickets.push(ticket);
 

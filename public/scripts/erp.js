@@ -98,6 +98,10 @@ $.ajaxSetup({
 let toStr;
 let accountCutData;
 let accountCutId;
+// DÜZELTME: "Ödenen" alanı, kesintiler/bahşiş değiştiğinde yeniden hesaplanan
+// "Ödenecek" tutarıyla senkron değildi; kullanıcı elle değiştirmediği sürece
+// bu bayrak sayesinde otomatik olarak güncel tutulur.
+let accountPayedManuallyEdited = false;
 let originalPrices = []
 let seatTypes = []
 let selectedTakenTicketContext = null;
@@ -1717,10 +1721,6 @@ async function loadTrip(date, time, tripId) {
     const __guard = () => (__thisLoadToken === __GTR_tr_loadToken);
 
     try {
-        console.log(date);
-        console.log(time);
-        console.log(tripId);
-
         const commonData = { date, time, tripId, stopId: currentStop };
 
         // Run independent requests in parallel
@@ -1758,7 +1758,7 @@ async function loadTrip(date, time, tripId) {
                 const data = await response.json();
 
                 if (!data?.pdfBase64) {
-                    alert("PDF could not be retrieved: " + (data?.sonucMesaji || "Bilinmeyen hata"));
+                    alert("PDF alınamadı: " + (data?.sonucMesaji || "Bilinmeyen hata"));
                     return;
                 }
 
@@ -1772,7 +1772,7 @@ async function loadTrip(date, time, tripId) {
                 window.open(pdfUrl, "_blank");
             } catch (err) {
                 console.error("❌ openSeferDetayPDF error:", err);
-                alert("Error opening PDF: " + err.message);
+                alert("PDF açılırken hata oluştu: " + err.message);
             }
         }
 
@@ -1966,13 +1966,21 @@ async function loadTrip(date, time, tripId) {
 
             if (!isTaken && selectedTakenSeats.length > 0) {
                 alert("Dolu bir koltuk seçiliyken boş bir koltuk seçemezsiniz.");
-                $(".ticket-ops-pop-up").hide();
+                // DÜZELTME: Bu durumda açık olan pop-up ".taken-ticket-ops-pop-up"
+                // idi; yanlışlıkla boş koltuk pop-up'ı gizleniyor, dolu koltuk
+                // pop-up'ı ve seçim durumu ekranda asılı kalıyordu.
+                $(".taken-ticket-ops-pop-up").hide();
+                $(".seat").removeClass("selected");
+                selectedTakenSeats = [];
+                clearSelectedTakenTicketContext();
                 return;
             }
 
             if (isTaken && selectedSeats.length > 0) {
                 alert("Boş bir koltuk seçiliyken dolu bir koltuk seçemezsiniz.");
                 $(".ticket-ops-pop-up").hide();
+                $(".seat").removeClass("selected");
+                selectedSeats = [];
                 return;
             }
 
@@ -2011,7 +2019,6 @@ async function loadTrip(date, time, tripId) {
                     shouldHidePopup = true;
                 } else {
                     const remainingSeatCount = selectedSeats.filter(s => s !== seatNumber).length;
-                    console.log(remainingSeatCount)
                     if (remainingSeatCount === 0) {
                         shouldHidePopup = true;
                     }
@@ -2154,8 +2161,10 @@ async function loadTrip(date, time, tripId) {
             const $plateEl = $(".trip-bus-license-plate");
 
             if ($planEl.is("select")) {
-                const planOpts = [$("<option>").val("").html("Otobüs Modeli Seç").prop("disabled", true).prop("selected", true)];
-                busModels.forEach(bm => planOpts.push($("<option>").val(bm.id).html(bm.title)));
+                const planOpts = [$("<option>").val("").text("Otobüs Modeli Seç").prop("disabled", true).prop("selected", true)];
+                // GUVENLIK DUZELTMESI (XSS): model adi kullanici girisli oldugundan
+                // .html() yerine .text() kullaniliyor.
+                busModels.forEach(bm => planOpts.push($("<option>").val(bm.id).text(bm.title)));
                 $planEl.html(planOpts);
                 if (tripBusModelId) $planEl.val(tripBusModelId);
                 $planEl.off().on("change", async function () {
@@ -2178,12 +2187,14 @@ async function loadTrip(date, time, tripId) {
             }
 
             if ($plateEl.is("select")) {
-                const plateOpts = [$("<option>").val("").html("Plaka Seç").prop("disabled", true).prop("selected", true)];
+                const plateOpts = [$("<option>").val("").text("Plaka Seç").prop("disabled", true).prop("selected", true)];
                 buses.forEach(b => {
                     const busModel = busModels.find(bm => bm.id === b.busModelId);
+                    // GUVENLIK DUZELTMESI (XSS): plaka kullanici girisli oldugundan
+                    // .html() yerine .text() kullaniliyor.
                     const opt = $("<option>")
                         .val(b.id)
-                        .html(b.licensePlate)
+                        .text(b.licensePlate)
                         .attr("data-bus-model-id", b.busModelId)
                         .attr("data-bus-model-title", busModel ? busModel.title : "")
                         .attr("data-captain-name", b.captain ? `${b.captain.name} ${b.captain.surname}` : "")
@@ -2246,12 +2257,13 @@ async function loadTrip(date, time, tripId) {
                 const array = response.arr;
                 const selectedId = response.selected
                 let arr = [];
-                const opt = $("<option>").html("").val("");
+                const opt = $("<option>").text("").val("");
                 arr.push(opt);
                 if (array.length)
                     for (let i = 0; i < array.length; i++) {
                         const rs = array[i];
-                        const opt2 = $("<option>").html(rs.stopStr).val(rs.isRestricted ? "" : rs.stopId);
+                        // GUVENLIK DUZELTMESI (XSS): durak adi icin .html() yerine .text().
+                        const opt2 = $("<option>").text(rs.stopStr).val(rs.isRestricted ? "" : rs.stopId);
                         if (rs.isRestricted) {
                             opt2.addClass("restricted");
                             opt2.prop("disabled", true);
@@ -2489,7 +2501,6 @@ async function loadTrip(date, time, tripId) {
                         const key = `${fromId2}-${toId2}`;
                         const initial = this.dataset.initial === "true";
                         const isAllowed = this.checked;
-                        console.log(fromId2, toId2, key, initial, isAllowed)
                         if (isAllowed === initial) {
                             delete tripStopRestrictionChanges[key];
                         } else {
@@ -2715,8 +2726,12 @@ async function loadTrip(date, time, tripId) {
             }
         });
 
-        // (Warning: this line removes previous document click handlers)
-        $(document).off("click").on("click", () => {
+        // DÜZELTME: bare "click" ile .off()/.on() TÜM document click
+        // handler'larını (örn. yukarıdaki click.ticketPopups) siliyordu;
+        // dışarı tıklayınca pop-up kapatma özelliği loadTrip sonrası
+        // kalıcı olarak bozuluyordu. İsim alanı (namespace) kullanarak
+        // sadece bu handler'ı hedefliyoruz.
+        $(document).off("click.ticketOpMenu").on("click.ticketOpMenu", () => {
             $(".ticket-op ul").css("display", "none");
         });
 
@@ -2760,8 +2775,12 @@ async function loadTrip(date, time, tripId) {
                         $(".ticket-info-pop-up_to").text(button.dataset.routeStop.toLocaleUpperCase());
                         $(".ticket-row").remove();
                         $(".ticket-info").remove();
-                        $(".ticket-button-action").attr("data-action", action);
-                        $(".ticket-button-action").html(action == "sell" ? "SATIŞ" : "REZERVASYON");
+                        // DÜZELTME: ".ticket-button-action" hem bu pop-up'ta hem de
+                        // iptal/iade pop-up'undaki butonda ortak kullanılan bir sınıf;
+                        // kapsamsız seçici diğer (görünmeyen) pop-up'un data-action/etiketini
+                        // de sessizce değiştiriyordu. Sadece bu pop-up'a kapsıyoruz.
+                        $(".ticket-info-pop-up .ticket-button-action").attr("data-action", action);
+                        $(".ticket-info-pop-up .ticket-button-action").html(action == "sell" ? "SATIŞ" : "REZERVASYON");
                         $(".ticket-rows").prepend(response);
 
                         seatTypes = [];
@@ -2770,7 +2789,7 @@ async function loadTrip(date, time, tripId) {
                         initPhoneInput(".phone input");
                         initializeTicketRowPriceControls();
 
-                        $(".identity input").on("blur", async e2 => {
+                        $(".identity input").off("blur.customerLookup").on("blur.customerLookup", async e2 => {
                             const customer = await $.ajax({ url: "/get-customer", type: "GET", data: { idNumber: e2.currentTarget.value } });
                             if (customer) {
                                 const row = e2.currentTarget.parentElement.parentElement;
@@ -2826,7 +2845,12 @@ async function loadTrip(date, time, tripId) {
                             noCalendar: true,
                         });
 
-                        $(document).on("change", ".ticket-row input[type='radio']", function () {
+                        // DÜZELTME: Bu satış/rezervasyon/düzenleme pop-up'ı her
+                        // açıldığında document üzerine ayrı bir change handler'ı
+                        // daha ekleniyor; onlarca açılıştan sonra tek bir radio
+                        // tıklaması onlarca kez tetikleniyordu (performans kaybı).
+                        // Namespace ile önceki handler'ı kaldırıp yeniden bağlıyoruz.
+                        $(document).off("change.ticketRowGender").on("change.ticketRowGender", ".ticket-row input[type='radio']", function () {
                             const $row = $(this).closest(".ticket-row");
                             $row.removeClass("m f");
                             if ($(this).val() === "m") {
@@ -2951,20 +2975,25 @@ async function loadTrip(date, time, tripId) {
                     $(".passenger-info-popup .take-on-container").css("display", hasTakeOn ? "block" : "none");
                     $(".passenger-info-popup .take-off-container").css("display", hasTakeOff ? "block" : "none");
                 }
-                $(".passenger-info-popup .seat-number").html(data.seatNumber);
-                $(".passenger-info-popup .from").html(data.from);
-                $(".passenger-info-popup .to").html(data.to);
-                $(".passenger-info-popup .name").html(data.name);
-                $(".passenger-info-popup .username").html(data.userName);
-                $(".passenger-info-popup .userBranch").html(data.branch);
-                $(".passenger-info-popup .phone").html(data.phone);
-                $(".passenger-info-popup .take-on").html(data.takeOn || "");
-                $(".passenger-info-popup .take-off").html(data.takeOff || "");
-                $(".passenger-info-popup .price").html(data.price ? data.price + "₺" : "");
-                $(".passenger-info-popup .payment").html(data.payment == "cash" ? "Nakit" : data.payment == "card" ? "Kredi Kartı" : data.payment == "point" ? "Puan" : "");
-                $(".passenger-info-popup .pnr").html(data.pnr ? data.pnr : "");
+                // DÜZELTME (XSS): Bu alanlar yolcu adı/telefon/durak gibi
+                // kullanıcı girişli verilerdir; .html() ile basılması, isim
+                // alanına HTML/script içeren bir yolcu kaydı girildiğinde
+                // saklı XSS'e yol açar. Hiçbiri gerçek HTML gerektirmediği
+                // için .text() kullanıyoruz.
+                $(".passenger-info-popup .seat-number").text(data.seatNumber || "");
+                $(".passenger-info-popup .from").text(data.from || "");
+                $(".passenger-info-popup .to").text(data.to || "");
+                $(".passenger-info-popup .name").text(data.name || "");
+                $(".passenger-info-popup .username").text(data.userName || "");
+                $(".passenger-info-popup .userBranch").text(data.branch || "");
+                $(".passenger-info-popup .phone").text(data.phone || "");
+                $(".passenger-info-popup .take-on").text(data.takeOn || "");
+                $(".passenger-info-popup .take-off").text(data.takeOff || "");
+                $(".passenger-info-popup .price").text(data.price ? data.price + "₺" : "");
+                $(".passenger-info-popup .payment").text(data.payment == "cash" ? "Nakit" : data.payment == "card" ? "Kredi Kartı" : data.payment == "point" ? "Puan" : "");
+                $(".passenger-info-popup .pnr").text(data.pnr ? data.pnr : "");
                 const date2 = new Date(data.createdAt);
-                $(".passenger-info-popup .createdAt").html(date2.toLocaleDateString("tr-TR") + " " + date2.toLocaleTimeString("tr-TR"));
+                $(".passenger-info-popup .createdAt").text(date2.toLocaleDateString("tr-TR") + " " + date2.toLocaleTimeString("tr-TR"));
 
                 $(".passenger-info-popup").css({
                     left: popupLeft + "px",
@@ -2980,35 +3009,46 @@ async function loadTrip(date, time, tripId) {
 
         // Open account cut
         $(".account-cut").off().on("click", async () => {
+            // DÜZELTME: Önceki açılış AJAX'ı devam ederken tekrar tıklanırsa
+            // iki istek yarışa girip verileri karışık biçimde dolduruyordu.
+            if ($(".account-cut").data("loading")) return;
+            $(".account-cut").data("loading", true);
             $(".account-cut-popup .account-deduction1, .account-cut-popup .account-deduction2, .account-cut-popup .account-deduction3, .account-cut-popup .account-deduction4, .account-cut-popup .account-deduction5, .account-cut-popup .account-tip, .account-cut-popup .account-description, .account-cut-popup .account-payed").prop("readonly", false);
             $(".account-cut-save").show();
             $(".account-cut-undo-btn").hide();
             accountCutId = null;
+            accountPayedManuallyEdited = false;
             try {
                 accountCutData = await $.ajax({
                     url: "/get-bus-account-cut",
                     type: "GET",
                     data: { tripId: currentTripId, stopId: currentStop }
                 });
-                console.log(accountCutData)
+                // DÜZELTME: Bu alanlar sunucudan sayı olarak gelmediğinde
+                // (örn. string/null) .toFixed() doğrudan çağrılması TypeError
+                // fırlatıp tüm popup'ın verisiz kalmasına yol açıyordu; Number()
+                // ile savunmacı biçimde sarmalıyoruz.
                 $(".account-cut-total-count").val(accountCutData.totalCount);
-                $(".account-cut-total-amount").val(accountCutData.totalAmount.toFixed(2));
-                $(".account-comission-percent").val(accountCutData.comissionPercent.toFixed(2));
-                $(".account-cut-popup .my-cash").val(accountCutData.myCash.toFixed(2));
-                $(".account-cut-popup .my-card").val(accountCutData.myCard.toFixed(2));
-                $(".account-cut-popup .other-branches").val(accountCutData.otherBranches.toFixed(2));
-                $(".account-cut-popup .all-total").val(accountCutData.allTotal.toFixed(2));
-                $(".account-cut-popup .account-commission").val(accountCutData.comissionAmount.toFixed(2));
-                $(".account-cut-popup .account-needtopay").val(accountCutData.needToPay.toFixed(2));
-                $(".account-cut-popup .account-payed").val(accountCutData.needToPay.toFixed(2));
-                $(".account-cut-deductions-popup .isInternet").html(accountCutData.isPaysInternet == 1 ? "Internet tickets included." : "Internet tickets excluded.");
-                $(".account-cut-popup .isInternet").html(accountCutData.isPaysInternet == 1 ? "Internet tickets included." : "Internet tickets excluded.");
+                $(".account-cut-total-amount").val((Number(accountCutData.totalAmount) || 0).toFixed(2));
+                $(".account-comission-percent").val((Number(accountCutData.comissionPercent) || 0).toFixed(2));
+                $(".account-cut-popup .my-cash").val((Number(accountCutData.myCash) || 0).toFixed(2));
+                $(".account-cut-popup .my-card").val((Number(accountCutData.myCard) || 0).toFixed(2));
+                $(".account-cut-popup .other-branches").val((Number(accountCutData.otherBranches) || 0).toFixed(2));
+                $(".account-cut-popup .all-total").val((Number(accountCutData.allTotal) || 0).toFixed(2));
+                $(".account-cut-popup .account-commission").val((Number(accountCutData.comissionAmount) || 0).toFixed(2));
+                $(".account-cut-popup .account-needtopay").val((Number(accountCutData.needToPay) || 0).toFixed(2));
+                $(".account-cut-popup .account-payed").val((Number(accountCutData.needToPay) || 0).toFixed(2));
+                $(".account-cut-deductions-popup .isInternet").html(accountCutData.isPaysInternet == 1 ? "İnternet biletleri dahil." : "İnternet biletleri hariç.");
+                $(".account-cut-popup .isInternet").html(accountCutData.isPaysInternet == 1 ? "İnternet biletleri dahil." : "İnternet biletleri hariç.");
                 for (let i = 1; i <= 5; i++) {
                     $(".account-cut-deductions-popup .account-deduction" + i).val("");
                     $(".account-cut-popup .account-deduction" + i).val("");
                 }
                 $(".account-cut-deductions-popup .account-tip").val("");
                 $(".account-cut-popup .account-tip").val("");
+                // DÜZELTME: Açıklama alanı sıfırlanmıyordu; önceki hesap
+                // kapama denemesinden kalan metin yeni bir kesime taşınıyordu.
+                $(".account-cut-popup .account-description").val("");
                 if (Array.isArray(accountCutData.defaultDeductions)) {
                     accountCutData.defaultDeductions.forEach((value, index) => {
                         const selector = ".account-cut-deductions-popup .account-deduction" + (index + 1);
@@ -3025,7 +3065,9 @@ async function loadTrip(date, time, tripId) {
                     });
                 }
             } catch (err) {
-                console.log(err);
+                showError(getAjaxErrorMessage(err));
+            } finally {
+                $(".account-cut").data("loading", false);
             }
             $(".account-cut-deductions-popup").css("display", "block");
             $(".blackout").css("display", "block");
@@ -3050,6 +3092,8 @@ async function loadTrip(date, time, tripId) {
 
         // Undo account cut
         $(".account-cut-undo").off().on("click", async () => {
+            if ($(".account-cut-undo").data("loading")) return;
+            $(".account-cut-undo").data("loading", true);
             try {
                 const data2 = await $.ajax({
                     url: "/get-bus-account-cut-record",
@@ -3057,6 +3101,7 @@ async function loadTrip(date, time, tripId) {
                     data: { tripId: currentTripId, stopId: currentStop }
                 });
                 accountCutId = data2.id;
+                accountPayedManuallyEdited = true;
                 $(".account-cut-popup .my-cash").val(Number(data2.myCash).toFixed(2));
                 $(".account-cut-popup .my-card").val(Number(data2.myCard).toFixed(2));
                 $(".account-cut-popup .other-branches").val(Number(data2.otherBranches).toFixed(2));
@@ -3075,7 +3120,9 @@ async function loadTrip(date, time, tripId) {
                 $(".account-cut-popup").css("display", "block");
                 $(".blackout").css("display", "block");
             } catch (err) {
-                console.log(err);
+                showError(getAjaxErrorMessage(err));
+            } finally {
+                $(".account-cut-undo").data("loading", false);
             }
         });
 
@@ -3115,7 +3162,12 @@ async function loadTrip(date, time, tripId) {
             $(".blackout").css("display", "none");
         });
 
-        $(".account-cut-save").off("click").on("click", async () => {
+        $(".account-cut-save").off("click").on("click", async e => {
+            // DÜZELTME: Çift gönderim koruması yoktu; hızlı çift tıklama aynı
+            // hesap kesimini iki kez kaydedebiliyordu.
+            if ($(e.currentTarget).prop("disabled")) return;
+            $(e.currentTarget).prop("disabled", true);
+
             const data3 = {
                 tripId: currentTripId,
                 stopId: currentStop,
@@ -3133,12 +3185,17 @@ async function loadTrip(date, time, tripId) {
                 await $.ajax({ url: "/post-bus-account-cut", type: "POST", data: data3 });
                 window.open(`/get-bus-account-cut-receipt?tripId=${currentTripId}&stopId=${currentStop}`, "_blank", "width=800,height=600");
                 loadTrip(currentTripDate, currentTripTime, currentTripId);
-
+                // DÜZELTME: Popup ve karartma, AJAX BAŞARISIZ olsa da
+                // kayıtsız şartsız kapatılıyordu; kullanıcı hesap kesiminin
+                // kaydedildiğini zannedip devam ediyordu. Artık sadece
+                // başarı durumunda kapatılıyor.
+                $(".account-cut-popup").css("display", "none");
+                $(".blackout").css("display", "none");
             } catch (err) {
-                console.log(err);
+                showError(getAjaxErrorMessage(err));
+            } finally {
+                $(e.currentTarget).prop("disabled", false);
             }
-            $(".account-cut-popup").css("display", "none");
-            $(".blackout").css("display", "none");
         });
 
         function updateAccountNeedToPay() {
@@ -3150,12 +3207,24 @@ async function loadTrip(date, time, tripId) {
             deductions += Number($(".account-cut-popup .account-tip").val()) || 0;
             const need = accountCutData.allTotal - accountCutData.comissionAmount - deductions;
             $(".account-cut-popup .account-needtopay").val(need.toFixed(2));
+            // DÜZELTME: "Ödenen" alanı kullanıcı tarafından elle değiştirilmediyse
+            // yeni "Ödenecek" tutarıyla senkron tutulur; aksi halde kesintiler
+            // değiştikten sonra eski (yanlış) ödenen tutarı kayda gidiyordu.
+            if (!accountPayedManuallyEdited) {
+                $(".account-cut-popup .account-payed").val(need.toFixed(2));
+            }
         }
 
         // DUZELTME: .off("input") eksikti; loadTrip yeniden cagrildiginda
         // ayni input alanina tekrar tekrar handler eklenip her tusa
         // basista updateAccountNeedToPay() N kez calismaya basliyordu.
         $(".account-cut-popup .account-deduction1, .account-cut-popup .account-deduction2, .account-cut-popup .account-deduction3, .account-cut-popup .account-deduction4, .account-cut-popup .account-deduction5, .account-cut-popup .account-tip").off("input").on("input", updateAccountNeedToPay);
+
+        // DÜZELTME: "Ödenen" alanı kullanıcı tarafından elle değiştirildiğinde
+        // artık otomatik senkronizasyonu devre dışı bırakıyoruz.
+        $(".account-cut-popup .account-payed").off("input.manualEdit").on("input.manualEdit", () => {
+            accountPayedManuallyEdited = true;
+        });
 
     } catch (error) {
         console.log(error);
@@ -3694,24 +3763,13 @@ const validateTicketForm = action => {
     return true;
 };
 
-// Open empty seat submenu
-$(".ticket-op").on("click", e => {
-    e.stopPropagation();
-
-    $(".ticket-op ul").css("display", "none");
-
-    const ul = e.currentTarget.querySelector("ul");
-    const isVisible = $(ul).css("display") === "flex";
-
-    if (!isVisible) {
-        $(ul).css("display", "flex");
-    }
-});
-
-// Click outside empty seat menu closes it
-$(document).off("click").on("click", () => {
-    $(".ticket-op ul").css("display", "none");
-});
+// DÜZELTME: Bu blok, loadTrip içinde zaten doğru biçimde (namespace'li ve
+// .off()/.on() ile) kurulan ".ticket-op" / dışarı tıklama mantığının (bkz.
+// yukarıda "Open/close Ticket operations menu" ve "click.ticketOpMenu")
+// sayfa yüklenirken bir kez daha, elemanlar DOM'a henüz gelmeden önce
+// tekrarlanan ve document üzerinde bare "click" ile TÜM diğer click
+// handler'larını (click.ticketPopups dahil) silen ölü/zararlı bir kopyasıydı;
+// kaldırıldı.
 
 $("#currentStop").on("change", async (e) => {
     const $sel = $(e.currentTarget);
@@ -3842,8 +3900,6 @@ $(".ticket-button-action").on("click", async e => {
                 takeOn: takeOnValue,
                 takeOff: takeOffValue,
             }
-
-            console.log(ticketObj)
 
             tickets.push(ticketObj)
         }
@@ -3987,7 +4043,6 @@ $(".ticket-button-action").on("click", async e => {
 
         const ticketsStr = JSON.stringify(tickets)
         const pendingIds = $("#pendingIds").val()
-        console.log(pendingIds)
 
         await $.ajax({
             url: "/post-tickets",
@@ -4187,8 +4242,8 @@ $(".taken-ticket-op").on("click", async e => {
     const firstTicketId = ticketIds[0] ?? null;
 
     if (action == "complete") {
-        $(".ticket-button-action").attr("data-action", "complete")
-        $(".ticket-button-action").html("SATIŞ")
+        $(".ticket-info-pop-up .ticket-button-action").attr("data-action", "complete")
+        $(".ticket-info-pop-up .ticket-button-action").html("SATIŞ")
         await $.ajax({
             url: "/get-ticket-row",
             type: "GET",
@@ -4209,7 +4264,11 @@ $(".taken-ticket-op").on("click", async e => {
                 initPhoneInput(".phone input")
                 initializeTicketRowPriceControls()
 
-                $(".identity input").on("blur", async e => {
+                // DÜZELTME: ".ticket-rows" içeriği her açılışta remove+prepend
+                // ile tazelendiği için doğrudan bağlanan bu blur handler'ı
+                // stack olmaz; ancak yine de tutarlılık için namespace'li
+                // kullanıyoruz.
+                $(".identity input").off("blur.customerLookup").on("blur.customerLookup", async e => {
                     const customer = await $.ajax({ url: "/get-customer", type: "GET", data: { idNumber: e.currentTarget.value } });
                     if (customer) {
                         const row = e.currentTarget.parentElement.parentElement
@@ -4218,12 +4277,15 @@ $(".taken-ticket-op").on("click", async e => {
                         $(row).find(".category").find("input").val(customer.customerCategory)
                         $(row).find(".type").find("input").val(customer.customerType)
                         $(row).find(".nationality").find("input").val(customer.nationality)
+                        // DÜZELTME: "else" dalı, cinsiyeti bilinmeyen/boş
+                        // gelen müşterileri de zorla "kadın" işaretliyordu.
+                        // Sadece açıkça "f" için kadın seçiliyor.
                         if (customer.gender == "m") {
                             $(row).find(".gender").find("input.male").prop("checked", true)
                             $(row).find(".gender").find("input.female").prop("checked", false)
                             $(row).addClass("m").removeClass("f")
                         }
-                        else {
+                        else if (customer.gender == "f") {
                             $(row).find(".gender").find("input.male").prop("checked", false)
                             $(row).find(".gender").find("input.female").prop("checked", true)
                             $(row).addClass("f").removeClass("m")
@@ -4243,7 +4305,9 @@ $(".taken-ticket-op").on("click", async e => {
                     noCalendar: true,
                 })
 
-                $(document).on("change", ".ticket-row input[type='radio']", function () {
+                // DÜZELTME: document üzerine namespace'siz eklenen bu delege
+                // handler, pop-up her açıldığında bir kopya daha ekleniyordu.
+                $(document).off("change.ticketRowGender").on("change.ticketRowGender", ".ticket-row input[type='radio']", function () {
                     const $row = $(this).closest(".ticket-row");
 
                     $row.removeClass("m f");
@@ -4266,8 +4330,8 @@ $(".taken-ticket-op").on("click", async e => {
     }
 
     else if (action == "edit") {
-        $(".ticket-button-action").attr("data-action", "edit")
-        $(".ticket-button-action").html("KAYDET")
+        $(".ticket-info-pop-up .ticket-button-action").attr("data-action", "edit")
+        $(".ticket-info-pop-up .ticket-button-action").html("KAYDET")
         await $.ajax({
             url: "/get-ticket-row",
             type: "GET",
@@ -4288,7 +4352,7 @@ $(".taken-ticket-op").on("click", async e => {
                 initPhoneInput(".phone input")
                 initializeTicketRowPriceControls()
 
-                $(".identity input").on("blur", async e => {
+                $(".identity input").off("blur.customerLookup").on("blur.customerLookup", async e => {
                     const customer = await $.ajax({ url: "/get-customer", type: "GET", data: { idNumber: e.currentTarget.value } });
                     if (customer) {
                         const row = e.currentTarget.parentElement.parentElement
@@ -4302,7 +4366,7 @@ $(".taken-ticket-op").on("click", async e => {
                             $(row).find(".gender").find("input.female").prop("checked", false)
                             $(row).addClass("m").removeClass("f")
                         }
-                        else {
+                        else if (customer.gender == "f") {
                             $(row).find(".gender").find("input.male").prop("checked", false)
                             $(row).find(".gender").find("input.female").prop("checked", true)
                             $(row).addClass("f").removeClass("m")
@@ -4322,7 +4386,7 @@ $(".taken-ticket-op").on("click", async e => {
                     noCalendar: true,
                 })
 
-                $(document).on("change", ".ticket-row input[type='radio']", function () {
+                $(document).off("change.ticketRowGender").on("change.ticketRowGender", ".ticket-row input[type='radio']", function () {
                     const $row = $(this).closest(".ticket-row");
 
                     $row.removeClass("m f");
@@ -4345,7 +4409,11 @@ $(".taken-ticket-op").on("click", async e => {
     }
 
     else if (action == "cancel") {
-        $(".ticket-button-action").attr("data-action", "cancel")
+        // DÜZELTME: ".ticket-button-action" satış pop-up'undaki buton ile aynı
+        // sınıfı paylaşıyor; kapsamsız seçici o pop-up'ın data-action'ını da
+        // sessizce değiştiriyordu. Sadece bu butona (".cancel-action-button")
+        // kapsıyoruz.
+        $(".cancel-action-button").attr("data-action", "cancel")
 
         const seat = seatNumbers[0];
         const pnr = firstPnr || $(`.seat.seat-${seat}`).data("pnr");
@@ -4357,13 +4425,18 @@ $(".taken-ticket-op").on("click", async e => {
             data: { pnr: pnr, seats: seatNumbers, date: tripDate, time: tripTime },
             success: function (response) {
                 $(".ticket-cancel-refund-open .gtr-header span").html("BİLET İPTAL")
-                $(".ticket-cancel-refund-open .tickets").prepend(response)
+                // DÜZELTME: .prepend() eski/önceki açılıştan kalan bilet
+                // satırlarının üstüne yeni satırlar ekliyor, popup her açılışta
+                // birikiyordu; .html() içeriği tamamen değiştirir.
+                $(".ticket-cancel-refund-open .tickets").html(response)
                 $(".ticket-cancel-refund-open").css("display", "block")
                 $(".blackout").css("display", "block")
 
                 $(".taken-ticket-ops-pop-up").hide()
 
                 selectedTakenSeats = []
+                // Önceki açılıştan kalmış olabilecek buton metni/durumunu sıfırla.
+                $(".cancel-action-button").addClass("disabled").html("BİLET SEÇ")
 
                 // .off() eksikti: bu popup her açıldığında (cancel akışı
                 // tekrar tetiklendiğinde) aynı elemente yeni bir click
@@ -4404,7 +4477,7 @@ $(".taken-ticket-op").on("click", async e => {
     }
 
     else if (action == "refund") {
-        $(".ticket-button-action").attr("data-action", "refund")
+        $(".cancel-action-button").attr("data-action", "refund")
 
         const seat = seatNumbers[0];
         const pnr = firstPnr || $(`.seat.seat-${seat}`).data("pnr");
@@ -4423,6 +4496,7 @@ $(".taken-ticket-op").on("click", async e => {
                 $(".taken-ticket-ops-pop-up").hide()
 
                 selectedTakenSeats = []
+                $(".cancel-action-button").addClass("disabled").html("BİLET SEÇ")
 
                 // .off() eksikti: bu popup her açıldığında (iade akışı
                 // tekrar tetiklendiğinde) aynı elemente yeni bir click
@@ -4463,7 +4537,7 @@ $(".taken-ticket-op").on("click", async e => {
     }
 
     else if (action == "open") {
-        $(".ticket-button-action").attr("data-action", "open")
+        $(".cancel-action-button").attr("data-action", "open")
 
         const seat = seatNumbers[0];
         const pnr = firstPnr || $(`.seat.seat-${seat}`).data("pnr");
@@ -4482,6 +4556,7 @@ $(".taken-ticket-op").on("click", async e => {
                 $(".taken-ticket-ops-pop-up").hide()
 
                 selectedTakenSeats = []
+                $(".cancel-action-button").addClass("disabled").html("BİLET SEÇ")
 
                 // .off() eksikti: bu popup her açıldığında (açığa alma
                 // akışı tekrar tetiklendiğinde) aynı elemente yeni bir
@@ -4649,15 +4724,14 @@ $(".taken-ticket-op").on("click", async e => {
                     success: function (response) {
                         const array = response.arr;
                         const selectedId = response.selected
-                        console.log(selectedId)
-                        console.log(array)
                         let arr = [];
                         const opt = $("<option>").html("").val("");
                         arr.push(opt);
                         if (array.length)
                             for (let i = 0; i < array.length; i++) {
                                 const rs = array[i];
-                                const opt2 = $("<option>").html(rs.stopStr).val(rs.isRestricted ? "" : rs.stopId);
+                                // DÜZELTME: rs.stopStr sunucudan gelen bir veri; .html() ile XSS'e açıktı.
+                                const opt2 = $("<option>").text(rs.stopStr).val(rs.isRestricted ? "" : rs.stopId);
                                 if (rs.isRestricted) {
                                     opt2.addClass("restricted");
                                     opt2.prop("disabled", true);
@@ -4738,53 +4812,61 @@ $(".taken-ticket-op").on("click", async e => {
 })
 
 $(".moving-confirm").on("click", async e => {
-    if (movingMode === "attach_open") {
-        if (!movingSelectedSeats.length) {
-            showError("Lütfen bağlanacak bir açık bilet seçiniz.");
-            return;
-        }
+    // DÜZELTME: Çift gönderim koruması yoktu; hızlı çift tıklama aynı
+    // transfer/bağlama isteğini iki kez gönderebiliyordu.
+    if ($(e.currentTarget).prop("disabled")) return;
+    $(e.currentTarget).prop("disabled", true);
+    try {
+        if (movingMode === "attach_open") {
+            if (!movingSelectedSeats.length) {
+                showError("Lütfen bağlanacak bir açık bilet seçiniz.");
+                return;
+            }
 
-        if (selectedSeats.length !== movingSelectedSeats.length) {
-            showError("Seçilen koltuk sayısı, bağlanacak bilet sayısına eşit olmalıdır.");
+            if (selectedSeats.length !== movingSelectedSeats.length) {
+                showError("Seçilen koltuk sayısı, bağlanacak bilet sayısına eşit olmalıdır.");
+                return;
+            }
+
+            await $.ajax({
+                url: "/post-attach-open-ticket",
+                type: "POST",
+                data: {
+                    pnr: movingSeatPNR,
+                    newSeat: selectedSeats[0],
+                    tripId: currentTripId,
+                    stopId: selectedTicketStopId,
+                    toId: $(".move-to-trip-place-select").val() ? $(".move-to-trip-place-select").val() : toId,
+                },
+                success: async function () {
+                    resetMovingWorkflowState();
+                    loadTrip(currentTripDate, currentTripTime, currentTripId);
+                },
+                error: function (xhr, status, error) {
+                    const message = xhr?.responseJSON?.message || xhr?.responseText || error;
+                    showError(message);
+                }
+            });
+
             return;
         }
 
         await $.ajax({
-            url: "/post-attach-open-ticket",
+            url: "/post-move-tickets",
             type: "POST",
-            data: {
-                pnr: movingSeatPNR,
-                newSeat: selectedSeats[0],
-                tripId: currentTripId,
-                stopId: selectedTicketStopId,
-                toId: $(".move-to-trip-place-select").val() ? $(".move-to-trip-place-select").val() : toId,
-            },
+            data: { pnr: movingSeatPNR, oldSeats: JSON.stringify(movingSelectedSeats), newSeats: JSON.stringify(selectedSeats), newTrip: currentTripId, fromId: selectedTicketStopId, toId: $(".move-to-trip-place-select").val() ? $(".move-to-trip-place-select").val() : toId },
             success: async function () {
                 resetMovingWorkflowState();
-                loadTrip(currentTripDate, currentTripTime, currentTripId);
+                loadTrip(currentTripDate, currentTripTime, currentTripId)
             },
             error: function (xhr, status, error) {
                 const message = xhr?.responseJSON?.message || xhr?.responseText || error;
                 showError(message);
             }
         });
-
-        return;
+    } finally {
+        $(e.currentTarget).prop("disabled", false);
     }
-
-    await $.ajax({
-        url: "/post-move-tickets",
-        type: "POST",
-        data: { pnr: movingSeatPNR, oldSeats: JSON.stringify(movingSelectedSeats), newSeats: JSON.stringify(selectedSeats), newTrip: currentTripId, fromId: selectedTicketStopId, toId: $(".move-to-trip-place-select").val() ? $(".move-to-trip-place-select").val() : toId },
-        success: async function () {
-            resetMovingWorkflowState();
-            loadTrip(currentTripDate, currentTripTime, currentTripId)
-        },
-        error: function (xhr, status, error) {
-            const message = xhr?.responseJSON?.message || xhr?.responseText || error;
-            showError(message);
-        }
-    });
 })
 
 $(".moving-close").on("click", e => {
@@ -4800,7 +4882,7 @@ $(".trip-revenue-close").on("click", e => {
 })
 
 function closeTripStopRestriction() {
-    if (tripStopRestrictionDirty && !confirm('There are unsaved changes. Do you want to close?')) {
+    if (tripStopRestrictionDirty && !confirm('Kaydedilmemiş değişiklikler var. Kapatmak istiyor musunuz?')) {
         return;
     }
     $(".trip-stop-restriction-pop-up").css("display", "none");
@@ -4885,6 +4967,9 @@ $(".trip-cargo-list-close").on("click", e => {
 
 $(".trip-cargo-save").on("click", async e => {
     e.preventDefault();
+    // DÜZELTME: Çift gönderim koruması yoktu; hızlı çift tıklama aynı
+    // kargoyu iki kez kaydedebiliyordu.
+    if ($(e.currentTarget).prop("disabled")) return;
     if (!currentTripId) {
         showError("Sefer bilgisi bulunamadı.");
         return;
@@ -4929,6 +5014,7 @@ $(".trip-cargo-save").on("click", async e => {
         return;
     }
 
+    $(e.currentTarget).prop("disabled", true);
     try {
         await $.post("/post-add-cargo", {
             ...data,
@@ -4937,12 +5023,13 @@ $(".trip-cargo-save").on("click", async e => {
         closeTripCargoPopup();
         await loadTrip(currentTripDate, currentTripTime, currentTripId);
     } catch (err) {
-        console.log(err);
+        showError(getAjaxErrorMessage(err));
+    } finally {
+        $(e.currentTarget).prop("disabled", false);
     }
 });
 
 $(".ticket-close").on("click", async e => {
-    console.log("close")
     let pendingIds = $("#pendingIds").val()
     if (pendingIds) {
         let jsonSeats = JSON.stringify(selectedSeats)
@@ -5078,7 +5165,13 @@ $(".save-trip-note").on("click", async e => {
     }
 })
 
-$(".note-edit").off("click").on("click", e => {
+// DÜZELTME: .note-edit/.note-delete elemanları .trip-notes içine sadece
+// AJAX (get-trip-notes) yanıtıyla sonradan ekleniyor. Doğrudan (delegasyonsuz)
+// $(".note-edit").on(...) bağlama, sayfa yüklenirken bu elemanlar henüz DOM'da
+// olmadığından boş kümeye bağlanıyor ve asla yeniden bağlanmıyordu — kalem/
+// çarpı ikonlarına tıklamak hiçbir şey yapmıyordu. Sabit ".trip-notes"
+// kapsayıcısı üzerinden delege ederek her zaman çalışmasını sağlıyoruz.
+$(".trip-notes").off("click.noteEdit").on("click.noteEdit", ".note-edit", e => {
     const noteEl = $(e.currentTarget).closest(".note");
     editingNoteId = noteEl.data("id");
     const text = noteEl.find(".note-text").text();
@@ -5089,7 +5182,7 @@ $(".note-edit").off("click").on("click", e => {
     $(".add-trip-note").css("display", "flex");
 })
 
-$(".note-delete").off("click").on("click", async e => {
+$(".trip-notes").off("click.noteDelete").on("click.noteDelete", ".note-delete", async e => {
     const noteEl = $(e.currentTarget).closest(".note");
     const noteId = noteEl.data("id");
     if (confirm("Notu silmek istediğinize emin misiniz?")) {
@@ -5172,7 +5265,7 @@ $(".open-ticket-next").on("click", async e => {
             setupTicketRowIdentityValidation()
             initPhoneInput(".phone input")
             initializeTicketRowPriceControls()
-            $(".identity input").on("blur", async e => {
+            $(".identity input").off("blur.customerLookup").on("blur.customerLookup", async e => {
                 const customer = await $.ajax({ url: "/get-customer", type: "GET", data: { idNumber: e.currentTarget.value } });
                 if (customer) {
                     const row = e.currentTarget.parentElement.parentElement
@@ -5186,7 +5279,7 @@ $(".open-ticket-next").on("click", async e => {
                         $(row).find(".gender").find("input.female").prop("checked", false)
                         $(row).addClass("m").removeClass("f")
                     }
-                    else {
+                    else if (customer.gender == "f") {
                         $(row).find(".gender").find("input.male").prop("checked", false)
                         $(row).find(".gender").find("input.female").prop("checked", true)
                         $(row).addClass("f").removeClass("m")
@@ -5196,10 +5289,13 @@ $(".open-ticket-next").on("click", async e => {
             })
             $(".open-ticket-sale").css("display", "none")
             $(".ticket-info-pop-up_from").text($(`.open-ticket-from option[value=${fromId}]`).text().toLocaleUpperCase())
-            $(".ticket-info-pop-up_to").text($(`.open-ticket-from option[value=${toId}]`).text().toLocaleUpperCase())
+            // DÜZELTME: "to" etiketi de yanlışlıkla ".open-ticket-from" içinden
+            // aranıyordu; varış durağı her zaman kalkış durağıyla aynı (veya
+            // eşleşme yoksa boş) gösteriliyordu. Doğru kaynak ".open-ticket-to".
+            $(".ticket-info-pop-up_to").text($(`.open-ticket-to option[value=${toId}]`).text().toLocaleUpperCase())
             $(".ticket-header--date").html("AÇIK BİLET")
-            $(".ticket-button-action").attr("data-action", "sell_open")
-            $(".ticket-button-action").html("AÇIK BİLET SAT")
+            $(".ticket-info-pop-up .ticket-button-action").attr("data-action", "sell_open")
+            $(".ticket-info-pop-up .ticket-button-action").html("AÇIK BİLET SAT")
             $(".ticket-info-pop-up").css("display", "block")
         },
         error: function (xhr, status, error) {
@@ -5462,9 +5558,19 @@ $(".add-expense-nav").on("click", async e => {
 $(".add-transaction-close").on("click", e => {
     $(".blackout").css("display", "none")
     $(".add-transaction").css("display", "none")
+    // DÜZELTME: Açılırken ".register"in z-index'i geçici olarak karartmanın
+    // (z-index 10) altına (9) düşürülüyordu ama kapatırken hiçbir zaman
+    // eski değerine (CSS'teki 100) döndürülmüyordu; bu işlem penceresi bir
+    // kez açılıp kapatıldıktan sonra kasa penceresi, üzerine açılan başka
+    // bir pop-up'ın karartmasının HER ZAMAN altında kalıyordu.
+    $(".register").css("z-index", 100);
 })
 
 $(".add-transaction-button").on("click", async e => {
+    // DÜZELTME: Çift gönderim koruması yoktu; hızlı çift tıklama aynı
+    // gelir/gideri iki kez kaydedebiliyordu.
+    if ($(e.currentTarget).prop("disabled")) return
+
     const rawAmount = ($(".transaction-amount").val() || "").toString().trim()
     const normalizedAmount = Number(rawAmount.replace(",", "."))
     const description = ($(".transaction-description").val() || "").toString().trim()
@@ -5479,75 +5585,78 @@ $(".add-transaction-button").on("click", async e => {
         return
     }
 
-    await $.ajax({
-        url: "/post-add-transaction",
-        type: "POST",
-        data: { transactionType, amount: normalizedAmount, description },
-        success: async function (response) {
-            console.log("asdasd")
-            transactionType = null
-            $(".add-transaction").css("display", "none")
-            $(".register").css("z-index", 100)
-            if (!isRegisterShown)
-                $(".blackout").css("display", "none")
-            if (isRegisterShown) {
-                await $.ajax({
-                    url: "/get-transactions-list",
-                    type: "GET",
-                    data: {},
-                    success: async function (response) {
-                        $(".transaction-list").html(response)
+    $(e.currentTarget).prop("disabled", true)
+    try {
+        await $.ajax({
+            url: "/post-add-transaction",
+            type: "POST",
+            data: { transactionType, amount: normalizedAmount, description },
+            success: async function (response) {
+                transactionType = null
+                $(".add-transaction").css("display", "none")
+                $(".register").css("z-index", 100)
+                if (!isRegisterShown)
+                    $(".blackout").css("display", "none")
+                if (isRegisterShown) {
+                    await $.ajax({
+                        url: "/get-transactions-list",
+                        type: "GET",
+                        data: {},
+                        success: async function (response) {
+                            $(".transaction-list").html(response)
 
-                        await $.ajax({
-                            url: "/get-transaction-data",
-                            type: "GET",
-                            data: {},
-                            success: function (response) {
-                                const cashSales = Number(response.cashSales) || 0;
-                                const cardSales = Number(response.cardSales) || 0;
-                                const cashRefund = Number(response.cashRefund) || 0;
-                                const cardRefund = Number(response.cardRefund) || 0;
-                                const transferIn = Number(response.transferIn) || 0;
-                                const transferOut = Number(response.transferOut) || 0;
-                                const payedToBus = Number(response.payedToBus) || 0;
-                                const otherIn = Number(response.otherIn) || 0;
-                                const otherOut = Number(response.otherOut) || 0;
-                                const inSum = cashSales + cardSales + transferIn + otherIn
-                                const outSum = cashRefund + cardRefund + payedToBus + transferOut + otherOut
-                                const balance = inSum - outSum
-                                $(".balance").val(balance)
-                                $(".income-summary").val(inSum)
-                                $(".expense-summary").val(outSum)
-                                $(".cash-sales").val(cashSales)
-                                $(".card-sales").val(cardSales)
-                                $(".sales-summary").val(cardSales + cashSales)
-                                $(".transferred-income").val(transferIn)
-                                $(".other-income").val(otherIn)
-                                $(".cash-refund").val(cashRefund)
-                                $(".card-refund").val(cardRefund)
-                                $(".refund-summary").val(cardRefund + cashRefund)
-                                $(".payed-to-bus").val(payedToBus)
-                                $(".other-expense").val(otherOut + transferOut)
-                                $(".blackout").css("display", "block")
-                                $(".register").css("display", "block")
-                                isRegisterShown = true
-                            },
-                            error: function (xhr, status, error) {
-                                console.log(error);
-                            }
-                        })
-                    },
-                    error: function (xhr, status, error) {
-                        console.log(error);
-                    }
-                })
+                            await $.ajax({
+                                url: "/get-transaction-data",
+                                type: "GET",
+                                data: {},
+                                success: function (response) {
+                                    const cashSales = Number(response.cashSales) || 0;
+                                    const cardSales = Number(response.cardSales) || 0;
+                                    const cashRefund = Number(response.cashRefund) || 0;
+                                    const cardRefund = Number(response.cardRefund) || 0;
+                                    const transferIn = Number(response.transferIn) || 0;
+                                    const transferOut = Number(response.transferOut) || 0;
+                                    const payedToBus = Number(response.payedToBus) || 0;
+                                    const otherIn = Number(response.otherIn) || 0;
+                                    const otherOut = Number(response.otherOut) || 0;
+                                    const inSum = cashSales + cardSales + transferIn + otherIn
+                                    const outSum = cashRefund + cardRefund + payedToBus + transferOut + otherOut
+                                    const balance = inSum - outSum
+                                    $(".balance").val(balance)
+                                    $(".income-summary").val(inSum)
+                                    $(".expense-summary").val(outSum)
+                                    $(".cash-sales").val(cashSales)
+                                    $(".card-sales").val(cardSales)
+                                    $(".sales-summary").val(cardSales + cashSales)
+                                    $(".transferred-income").val(transferIn)
+                                    $(".other-income").val(otherIn)
+                                    $(".cash-refund").val(cashRefund)
+                                    $(".card-refund").val(cardRefund)
+                                    $(".refund-summary").val(cardRefund + cashRefund)
+                                    $(".payed-to-bus").val(payedToBus)
+                                    $(".other-expense").val(otherOut + transferOut)
+                                    $(".blackout").css("display", "block")
+                                    $(".register").css("display", "block")
+                                    isRegisterShown = true
+                                },
+                                error: function (xhr, status, error) {
+                                    console.log(error);
+                                }
+                            })
+                        },
+                        error: function (xhr, status, error) {
+                            console.log(error);
+                        }
+                    })
+                }
+            },
+            error: function (xhr, status, error) {
+                showError(getAjaxErrorMessage(xhr));
             }
-        },
-        error: function (xhr, status, error) {
-            const message = xhr.responseJSON?.message || error;
-            console.log(message);
-        }
-    })
+        })
+    } finally {
+        $(e.currentTarget).prop("disabled", false)
+    }
 })
 
 let busTransactionType = null;
@@ -5972,6 +6081,39 @@ const areAllBusPlanInputsEmpty = () => {
 }
 
 let editingBusPlanId = null
+
+// DÜZELTME: Düzenleme panelindeki "SİL" butonu hiçbir sınıfa/handler'a
+// bağlı değildi (ölü buton); tıklamak hiçbir şey yapmıyordu. Panel her
+// açılışta yeniden render edildiğinden document üzerinden delege ediyoruz.
+$(document).off("click.deleteBusPlanPanel").on("click.deleteBusPlanPanel", ".delete-bus-plan-panel", async e => {
+    e.preventDefault();
+
+    if (!editingBusPlanId) {
+        showError("Henüz kaydedilmemiş bir planı silemezsiniz.");
+        return;
+    }
+
+    if (activeBusPlanCount <= 1) {
+        window.alert("Mevcut olan tek otobüs planını silemezsiniz. Lütfen silmeden önce yeni bir plan ekleyin.");
+        return;
+    }
+
+    const title = $(".bus-plan-title").val();
+    window.alert("Bu otobüs planını silmek, bu planı kullanan otobüsleri ve seferleri de etkileyecektir.");
+    if (!window.confirm(`"${title || "bu planı"}" silmek istediğinize emin misiniz?`)) {
+        return;
+    }
+
+    try {
+        await $.ajax({ url: "/post-delete-bus-plan", type: "POST", data: { id: editingBusPlanId } });
+        $(`.bus-plan-button[data-id='${editingBusPlanId}']`).closest(".btn-group").remove();
+        activeBusPlanCount = Math.max(0, activeBusPlanCount - 1);
+        editingBusPlanId = null;
+        $(".bus-plan-panel").html("");
+    } catch (err) {
+        showError(getAjaxErrorMessage(err));
+    }
+});
 
 $(".add-bus-plan").on("click", async e => {
     editingBusPlanId = null
@@ -7994,7 +8136,6 @@ $(".user-settings-nav").on("click", async e => {
                         $(".user-password").val("")
                         $(".user-phone").val(response.phoneNumber)
                         $(".user-branches").val(response.branchId)
-                        console.log(response.permissions)
                         renderPermissions(response.permissions)
                     },
                     error: function (xhr, status, error) {
@@ -8047,6 +8188,12 @@ const openCustomerInfoPopup = (row, origin) => {
     const percentValue = percent === undefined || percent === null ? "" : percent;
     $(".member-info-pointamount").val(pointAmountValue);
     $(".member-info-percent").val(percentValue);
+    // DÜZELTME: E-posta/parola alanları sıfırlanmıyordu; bir üyenin
+    // formunda yazılan (kaydedilmemiş) parola, popup kapatılıp başka bir
+    // üye açıldığında o alanda kalıyor ve "Kaydet"e basıldığında YANLIŞ
+    // üyenin parolasını değiştirebiliyordu.
+    $(".member-info-email").val(row.data("email") || "");
+    $(".member-info-password").val("").attr("placeholder", "Değiştirmek için yeni parola girin");
     updateMemberPointOrPercentAvailability();
 
     const saveBtn = $(".member-info-save");
@@ -8096,8 +8243,11 @@ $(".customer-nav").on("click", async e => {
                 const origin = row.hasClass("member-row") ? "members" : "customers";
                 openCustomerInfoPopup(row, origin);
             });
-            $(".member-info-pointorpercent").on("change", updateMemberPointInputsState);
-            $(".member-info-category").on("change", updateMemberPointOrPercentAvailability);
+            // DÜZELTME: .off() eksikti; bu liste her yenilendiğinde aynı
+            // (paylaşılan, tekil) pop-up elemanına yeni bir handler ekleniyor,
+            // değişiklik olayı N kez tetiklenmeye başlıyordu.
+            $(".member-info-pointorpercent").off("change").on("change", updateMemberPointInputsState);
+            $(".member-info-category").off("change").on("change", updateMemberPointOrPercentAvailability);
         },
         error: function (xhr, status, error) {
             console.log(error);
@@ -8200,11 +8350,11 @@ $(".announcement-add-button").on("click", async e => {
         return
     }
 
-    if (!branchId) {
-        showError("Lütfen bir şube seçiniz.")
-        return
-    }
-
+    // DÜZELTME: Şube seçimi boş ("") bırakılması "Herkes" anlamına geliyor
+    // (bkz. şube <select>'indeki `value="" Herkes` seçeneği) ve arka uç
+    // `branchId || null` ile bunu bekliyor. Burada boş branchId'nin hatalı
+    // biçimde reddedilmesi, varsayılan/kastedilen "Herkes" akışının hiçbir
+    // zaman kaydedilememesine yol açıyordu.
     if (!showTicker && !showPopup) {
         showError("En az bir gösterim tipi seçilmelidir.")
         return
@@ -8218,7 +8368,7 @@ $(".announcement-add-button").on("click", async e => {
             $(".announcement-add-close").click()
         },
         error: function (xhr, status, error) {
-            console.log(error)
+            showError(getAjaxErrorMessage(xhr))
         }
     })
 })
@@ -8244,8 +8394,11 @@ $(".customer-search-btn").on("click", async e => {
                 const origin = row.hasClass("member-row") ? "members" : "customers";
                 openCustomerInfoPopup(row, origin);
             });
-            $(".member-info-pointorpercent").on("change", updateMemberPointInputsState);
-            $(".member-info-category").on("change", updateMemberPointOrPercentAvailability);
+            // DÜZELTME: .off() eksikti; bu liste her yenilendiğinde aynı
+            // (paylaşılan, tekil) pop-up elemanına yeni bir handler ekleniyor,
+            // değişiklik olayı N kez tetiklenmeye başlıyordu.
+            $(".member-info-pointorpercent").off("change").on("change", updateMemberPointInputsState);
+            $(".member-info-category").off("change").on("change", updateMemberPointOrPercentAvailability);
             // NOT: ".member-ticket-go-trip" tıklamaları artık aşağıdaki global
             // ".member-ticket-list" delegation handler'ı tarafından kapsanıyor;
             // burada tekrar bağlamak sadece aynı tıklamanın iki kez işlenmesine
@@ -8294,7 +8447,12 @@ $(".customer-blacklist-btn").on("click", async e => {
     })
 })
 
-$(".customer-blacklist-open").off().on("click", function (e) {
+// DÜZELTME: ".customer-blacklist-open" butonu sadece /get-customers-list
+// yanıtıyla (customersList.pug) DOM'a ekleniyor. Doğrudan bağlama sayfa
+// yüklenirken boş kümeye bağlanıp asla yeniden bağlanmıyordu — "kara listeye
+// al" hiçbir zaman çalışmıyordu. ".customer-list" sabit kapsayıcısı üzerinden
+// delege ediyoruz.
+$(".customer-list").off("click.blacklistOpen").on("click.blacklistOpen", ".customer-blacklist-open", function (e) {
     const id = $(this).data("id");
     $(".customer-blacklist-pop-up").data("id", id);
     $(".customer-blacklist-description").val("");
@@ -8302,8 +8460,11 @@ $(".customer-blacklist-open").off().on("click", function (e) {
     $(".customer-blacklist-pop-up").css("display", "block");
 });
 
+// DÜZELTME: Kara liste pop-up'ı, zaten karartması açık olan ".customers"
+// listesi üzerinde açılıyor. Kapatırken karartmayı da kaldırmak, arkadaki
+// ".customers" penceresi hâlâ açıkken karartmasız/tıklanabilir kalmasına
+// yol açıyordu; sadece kendi pop-up'ını gizliyoruz.
 $(".customer-blacklist-close").on("click", e => {
-    $(".blackout").css("display", "none");
     $(".customer-blacklist-pop-up").css("display", "none");
 });
 
@@ -8380,8 +8541,11 @@ $(".member-nav").on("click", async e => {
                 openCustomerInfoPopup(row, origin);
             });
 
-            $(".member-info-pointorpercent").on("change", updateMemberPointInputsState);
-            $(".member-info-category").on("change", updateMemberPointOrPercentAvailability);
+            // DÜZELTME: .off() eksikti; bu liste her yenilendiğinde aynı
+            // (paylaşılan, tekil) pop-up elemanına yeni bir handler ekleniyor,
+            // değişiklik olayı N kez tetiklenmeye başlıyordu.
+            $(".member-info-pointorpercent").off("change").on("change", updateMemberPointInputsState);
+            $(".member-info-category").off("change").on("change", updateMemberPointOrPercentAvailability);
             // NOT: ".member-ticket-go-trip" tıklamaları artık aşağıdaki global
             // ".member-ticket-list" delegation handler'ı tarafından kapsanıyor;
             // burada tekrar bağlamak sadece aynı tıklamanın iki kez işlenmesine
@@ -8460,37 +8624,10 @@ const initializeReportPopup = async (reportKey, popup) => {
 
         popup.data("initialized", true);
     }
-    if (report === "externalReturnTickets" && !popup.data("initialized")) {
-        try {
-            const branches = await fetch("/get-branches-list?onlyData=true").then(r => r.json());
-            const branchSel = popup.find(".report-branch").empty().append('<option value="">Seçiniz</option>');
-            branches.forEach(b => branchSel.append(`<option value="${b.id}">${escapeHtml(b.title)}</option>`));
-
-            branchSel.off("change").on("change", async function () {
-                const id = $(this).val();
-                const userSel = popup.find(".report-user").empty().append('<option value="">Seçiniz</option>');
-                if (id) {
-                    try {
-                        const users = await fetch(`/get-users-by-branch?id=${id}`).then(r => r.json());
-                        users.forEach(u => userSel.append(`<option value="${u.id}">${escapeHtml(u.name)}</option>`));
-                    } catch (err) {
-                        console.error("externalReturnTickets users load error", err);
-                    }
-                }
-            });
-
-            const startInput = popup.find(".report-start")[0];
-            setupReportDatePicker(startInput, startOfDay);
-
-            const endInput = popup.find(".report-end")[0];
-            setupReportDatePicker(endInput, endOfDay);
-
-            popup.data("initialized", true);
-        } catch (err) {
-            console.error("externalReturnTickets init error", err);
-        }
-    }
-
+    // DÜZELTME: "externalReturnTickets" için başlatma bloğu birebir iki kez
+    // tekrarlanmıştı (kopyala-yapıştır); ikincisi ilk blok "initialized"
+    // bayrağını true yaptığından zaten hiç çalışmıyordu, ölü kod olarak
+    // kaldırıldı.
     if (report === "externalReturnTickets" && !popup.data("initialized")) {
         try {
             const branches = await fetch("/get-branches-list?onlyData=true").then(r => r.json());
@@ -8682,11 +8819,20 @@ $(".member-info-save").on("click", async e => {
         customerType: $(".member-info-type").val(),
         customerCategory: $(".member-info-category").val(),
         email: $(".member-info-email").val(),
-        password: $(".member-info-password").val(),
         pointOrPercent: $(".member-info-pointorpercent").val(),
         pointAmount: $(".member-info-pointamount").val(),
         percent: $(".member-info-percent").val()
     };
+
+    // DÜZELTME: Parola alanı her zaman gönderiliyordu; sunucu "password"
+    // anahtarı VAR ama boşsa isteği "Şifre boş olamaz." diyerek reddediyordu.
+    // Bu da sadece ad/telefon gibi bilgileri güncellemek isteyen kullanıcının
+    // her seferinde yeni bir parola girmeye ZORLANMASINA yol açıyordu. Parola
+    // alanı boş bırakıldıysa hiç göndermiyoruz (mevcut parola korunur).
+    const newPassword = $(".member-info-password").val();
+    if (newPassword) {
+        payload.password = newPassword;
+    }
 
     const button = $(e.currentTarget);
     if (!button.data("defaultText")) {
@@ -9089,16 +9235,28 @@ async function loadPendingPayments() {
     });
 }
 
-async function loadPendingCollections(global = true) {
+// DÜZELTME: İkinci parametre jQuery ajax'ın "global" seçeneğiyle aynı isme
+// sahip olduğundan, çağrı tarafında "loadPendingCollections(global = false)"
+// gibi Python tarzı bir kwarg sanılarak yazılmıştı; JS'te bu satır aslında
+// örtük bir global "global" değişkeni oluşturup ona false ATIYOR (kwarg değil),
+// sonra atamanın sonucunu (false) parametre olarak geçiriyordu. Parametre adı
+// "triggerGlobalAjaxEvents" olarak değiştirildi ve arka plan yoklaması,
+// gösterilecek bekleyen tahsilat yoksa pop-up'ı zorla açmayacak şekilde
+// düzeltildi (aksi halde her 60 saniyede kullanıcının o an yaptığı işin
+// üzerine boş bir pop-up açılıyordu).
+async function loadPendingCollections(triggerGlobalAjaxEvents = true, forceShow = true) {
     await $.ajax({
         url: "/get-pending-collections",
         type: "GET",
-        global: global,
+        global: triggerGlobalAjaxEvents,
         success: function (response) {
+            const hasPendingItems = $("<div>").html(response).find(".payment").length > 0;
             $(".pending-collections-list").html(response)
-            $(".blackout").css("display", "block");
-            $(".pending-collections").css("display", "block");
-            $(".payment-button").on("click", e => {
+            if (forceShow || hasPendingItems) {
+                $(".blackout").css("display", "block");
+                $(".pending-collections").css("display", "block");
+            }
+            $(".payment-button").off("click").on("click", e => {
                 $.ajax({ url: "/post-confirm-payment", type: "POST", data: { id: $(e.currentTarget).attr("data-id"), action: $(e.currentTarget).attr("data-action") } });
                 $(e.currentTarget).closest(".payment").remove()
             })
@@ -9113,7 +9271,7 @@ $(".pending-payments-nav").on("click", loadPendingPayments);
 
 setInterval(async () => {
     if ($(".pending-collections").css("display") === "none") {
-        await loadPendingCollections(global = false);
+        await loadPendingCollections(false, false);
     }
 }, 60000);
 

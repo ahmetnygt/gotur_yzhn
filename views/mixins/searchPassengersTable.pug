@@ -38,7 +38,14 @@ table.table.table-bordered.table-hover.table-sm.m-0.bg-white
                 td #{t.to}
                 td #{t.date} #{t.time}
                 td #{t.price}₺
-                td Cash
+                if t.payment == "cash"
+                    td Nakit
+                else if t.payment == "card"
+                    td Kredi Kartı
+                else if t.payment == "point"
+                    td Puan
+                else
+                    td -
                 if t.status == "web"
                     td WEB
                 else if t.status == "completed" || t.status == "gotur"

@@ -3,10 +3,10 @@
         p.inactiveTripText SEFER İPTAL
     if !trip.isAccountCut && trip.isActive
         if permissions.includes('CUT_ACCOUNT')
-            button.btn.btn-primary.btn-sm.account-cut Araç Kaldır
+            button.btn.btn-primary.btn-sm.account-cut(type="button") Araç Kaldır
     else if trip.isActive
         if permissions.includes('REVERT_ACCOUNT_CUT')
-            button.btn.btn-danger.btn-sm.account-cut-undo Hesap Kesilmiş
+            button.btn.btn-danger.btn-sm.account-cut-undo(type="button") Hesap Kesilmiş
     .trip-helper-buttons
         .trip-cargo.dropdown
             .trip-cargo-button.dropdown-toggle(type="button" data-bs-toggle="dropdown" aria-expanded="false")
@@ -87,7 +87,10 @@
             | #{trip.toPlaceString.toUpperCase()}
     .d-flex.justify-content-between.mb-1.captain-info
         b.m-0.captain-name #{captain ? captain.name + " " + captain.surname : ""}
-        b.m-0.captain-phone #{captain ? captain.phoneNumber.replace(/(\d{3})(\d{3})(\d{2})(\d{2})/, "$1 $2 $3 $4") : ""}
+        //- DÜZELTME: captain.phoneNumber null/boş olduğunda (kaptan atanmış
+        //- ama telefonu kayıtlı değilse) .replace() çağrısı tüm sayfanın 500
+        //- hatasıyla çökmesine yol açıyordu.
+        b.m-0.captain-phone #{captain && captain.phoneNumber ? captain.phoneNumber.replace(/(\d{3})(\d{3})(\d{2})(\d{2})/, "$1 $2 $3 $4") : ""}
     .d-flex.justify-content-between.mb-3
         if permissions.includes('TRIP_BUS_ASSIGN')
             select.trip-bus-license-plate.form-select-sm.form-select(data-current-bus-id=trip.busId)
@@ -102,14 +105,19 @@
 .seats
     - let seatNumber = 0
     - let seatIndex = 0
-    - const rowCount = (busModel.rowCount && busModel.rowCount > 0) ? busModel.rowCount : 16
-    - const colCount = (busModel.colCount && busModel.colCount > 0) ? busModel.colCount : 5
+    //- DÜZELTME: Sefere henüz otobüs/koltuk planı atanmamışsa (trip.busModelId
+    //- null ise) busModel null olarak geliyordu ve busModel.rowCount /
+    //- busModel.planBinary erişimleri tüm sayfanın 500 ile çökmesine sebep
+    //- oluyordu.
+    - const rowCount = (busModel && busModel.rowCount && busModel.rowCount > 0) ? busModel.rowCount : 16
+    - const colCount = (busModel && busModel.colCount && busModel.colCount > 0) ? busModel.colCount : 5
+    - const planBinary = (busModel && busModel.planBinary) ? busModel.planBinary : ""
 
     - for(let i = 0; i < rowCount; i++)
         .seat-row
             - for(let j = 0; j < colCount; j++){
-                - if(seatIndex < busModel.planBinary.length) {
-                    - if(busModel.planBinary[seatIndex] == '0'){
+                - if(seatIndex < planBinary.length) {
+                    - if(planBinary[seatIndex] == '0'){
                         .seat.hidden
                             |0
                     - }

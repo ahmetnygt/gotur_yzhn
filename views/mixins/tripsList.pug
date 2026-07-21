@@ -15,8 +15,8 @@ each t in trips
                 p.text-center.m-0 #{t.routeTitle}
         if permissions.includes('TRIP_CANCEL')
             if t.isActive
-                button.trip-cancel-button.btn.btn-outline-danger.col-1(type="button" data-trip-id=t.id data-trip-date=t.date data-trip-time=t.time)
+                button.trip-cancel-button.btn.btn-outline-danger.col-1(type="button" data-trip-id=t.id data-trip-date=t.date data-trip-time=t.time aria-label="Seferi iptal et")
                     i.fa-solid.fa-ban
             else
-                button.trip-active-button.btn.btn-outline-primary.col-1(type="button" data-trip-id=t.id data-trip-date=t.date data-trip-time=t.time)
+                button.trip-active-button.btn.btn-outline-primary.col-1(type="button" data-trip-id=t.id data-trip-date=t.date data-trip-time=t.time aria-label="Seferi aktif et")
                     i.fa-regular.fa-circle

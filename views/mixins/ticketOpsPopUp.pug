@@ -10,17 +10,25 @@ if (permissions.includes("SALE_CREATE_OWN_BRANCH") && isOwnBranchStop == "true" 
                     else
                         button.ticket-op-button(type="button" data-gender="m" data-action="sell" data-route-stop=rs.title data-stop-id=rs.stopId data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
 
-//!- if (permissions.includes("PAST_TRIP_RESERVATION") && new Date(reservationOptionDate.replace("Z","")) < new Date())
-.ticket-op.m
-    p ERKEK REZERVASYON
-    i.fa-solid.fa-caret-right
-    ul.ticket-op-buttons
-        each rs in routeStops
-            if rs
-                if rs.isRestricted
-                    button.ticket-op-button.restricted(type="button" disabled data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
-                else
-                    button.ticket-op-button(type="button" data-gender="m" data-action="reservation" data-route-stop=rs.title data-stop-id=rs.stopId data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
+-
+    // DÜZELTME: Bu izin kontrolü "//!-" (Pug yorum satırı) ile devre dışı
+    // bırakılmıştı; opsiyon süresi geçmiş seferler için de REZERVASYON
+    // menüsü, iznin adı ("Opsiyon süresi geçmiş sefere rezervasyon yapabilir")
+    // ne söylese de HERKESE gösteriliyordu. Opsiyon tarihi geçmemişse ya da
+    // kullanıcının PAST_TRIP_RESERVATION izni varsa menü gösterilir.
+    var reservationDateValue = reservationOptionDate ? new Date(String(reservationOptionDate).replace("Z", "")) : null;
+    var reservationOptionExpired = reservationDateValue && !Number.isNaN(reservationDateValue.getTime()) && reservationDateValue < new Date();
+if !reservationOptionExpired || permissions.includes("PAST_TRIP_RESERVATION")
+    .ticket-op.m
+        p ERKEK REZERVASYON
+        i.fa-solid.fa-caret-right
+        ul.ticket-op-buttons
+            each rs in routeStops
+                if rs
+                    if rs.isRestricted
+                        button.ticket-op-button.restricted(type="button" disabled data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
+                    else
+                        button.ticket-op-button(type="button" data-gender="m" data-action="reservation" data-route-stop=rs.title data-stop-id=rs.stopId data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
 if (permissions.includes("SALE_CREATE_OWN_BRANCH") && isOwnBranchStop == "true" || permissions.includes("SALE_CREATE_OTHER_BRANCH") && isOwnBranchStop == "false")
     .ticket-op.f
         p KADIN SATIŞ
@@ -32,14 +40,17 @@ if (permissions.includes("SALE_CREATE_OWN_BRANCH") && isOwnBranchStop == "true" 
                         button.ticket-op-button.restricted(type="button" disabled data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
                     else
                         button.ticket-op-button(type="button" data-gender="f" data-action="sell" data-route-stop=rs.title data-stop-id=rs.stopId data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
-//!- if (permissions.includes("PAST_TRIP_RESERVATION") && reservationOptionDate > new Date())
-.ticket-op.f
-    p KADIN REZERVASYON
-    i.fa-solid.fa-caret-right
-    ul.ticket-op-buttons
-        each rs in routeStops
-            if rs
-                if rs.isRestricted
-                    button.ticket-op-button.restricted(type="button" disabled data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
-                else
-                    button.ticket-op-button(type="button" data-gender="f" data-action="reservation" data-route-stop=rs.title data-stop-id=rs.stopId data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
+-
+    var reservationDateValueF = reservationOptionDate ? new Date(String(reservationOptionDate).replace("Z", "")) : null;
+    var reservationOptionExpiredF = reservationDateValueF && !Number.isNaN(reservationDateValueF.getTime()) && reservationDateValueF < new Date();
+if !reservationOptionExpiredF || permissions.includes("PAST_TRIP_RESERVATION")
+    .ticket-op.f
+        p KADIN REZERVASYON
+        i.fa-solid.fa-caret-right
+        ul.ticket-op-buttons
+            each rs in routeStops
+                if rs
+                    if rs.isRestricted
+                        button.ticket-op-button.restricted(type="button" disabled data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
+                    else
+                        button.ticket-op-button(type="button" data-gender="f" data-action="reservation" data-route-stop=rs.title data-stop-id=rs.stopId data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}

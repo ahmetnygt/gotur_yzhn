@@ -5,5 +5,5 @@ each s in stops
                 p.text-center.m-0 #{s.title}
             .col-6
                 p.text-center.m-0 #{s.placeTitle}
-        button.btn.btn-outline-danger.stop-delete.col-1(type="button" data-id=s.id data-title=s.title)
+        button.btn.btn-outline-danger.stop-delete.col-1(type="button" data-id=s.id data-title=s.title aria-label=`${s.title} durağını sil`)
             i.fa-solid.fa-trash

@@ -1,6 +1,6 @@
 .tickets
     each t in tickets
-        button.btn.btn-sm.btn-outline-primary.moving-ticket-button(data-seat-number=t.moveToken || t.seatNo data-is-open=t.status=='open') #{t.displaySeatNo || t.seatNo || "Open Ticket"} - #{t.name} #{t.surname}
+        button.btn.btn-sm.btn-outline-primary.moving-ticket-button(type="button" data-seat-number=t.moveToken || t.seatNo data-is-open=t.status=='open') #{t.displaySeatNo || t.seatNo || "Açık Bilet"} - #{t.name} #{t.surname}
 hr.m-0
 .moving-trip-info
     if tickets[0].status != 'open'

@@ -7,5 +7,5 @@ each u in users
                 p.text-center.m-0 #{u.branchStr}
             .col-4
                 p.text-center.m-0 #{u.phoneNumber}
-        button.btn.btn-outline-danger.user-delete.col-1(type="button" data-id=u.id data-name=u.name)
+        button.btn.btn-outline-danger.user-delete.col-1(type="button" data-id=u.id data-name=u.name aria-label=`${u.name} kullanıcısını sil`)
             i.fa-solid.fa-trash

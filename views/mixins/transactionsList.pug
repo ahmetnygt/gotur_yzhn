@@ -1,24 +1,30 @@
 each t in transactions
-    button.transactions-button.d-flex.btn(class=t.type=="income"?"btn-success":"btn-danger")
+    button.transactions-button.d-flex.btn(type="button" class=t.type=="income"?"btn-success":"btn-danger")
         .col-2
             p.text-center.m-0 #{new Date(t.createdAt).toLocaleDateString()} #{new Date(t.createdAt).toLocaleTimeString()}
         .col-2
             if t.category == "cash_sale"
-                p.text-center.m-0 Cash ticket sale
+                p.text-center.m-0 Nakit bilet satışı
             else if t.category == "card_sale"
-                p.text-center.m-0 Card ticket sale
+                p.text-center.m-0 Kredi kartı bilet satışı
+            else if t.category == "point_sale"
+                p.text-center.m-0 Puan ile bilet satışı
             else if t.category == "cash_refund"
-                p.text-center.m-0 Credit card ticket refund
+                p.text-center.m-0 Nakit bilet iadesi
             else if t.category == "card_refund"
-                p.text-center.m-0 Cash ticket refund
+                p.text-center.m-0 Kredi kartı bilet iadesi
             else if t.category == "payed_to_bus"
-                p.text-center.m-0 Paid to bus
+                p.text-center.m-0 Otobüse ödenen
             else if t.category == "income"
-                p.text-center.m-0 Income
+                p.text-center.m-0 Gelir
             else if t.category == "expense"
-                p.text-center.m-0 Expense
+                p.text-center.m-0 Gider
             else if t.category == "transfer_in"
-                p.text-center.m-0 Transfer received
+                p.text-center.m-0 Aktarılan (Gelen)
+            else if t.category == "transfer_out"
+                p.text-center.m-0 Aktarılan (Giden)
+            else if t.category == "register_reset"
+                p.text-center.m-0 Kasa Sıfırlama
         .col-4
             p.text-center.m-0 #{t.description}
         .col-2

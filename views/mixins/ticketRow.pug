@@ -5,22 +5,24 @@
             input(type="hidden" value=(seats ? seats[i] : ""))
 
         .gender
+            -
+                const rowSeatNo = seats && seats[i] != null ? seats[i] : i;
             input.male(
-                id="male_"+i
+                id="male_"+rowSeatNo
                 name="gender_"+i
                 type="radio"
                 value="m"
                 checked=(gender && gender[i] == "m")
             )
-            label.male.gender-input-label(for="male_"+i) MALE
+            label.male.gender-input-label(for="male_"+rowSeatNo) ERKEK
             input.female(
-                id="female_"+i
+                id="female_"+rowSeatNo
                 name="gender_"+i
                 type="radio"
                 value="f"
                 checked=(gender && gender[i] == "f")
             )
-            label.female.gender-input-label(for="female_"+i) FEMALE
+            label.female.gender-input-label(for="female_"+rowSeatNo) KADIN
 
         .nationality
             label.form-label Uyruk
@@ -44,9 +46,9 @@
                 const canSelectForeignNationality = permissions && permissions.includes('FOREIGN_PASSENGER_TICKET_SALE');
             select.form-select.form-select-sm(
                 data-searchable-select
-                data-search-placeholder="Search nationality"
-                data-placeholder="Select nationality"
-                data-no-results-text="No results found"
+                data-search-placeholder="Uyruk ara"
+                data-placeholder="Uyruk seçiniz"
+                data-no-results-text="Sonuç bulunamadı"
             )
                 each option in nationalityList
                     -
@@ -81,22 +83,30 @@
             label.form-label Soyisim
             input.form-control.form-control-sm(type="text" value=(ticket && ticket[i] ? ticket[i].surname : ""))
 
+        -
+            const rowCustomerType = (ticket && ticket[i] ? ticket[i].customerType : "") || "adult";
+            const rowCustomerCategory = (ticket && ticket[i] ? ticket[i].customerCategory : "") || "normal";
         .type
             label.form-label Yolcu Türü
-            select.form-select.form-select-sm(value=(ticket && ticket[i] ? ticket[i].customerType : ""))
-                option(value="adult") Yetişkin
-                option(value="child") Çocuk
-                option(value="student") Öğrenci
-                option(value="disabled") Engelli
-                option(value="retired") Emekli
+            // DÜZELTME: HTML'de <select value=...> geçerli değildir; hangi
+            // option'ın seçili olacağını belirlemek için her option'a ayrı
+            // "selected" gerekir. Aksi halde mevcut biletin yolcu türü
+            // düzenleme ekranında her zaman ilk seçenek ("Yetişkin") olarak
+            // görünüyordu.
+            select.form-select.form-select-sm
+                option(value="adult" selected=(rowCustomerType == "adult")) Yetişkin
+                option(value="child" selected=(rowCustomerType == "child")) Çocuk
+                option(value="student" selected=(rowCustomerType == "student")) Öğrenci
+                option(value="disabled" selected=(rowCustomerType == "disabled")) Engelli
+                option(value="retired" selected=(rowCustomerType == "retired")) Emekli
 
         .category
             label.form-label Kategori
-            select.form-select.form-select-sm(value=(ticket && ticket[i] ? ticket[i].customerCategory : ""))
-                option(value="normal") Normal
+            select.form-select.form-select-sm
+                option(value="normal" selected=(rowCustomerCategory == "normal")) Normal
                 if ((permissions && permissions.includes('SALE_DISCOUNT_TICKET_OWN_BRANCH') && isOwnBranch) || (permissions && permissions.includes('SALE_DISCOUNT_TICKET_OTHER_BRANCH') && !isOwnBranch))
-                    option(value="member") Üye
-                    option(value="guest") Misafir
+                    option(value="member" selected=(rowCustomerCategory == "member")) Üye
+                    option(value="guest" selected=(rowCustomerCategory == "guest")) Misafir
         -
             const seatPriceData = price ? (Array.isArray(price) ? price[i] : price) : null
             const seatType = (seatTypes && seatTypes[i] == "single") ? "single" : "standard"
@@ -137,9 +147,9 @@
                 input.form-control.form-control-sm(type="number" value=defaultPriceValue readonly=inputIsReadonly ? true : false)
                 if showPriceArrows
                     .price-arrows.btn-group-vertical.ms-1
-                        button.price-arrow.price-arrow-up.btn.btn-outline-secondary.btn-sm(type="button")
+                        button.price-arrow.price-arrow-up.btn.btn-outline-secondary.btn-sm(type="button" aria-label="Fiyatı artır")
                             i.fa-solid.fa-chevron-up
-                        button.price-arrow.price-arrow-down.btn.btn-outline-secondary.btn-sm(type="button")
+                        button.price-arrow.price-arrow-down.btn.btn-outline-secondary.btn-sm(type="button" aria-label="Fiyatı azalt")
                             i.fa-solid.fa-chevron-down
 
 .ticket-info
@@ -207,8 +217,8 @@
             label.form-label Biniş Noktası
             select.form-select.form-select-sm(
                 data-searchable-select
-                data-search-placeholder="Search boarding point"
-                data-placeholder="Select"
+                data-search-placeholder="Biniş noktası ara"
+                data-placeholder="Seçiniz"
                 data-allow-new
                 value=takeOnValue
             )
@@ -226,8 +236,8 @@
             label.form-label İniş Noktası
             select.form-select.form-select-sm(
                 data-searchable-select
-                data-search-placeholder="Search drop-off point"
-                data-placeholder="Select"
+                data-search-placeholder="İniş noktası ara"
+                data-placeholder="Seçiniz"
                 data-allow-new
                 value=takeOffValue
             )
@@ -238,12 +248,14 @@
                     option(value=option.title selected=(option.title === takeOffValue)) #{option.title}
 
         if action == "sell" || action == "edit" || action == "complete"
+            -
+                const rowPayment = (ticket && ticket[0] ? ticket[0].payment : "") || "cash";
             .payment
                 label.form-label Ödeme
                 select.form-select.form-select-sm
-                    option(value="cash") Cash
-                    option(value="card") Credit Card
-                    option(value="point") Points
+                    option(value="cash" selected=(rowPayment == "cash")) Nakit
+                    option(value="card" selected=(rowPayment == "card")) Kredi Kartı
+                    option(value="point" selected=(rowPayment == "point")) Puan
 
         if ticket && (action == "edit" || action == "complete")
             .pnr
@@ -254,12 +266,20 @@
                     readonly
                 )
 
+        -
+            // DÜZELTME: Toplam fiyat sadece ilk biletin fiyatını koltuk
+            // sayısıyla çarpıyordu; koltuklar farklı fiyatlandırıldığında
+            // (örn. tekli koltuk farkı) toplam yanlış hesaplanıyordu. Her
+            // biletin kendi fiyatı toplanarak doğru toplam bulunuyor.
+            const ticketPriceSum = ticket && ticket.length
+                ? ticket.reduce((sum, t) => sum + (Number(t && t.price) || 0), 0)
+                : "";
         .sum-price
             label.form-label Toplam Fiyat
             input.form-control.form-control-sm(
                 readonly
                 type="text"
-                value=(ticket && ticket[0] ? ticket[0].price * seats.length : "")
+                value=ticketPriceSum
             )
 
     .row

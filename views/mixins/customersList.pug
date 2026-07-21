@@ -1,7 +1,12 @@
 each c in customers
     - const btnClass = c.isBlackList ? 'btn-outline-danger' : 'btn-outline-primary'
     .btn-group
-        button.d-flex.btn.col-11.customer-row(
+        //- DÜZELTME: Sabit ".col-11" sınıfı, aşağıdaki dinamik class attribute'ünün
+        //- hesapladığı "col-11"/"col-12" ile birleşiyordu (Pug bunları override etmez,
+        //- birleştirir). Sonuç olarak yetkisiz kullanıcılarda buton "col-11 col-12"
+        //- sınıflarının ikisini birden taşıyıp yanlış genişlikte görünüyordu.
+        button.d-flex.btn.customer-row(
+            type="button"
             class=`${btnClass} ${permissions.includes('TRIP_BLACKLIST_MANAGE')?"col-11":"col-12"}`
             data-id=c.id
             data-idnumber=c.idNumber
@@ -30,8 +35,8 @@ each c in customers
                     p.text-center.m-0 #{c.blackListDescription}
         if permissions.includes('TRIP_BLACKLIST_MANAGE')
             if c.isBlackList
-                button.btn.btn-outline-primary.customer-blacklist-remove.col-1(data-id=c.id)
+                button.btn.btn-outline-primary.customer-blacklist-remove.col-1(type="button" data-id=c.id aria-label="Kara listeden çıkar")
                     i.fa-solid.fa-user
             else
-                button.btn.btn-outline-danger.customer-blacklist-open.col-1(data-id=c.id)
+                button.btn.btn-outline-danger.customer-blacklist-open.col-1(type="button" data-id=c.id aria-label="Kara listeye ekle")
                     i.fa-solid.fa-user-slash

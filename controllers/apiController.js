@@ -320,23 +320,30 @@ exports.search = async (req, res) => {
 
             if (!fromRS || !toRS) continue;
 
+            // ERP computeRouteStopTimes ile aynı mantık: her durağın duration'ı
+            // o durağa varış süresidir; mevcut durağın duration'ı da dahil edilir.
             function getBaseTime(targetRS) {
                 let totalMinutes = 0;
 
                 for (const rs of routeStops) {
-                    if (rs.order === targetRS.order) break;
                     totalMinutes += durationToMinutes(rs.duration);
+                    if (rs.order === targetRS.order) break;
                 }
 
                 return addMinutes(trip.time, totalMinutes);
             }
 
+            // ERP cumulative offset: önceki durak gecikmeleri de taşınır.
             function getFinalTime(routeStopId, baseTime) {
-                const ts = trip.stopTimes?.find(
-                    (st) => st.routeStopId === routeStopId
-                );
-                if (!ts) return baseTime;
-                return addMinutes(baseTime, ts.offsetMinutes);
+                let cumulativeOffset = 0;
+                for (const rs of routeStops) {
+                    const ts = trip.stopTimes?.find(
+                        (st) => st.routeStopId === rs.id
+                    );
+                    if (ts) cumulativeOffset += Number(ts.offsetMinutes) || 0;
+                    if (rs.id === routeStopId) break;
+                }
+                return addMinutes(baseTime, cumulativeOffset);
             }
 
             const fromBase = getBaseTime(fromRS);
@@ -676,6 +683,9 @@ exports.paymentComplete = async (req, res) => {
         const { TicketPayment } = req.commonModels;
 
         const { phone, email } = req.body;
+        const asReservation = req.body.asReservation === true
+            || req.body.asReservation === "true"
+            || req.body.mode === "reservation";
 
         // DÜZELTME 1: Frontend'den veriler "names", "name" veya "name[]" olarak gelebilir.
         // Hepsini yakalayıp ne olursa olsun kopmaz bir diziye (array) çeviriyoruz.
@@ -767,7 +777,7 @@ exports.paymentComplete = async (req, res) => {
                     // EKSİKSİZ TICKET VERİSİ
                     const ticketData = {
                         ticketGroupId: tg.id,
-                        status: "web",
+                        status: asReservation ? "reservation" : "web",
                         phoneNumber: phone || null,
                         email: email || null,
                         name: pName ? pName.toLocaleUpperCase("tr-TR") : null,
@@ -775,7 +785,8 @@ exports.paymentComplete = async (req, res) => {
                         idNumber: pIdNumber || null,
                         price: perSeatPrice,
                         pnr: generatedPnr,
-                        payment: "card",
+                        // Rezervasyonda ödeme alınmaz; satışta kart olarak işaretlenir.
+                        payment: asReservation ? null : "card",
                     };
 
                     if (existingTicket) {
@@ -812,7 +823,13 @@ exports.paymentComplete = async (req, res) => {
             throw ticketErr;
         }
 
-        res.json({ success: true, paymentId: pay.id, ticketGroupId, pnr: pnrCode });
+        res.json({
+            success: true,
+            paymentId: pay.id,
+            ticketGroupId,
+            pnr: pnrCode,
+            reservation: asReservation,
+        });
 
     } catch (e) {
         console.error("API_PAYMENT_COMPLETE_ERR:", e);
