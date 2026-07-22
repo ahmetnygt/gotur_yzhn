@@ -773,8 +773,8 @@ function parseTimeInputToMinutes(value) {
     return Math.floor(totalSeconds / 60);
 }
 
-function getSeatTypes(planBinary) {
-    const SEATS_PER_ROW = 5;
+function getSeatTypes(planBinary, colCount = 5) {
+    const seatsPerRow = (Number(colCount) > 0) ? Number(colCount) : 5;
     const seatTypes = {};
     let seatNo = 0;
 
@@ -782,10 +782,10 @@ function getSeatTypes(planBinary) {
         if (planBinary[i] !== '1') continue;
 
         seatNo++;
-        const col = i % SEATS_PER_ROW;
+        const col = i % seatsPerRow;
 
         const hasLeft = col > 0 && planBinary[i - 1] === '1';
-        const hasRight = col < SEATS_PER_ROW - 1 && planBinary[i + 1] === '1';
+        const hasRight = col < seatsPerRow - 1 && planBinary[i + 1] === '1';
         seatTypes[seatNo] = (hasLeft || hasRight) ? 'double' : 'single';
     }
 
@@ -870,7 +870,7 @@ async function checkSingleSeatLimit(models, trip, route, seatNumbers, excludedTi
         return { exceeded: false };
     }
 
-    const seatTypes = getSeatTypes(busModel.planBinary);
+    const seatTypes = getSeatTypes(busModel.planBinary, busModel.colCount);
     const singleSeatNumbers = Object.entries(seatTypes)
         .filter(([, type]) => type === "single")
         .map(([seat]) => Number(seat))
@@ -1121,7 +1121,7 @@ exports.getTrip = async (req, res, next) => {
         const routeStops = await req.models.RouteStop.findAll({ where: { routeId: trip.routeId }, order: [["order", "ASC"]] })
         const stops = await req.models.Stop.findAll({ where: { id: { [Op.in]: [...new Set(routeStops.map(rs => rs.stopId))] } } })
         const busModel = await req.models.BusModel.findOne({ where: { id: trip.busModelId } })
-        const seatTypes = getSeatTypes(trip?.busModel?.planBinary || [])
+        const seatTypes = getSeatTypes(busModel?.planBinary || trip?.busModel?.planBinary || [], busModel?.colCount)
         const accountCut = await req.models.BusAccountCut.findOne({ where: { tripId: trip.id, stopId: stopId } })
 
         const currentRouteStop = routeStops.find(rs => rs.stopId == stopId)
@@ -1701,7 +1701,8 @@ exports.getTripSeatPlanReport = async (req, res, next) => {
             trip.captainId ? req.models.Staff.findOne({ where: { id: trip.captainId }, raw: true }) : null,
         ]);
 
-        const planArray = normalizePlanBinary(trip.busPlanString ?? busModel?.planBinary);
+        // ERP koltuk haritası ile aynı kaynak: busModel.planBinary + colCount
+        const planArray = normalizePlanBinary(busModel?.planBinary ?? trip.busPlanString);
         if (!planArray.length) {
             return res.status(400).json({ message: 'Bu sefer için koltuk planı bulunamadı.' });
         }
@@ -1753,7 +1754,7 @@ exports.getTripSeatPlanReport = async (req, res, next) => {
                 filteredCount += 1;
             }
 
-            seatMap[seatNo] = {
+            const entry = {
                 name: [ticket.name, ticket.surname].filter(Boolean).join(' ').trim(),
                 gender: ticket.gender,
                 price,
@@ -1764,11 +1765,19 @@ exports.getTripSeatPlanReport = async (req, res, next) => {
                 pnr: ticket.pnr,
                 isCurrentStop: matchesStop,
             };
+
+            // Aynı koltuğa birden fazla bilet (farklı segment) düşerse,
+            // durak filtresi varsa o durağa ait bileti tercih et.
+            const existing = seatMap[seatNo];
+            if (!existing || (entry.isCurrentStop && !existing.isCurrentStop)) {
+                seatMap[seatNo] = entry;
+            }
         });
 
         const fromTitle = route?.fromStopId !== undefined ? stopTitleMap.get(toKey(route.fromStopId)) || '' : '';
         const toTitle = route?.toStopId !== undefined ? stopTitleMap.get(toKey(route.toStopId)) || '' : '';
         const currentStopTitle = stopKey ? (stopTitleMap.get(stopKey) || '') : fromTitle;
+        const columns = (busModel?.colCount && busModel.colCount > 0) ? busModel.colCount : 5;
 
         const headerData = {
             departure: formatTripDateTime(trip.date, trip.time),
@@ -1796,7 +1805,7 @@ exports.getTripSeatPlanReport = async (req, res, next) => {
             header: headerData,
             layout: {
                 plan: planArray,
-                columns: 5,
+                columns,
                 seats: seatMap,
                 highlightByStop: Boolean(stopKey),
             },

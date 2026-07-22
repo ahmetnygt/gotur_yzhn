@@ -116,23 +116,27 @@ function drawHeader(doc, header) {
 function drawSeat(doc, x, y, width, height, seatNumber, seatInfo, options) {
   const padding = 4;
   const innerWidth = width - padding * 2;
+  const highlightCurrent = Boolean(options?.highlightByStop && seatInfo?.isCurrentStop);
+  const dimOtherStop = Boolean(options?.highlightByStop && seatInfo && !seatInfo.isCurrentStop);
 
-  if (seatInfo && options?.highlightByStop) {
-    doc.save();
-    doc.roundedRect(x, y, width, height, 6);
-    doc.restore();
+  doc.save();
+  if (highlightCurrent) {
+    doc.roundedRect(x, y, width, height, 6).fillAndStroke('#FFF3CD', '#856404');
+  } else if (dimOtherStop) {
+    doc.roundedRect(x, y, width, height, 6).fillAndStroke('#F5F5F5', '#BBBBBB');
+  } else {
+    doc.roundedRect(x, y, width, height, 6).stroke();
   }
-
-  doc.roundedRect(x, y, width, height, 6).stroke();
+  doc.restore();
 
   doc.save();
   const seatNumberFontSize = Math.min(height * 0.6, 22);
   const seatNumberText = String(seatNumber);
-  doc.font('Bold').fontSize(seatNumberFontSize).fillColor('black');
+  doc.font('Bold').fontSize(seatNumberFontSize).fillColor(dimOtherStop ? '#999999' : 'black');
   if (typeof doc.fillOpacity === 'function') {
-    doc.fillOpacity(0.3);
+    doc.fillOpacity(dimOtherStop ? 0.2 : 0.3);
   } else if (typeof doc.opacity === 'function') {
-    doc.opacity(0.3);
+    doc.opacity(dimOtherStop ? 0.2 : 0.3);
   }
   const numberHeight = doc.heightOfString(seatNumberText, { width });
   const numberY = y + (height - numberHeight) / 2;
@@ -143,9 +147,10 @@ function drawSeat(doc, x, y, width, height, seatNumber, seatInfo, options) {
   doc.restore();
 
   if (seatInfo) {
+    const textColor = dimOtherStop ? '#777777' : 'black';
     const seatPrice = formatSeatPrice(seatInfo.price);
     if (seatPrice) {
-      doc.font('Bold').fontSize(9).text(seatPrice + "₺", x + padding, y + padding, {
+      doc.font('Bold').fontSize(9).fillColor(textColor).text(seatPrice + "₺", x + padding, y + padding, {
         width: innerWidth,
         align: 'right',
       });
@@ -157,7 +162,7 @@ function drawSeat(doc, x, y, width, height, seatNumber, seatInfo, options) {
     const paymentBadge = PAYMENT_LABELS[seatInfo.payment];
     const badges = [statusBadge, paymentBadge].filter(Boolean).join(' • ');
     if (badges) {
-      doc.font('Bold').fontSize(7).text(badges, x + padding, cursorY, {
+      doc.font('Bold').fontSize(7).fillColor(textColor).text(badges, x + padding, cursorY, {
         width: innerWidth,
         align: 'left',
       });
@@ -166,7 +171,7 @@ function drawSeat(doc, x, y, width, height, seatNumber, seatInfo, options) {
 
     const name = seatInfo.name || '';
     if (name) {
-      doc.font('Regular').fontSize(8).text(name, x + padding, cursorY, {
+      doc.font('Regular').fontSize(8).fillColor(textColor).text(name, x + padding, cursorY, {
         width: innerWidth,
         align: 'left',
       });
@@ -175,7 +180,7 @@ function drawSeat(doc, x, y, width, height, seatNumber, seatInfo, options) {
 
     const routeLabel = [seatInfo.from, seatInfo.to].filter(Boolean).join(' → ');
     if (routeLabel) {
-      doc.font('Regular').fontSize(7).text(routeLabel, x + padding, cursorY, {
+      doc.font('Regular').fontSize(7).fillColor(textColor).text(routeLabel, x + padding, cursorY, {
         width: innerWidth,
         align: 'left',
       });
@@ -187,12 +192,12 @@ function drawSeat(doc, x, y, width, height, seatNumber, seatInfo, options) {
       .filter(Boolean)
       .join(' • ');
     if (infoLine) {
-      doc.font('Regular').fontSize(6.5).fillColor('#333333').text(infoLine, x + padding, cursorY, {
+      doc.font('Regular').fontSize(6.5).fillColor(dimOtherStop ? '#888888' : '#333333').text(infoLine, x + padding, cursorY, {
         width: innerWidth,
         align: 'left',
       });
-      doc.fillColor('black');
     }
+    doc.fillColor('black');
   }
 }
 

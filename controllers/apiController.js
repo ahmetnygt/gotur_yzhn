@@ -180,35 +180,70 @@ exports.search = async (req, res) => {
                 .json({ error: "kalkış, varış ve tarih alanları zorunludur." });
         }
 
-        const fromStop = await Stop.findOne({ where: { placeId: from } });
-        const toStop = await Stop.findOne({ where: { placeId: to } });
+        // placeId şehir seviyesidir; aynı şehirde birden fazla durak olabilir
+        // (ör. ÇOMÜ Hastane + Çanakkale İskele). findOne sadece birini alırdı
+        // ve diğer durağı kullanan hatlar sonuçta görünmezdi.
+        const placeStops = await Stop.findAll({
+            where: {
+                placeId: { [Op.in]: [from, to] },
+                isDeleted: false,
+            },
+            attributes: ["id", "placeId", "title"],
+        });
 
-        if (!fromStop || !toStop) {
+        const fromPlaceStopIds = [];
+        const toPlaceStopIds = [];
+        const stopById = {};
+
+        for (const stop of placeStops) {
+            stopById[String(stop.id)] = stop;
+            if (String(stop.placeId) === String(from)) {
+                fromPlaceStopIds.push(stop.id);
+            }
+            if (String(stop.placeId) === String(to)) {
+                toPlaceStopIds.push(stop.id);
+            }
+        }
+
+        if (!fromPlaceStopIds.length || !toPlaceStopIds.length) {
             return res.status(404).json({
                 error: "Kalkış/Varış durağı bulunamadı.",
             });
         }
 
-        const fromRouteStops = await RouteStop.findAll({
-            where: { stopId: fromStop.id },
-            attributes: ["routeId", "order"],
+        const fromStopIdSet = new Set(fromPlaceStopIds.map(String));
+        const toStopIdSet = new Set(toPlaceStopIds.map(String));
+        const allPlaceStopIds = [...new Set([...fromPlaceStopIds, ...toPlaceStopIds])];
+
+        const matchingRouteStops = await RouteStop.findAll({
+            where: { stopId: { [Op.in]: allPlaceStopIds } },
+            attributes: ["id", "routeId", "stopId", "order"],
         });
 
-        const toRouteStops = await RouteStop.findAll({
-            where: { stopId: toStop.id },
-            attributes: ["routeId", "order"],
-        });
-
-        const fromMap = {};
-        fromRouteStops.forEach((rs) => (fromMap[rs.routeId] = rs.order));
-
-        const toMap = {};
-        toRouteStops.forEach((rs) => (toMap[rs.routeId] = rs.order));
+        const routeIdsTouched = [
+            ...new Set(matchingRouteStops.map((rs) => Number(rs.routeId))),
+        ];
 
         const validRouteIds = [];
-        for (const routeId of Object.keys(fromMap)) {
-            if (toMap[routeId] && fromMap[routeId] < toMap[routeId]) {
-                validRouteIds.push(Number(routeId));
+        for (const routeId of routeIdsTouched) {
+            const rsForRoute = matchingRouteStops.filter(
+                (rs) => Number(rs.routeId) === routeId
+            );
+            const fromCandidates = rsForRoute.filter((rs) =>
+                fromStopIdSet.has(String(rs.stopId))
+            );
+            const toCandidates = rsForRoute.filter((rs) =>
+                toStopIdSet.has(String(rs.stopId))
+            );
+
+            const hasValidPair = fromCandidates.some((fromRS) =>
+                toCandidates.some(
+                    (toRS) => Number(fromRS.order) < Number(toRS.order)
+                )
+            );
+
+            if (hasValidPair) {
+                validRouteIds.push(routeId);
             }
         }
 
@@ -288,24 +323,71 @@ exports.search = async (req, res) => {
             ticketsByTrip[tic.tripId].push(tic);
         });
 
-        // N+1 DÜZELTMESİ: Bu fiyat sorgusu fromStop/toStop'a bağlıydı, trip'e
-        // bağlı değildi; önceden döngü içinde her sefer için tekrar tekrar
-        // (aynı sonuçla) çalıştırılıyordu. Trip'ten bağımsız olduğu için
-        // döngüden önce sadece bir kez hesaplanması yeterli.
-        let priceRow = await Price.findOne({
-            where: { fromStopId: fromStop.id, toStopId: toStop.id }
-        });
+        // Fiyat, seçilen şehirdeki gerçek durak çiftine göre değişebilir;
+        // her sefer için ayrı bakılır (önbellekle).
+        const priceCache = new Map();
 
-        if (!priceRow) {
-            priceRow = await Price.findOne({
-                where: { fromStopId: toStop.id, toStopId: fromStop.id, isBidirectional: true }
+        async function resolvePrice(fromStopId, toStopId) {
+            const key = `${fromStopId}:${toStopId}`;
+            if (priceCache.has(key)) {
+                return priceCache.get(key);
+            }
+
+            let priceRow = await Price.findOne({
+                where: { fromStopId, toStopId },
             });
+
+            if (!priceRow) {
+                priceRow = await Price.findOne({
+                    where: {
+                        fromStopId: toStopId,
+                        toStopId: fromStopId,
+                        isBidirectional: true,
+                    },
+                });
+            }
+
+            const amount =
+                (priceRow
+                    ? priceRow.webPrice ??
+                      priceRow.price1 ??
+                      priceRow.price2 ??
+                      priceRow.price3
+                    : 0) ?? 0;
+
+            priceCache.set(key, amount);
+            return amount;
         }
 
-        const priceAmount =
-            (priceRow
-                ? priceRow.webPrice ?? priceRow.price1 ?? priceRow.price2 ?? priceRow.price3
-                : 0) ?? 0;
+        function pickBestStopPair(routeStops) {
+            const fromCandidates = routeStops
+                .filter((rs) => fromStopIdSet.has(String(rs.stopId)))
+                .sort((a, b) => Number(a.order) - Number(b.order));
+            const toCandidates = routeStops
+                .filter((rs) => toStopIdSet.has(String(rs.stopId)))
+                .sort((a, b) => Number(a.order) - Number(b.order));
+
+            let bestFrom = null;
+            let bestTo = null;
+            let bestGap = Infinity;
+
+            for (const fromRS of fromCandidates) {
+                for (const toRS of toCandidates) {
+                    const fromOrder = Number(fromRS.order);
+                    const toOrder = Number(toRS.order);
+                    if (!(fromOrder < toOrder)) continue;
+
+                    const gap = toOrder - fromOrder;
+                    if (gap < bestGap) {
+                        bestGap = gap;
+                        bestFrom = fromRS;
+                        bestTo = toRS;
+                    }
+                }
+            }
+
+            return { fromRS: bestFrom, toRS: bestTo };
+        }
 
         const formattedTrips = [];
 
@@ -313,12 +395,15 @@ exports.search = async (req, res) => {
             const routeStops = routeStopsMap[trip.routeId];
             if (!routeStops || !routeStops.length) continue;
 
-            const fromRS = routeStops.find(
-                (rs) => rs.stopId === fromStop.id
-            );
-            const toRS = routeStops.find((rs) => rs.stopId === toStop.id);
-
+            const { fromRS, toRS } = pickBestStopPair(routeStops);
             if (!fromRS || !toRS) continue;
+
+            const fromStop =
+                stopById[String(fromRS.stopId)] ||
+                { id: fromRS.stopId, title: stopTitleById[fromRS.stopId] || "" };
+            const toStop =
+                stopById[String(toRS.stopId)] ||
+                { id: toRS.stopId, title: stopTitleById[toRS.stopId] || "" };
 
             // ERP computeRouteStopTimes ile aynı mantık: her durağın duration'ı
             // o durağa varış süresidir; mevcut durağın duration'ı da dahil edilir.
@@ -353,6 +438,7 @@ exports.search = async (req, res) => {
             const toFinal = getFinalTime(toRS.id, toBase);
 
             const durationText = calcDuration(fromFinal, toFinal);
+            const priceAmount = await resolvePrice(fromStop.id, toStop.id);
 
             const planBinary =
                 (trip.busModel && trip.busModel.planBinary) ||
@@ -441,6 +527,21 @@ exports.search = async (req, res) => {
                 routeTimeline,
             });
         }
+
+        // Seferler DB'de rota ilk kalkış saatine (trip.time) göre gelir;
+        // kullanıcıya seçilen kalkış durağındaki gerçek saat (fromFinal) gösterilir.
+        // Ara durak aramalarında sıralamanın bozulmaması için yeniden sırala.
+        formattedTrips.sort((a, b) => {
+            const toMinutes = (t) => {
+                if (!t) return Number.POSITIVE_INFINITY;
+                const [h, m] = String(t).split(":").map(Number);
+                if (!Number.isFinite(h) || !Number.isFinite(m)) {
+                    return Number.POSITIVE_INFINITY;
+                }
+                return h * 60 + m;
+            };
+            return toMinutes(a.time) - toMinutes(b.time);
+        });
 
         return res.json({
             tenant: tenantKey,
