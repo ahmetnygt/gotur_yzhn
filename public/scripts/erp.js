@@ -2742,6 +2742,14 @@ async function loadTrip(date, time, tripId) {
             const fromIdLocal = currentStop;
             const toIdLocal = button.dataset.stopId;
 
+            // DÜZELTME: satış/rezervasyon onayı global toId gönderiyordu; bu değer
+            // sefer açılışında rotanın son durağına set edilip seçilen varışla
+            // hiç güncellenmiyordu (örn. Beylikdüzü seçilince Kadıköy kaydı).
+            fromId = fromIdLocal;
+            toId = toIdLocal;
+            fromStr = currentStopStr;
+            toStr = button.dataset.routeStop;
+
             // DÜZELTME: seatTypes handler başında sıfırlanmıyordu; önceki bir
             // çağrıda hata olup "success" callback'ine ulaşılamazsa (satır
             // ~2716'daki reset atlanır) dizi bir sonraki tıklamada da eski
@@ -3537,7 +3545,12 @@ async function renderTripRows(html, options = {}) {
     const $current = findCurrentTripRow($sortedRows);
     if ($current.length) {
         selectTripRow($current);
-        return false;
+        try {
+            await loadTrip($current.data("date"), $current.data("time"), $current.data("tripid"));
+        } catch (err) {
+            console.error(err);
+        }
+        return true;
     }
 
     if (!autoSelect) {
@@ -3791,9 +3804,6 @@ $("#currentStop").on("change", async (e) => {
             $(".stops-times").html("");
             $(".passenger-table").html("");
         }
-        else if (currentTripId && !autoLoaded) {
-            await loadTrip(currentTripDate, currentTripTime, currentTripId);
-        }
     } catch (err) {
         console.log(err);
     }
@@ -3852,17 +3862,20 @@ $(".ticket-button-action").on("click", async e => {
                     payment: usePointPayment ? "point" : $(".ticket-rows").find(".payment").find("select").val(),
                     takeOn: takeOnValue,
                     takeOff: takeOffValue,
+                    description: ($(".ticket-rows").find(".description").find("input").val() || "").toString().trim(),
                 }
 
                 tickets.push(ticketObj)
             }
 
             const ticketsStr = JSON.stringify(tickets)
+            const selectedFromId = $("#ticketFormFromId").val() || currentStop;
+            const selectedToId = $("#ticketFormToId").val() || toId;
 
             await $.ajax({
                 url: "/post-tickets",
                 type: "POST",
-                data: { pendingIds: $("#pendingIds").val(), tickets: ticketsStr, tripDate: currentTripDate, tripTime: currentTripTime, fromId: currentStop, toId, tripId: currentTripId, status: "completed" },
+                data: { pendingIds: $("#pendingIds").val(), tickets: ticketsStr, tripDate: currentTripDate, tripTime: currentTripTime, fromId: selectedFromId, toId: selectedToId, tripId: currentTripId, status: "completed" },
                 success: async function (response) {
                     ticketClose()
                     loadTrip(currentTripDate, currentTripTime, currentTripId)
@@ -3899,6 +3912,7 @@ $(".ticket-button-action").on("click", async e => {
                 pnr: $(".ticket-rows").find(".pnr").find("input").val(),
                 takeOn: takeOnValue,
                 takeOff: takeOffValue,
+                description: ($(".ticket-rows").find(".description").find("input").val() || "").toString().trim(),
             }
 
             tickets.push(ticketObj)
@@ -3947,6 +3961,7 @@ $(".ticket-button-action").on("click", async e => {
                 payment: $(".ticket-rows").find(".payment").find("select").val(),
                 takeOn: takeOnValue,
                 takeOff: takeOffValue,
+                description: ($(".ticket-rows").find(".description").find("input").val() || "").toString().trim(),
             }
 
             tickets.push(ticketObj)
@@ -3992,6 +4007,7 @@ $(".ticket-button-action").on("click", async e => {
                 pnr: $(".pnr").find("input").val(),
                 takeOn: takeOnValue,
                 takeOff: takeOffValue,
+                description: ($(".ticket-rows").find(".description").find("input").val() || "").toString().trim(),
             })
         })
 
@@ -4036,6 +4052,7 @@ $(".ticket-button-action").on("click", async e => {
                 price: $(ticket).find(".price").find("input").val(),
                 takeOn: takeOnValue,
                 takeOff: takeOffValue,
+                description: ($(".ticket-rows").find(".description").find("input").val() || "").toString().trim(),
             }
 
             tickets.push(ticketObj)
@@ -4043,11 +4060,13 @@ $(".ticket-button-action").on("click", async e => {
 
         const ticketsStr = JSON.stringify(tickets)
         const pendingIds = $("#pendingIds").val()
+        const selectedFromId = $("#ticketFormFromId").val() || currentStop;
+        const selectedToId = $("#ticketFormToId").val() || toId;
 
         await $.ajax({
             url: "/post-tickets",
             type: "POST",
-            data: { pendingIds, tickets: ticketsStr, tripDate: currentTripDate, tripTime: currentTripTime, fromId: currentStop, toId, tripId: currentTripId, status: "reservation" },
+            data: { pendingIds, tickets: ticketsStr, tripDate: currentTripDate, tripTime: currentTripTime, fromId: selectedFromId, toId: selectedToId, tripId: currentTripId, status: "reservation" },
             success: async function (response) {
                 ticketClose()
                 loadTrip(currentTripDate, currentTripTime, currentTripId)
@@ -4075,6 +4094,7 @@ $(".ticket-button-action").on("click", async e => {
                     selectedTakenSeats = []
                     $(".cancel-action-button").html(`BİLET SEÇ`)
                     loadTrip(currentTripDate, currentTripTime, currentTripId)
+                    loadTripsList(currentTripDate, { autoSelect: false })
                 },
                 error: function (xhr, status, error) {
                     const message = xhr?.responseJSON?.message || xhr?.responseText || error;
@@ -4100,6 +4120,7 @@ $(".ticket-button-action").on("click", async e => {
                     selectedTakenSeats = []
                     $(".cancel-action-button").html(`BİLET SEÇ`)
                     loadTrip(currentTripDate, currentTripTime, currentTripId)
+                    loadTripsList(currentTripDate, { autoSelect: false })
                 },
                 error: function (xhr, status, error) {
                     const message = xhr?.responseJSON?.message || xhr?.responseText || error;
@@ -4125,6 +4146,7 @@ $(".ticket-button-action").on("click", async e => {
                     selectedTakenSeats = []
                     $(".cancel-action-button").html(`BİLET SEÇ`)
                     loadTrip(currentTripDate, currentTripTime, currentTripId)
+                    loadTripsList(currentTripDate, { autoSelect: false })
                 },
                 error: function (xhr, status, error) {
                     const message = xhr?.responseJSON?.message || xhr?.responseText || error;

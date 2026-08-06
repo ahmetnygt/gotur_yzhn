@@ -285,6 +285,13 @@
     .row
         .description
             label.form-label Açıklama
-            input.form-control.form-control-sm(type="text")
+            input.form-control.form-control-sm(
+                type="text"
+                value=(ticket && ticket[0] ? (ticket[0].description || "") : "")
+            )
 
 input#pendingIds(type="hidden" value=pendingIds)
+if fromId
+    input#ticketFormFromId(type="hidden" value=fromId)
+if toId
+    input#ticketFormToId(type="hidden" value=toId)

@@ -7,19 +7,15 @@ const UETDS_ENDPOINTS = {
 };
 
 /**
- * Firma bilgilerini getirir
+ * Firma bilgilerini getirir.
+ * isUetdsActive false ise null döner; çağıran taraf SOAP isteği atlamalıdır.
  */
 async function getFirmCredentials(req) {
     const firm = await req.commonModels.Firm.findOne({ where: { key: req.tenantKey } });
     if (!firm) throw new Error("Firma bulunamadı.");
 
     if (!firm.isUetdsActive) {
-        return {
-            wsdl: UETDS_ENDPOINTS.test,
-            username: "999999",
-            password: "999999testtest",
-            plaka: "06TARIFESIZ123"
-        };
+        return null;
     }
 
     if (!firm.uetdsUsername || !firm.uetdsPassword)
@@ -109,7 +105,12 @@ function cleanPhone(p) {
 
 async function seferEkle(req, tripId) {
     try {
-        const { wsdl, username, password, plaka } = await getFirmCredentials(req);
+        const credentials = await getFirmCredentials(req);
+        if (!credentials) {
+            console.log("⏭️ [UETDS] Pasif, seferEkle atlandı.");
+            return null;
+        }
+        const { wsdl, username, password, plaka } = credentials;
 
         const trip = await req.models.Trip.findOne({
             where: { id: tripId },
@@ -187,8 +188,12 @@ async function seferEkle(req, tripId) {
 
 async function seferGuncelle(req, tripId, override = {}) {
     try {
-        // Firma bilgileri
-        const { wsdl, username, password, plaka } = await getFirmCredentials(req);
+        const credentials = await getFirmCredentials(req);
+        if (!credentials) {
+            console.log("⏭️ [UETDS] Pasif, seferGuncelle atlandı.");
+            return { success: false, skipped: true, message: "UETDS pasif" };
+        }
+        const { wsdl, username, password, plaka } = credentials;
 
         // Trip bilgilerini al
         const trip = await req.models.Trip.findOne({
@@ -283,7 +288,12 @@ async function seferGuncelle(req, tripId, override = {}) {
 
 async function seferIptal(req, tripId) {
     try {
-        const { wsdl, username, password } = await getFirmCredentials(req);
+        const credentials = await getFirmCredentials(req);
+        if (!credentials) {
+            console.log("⏭️ [UETDS] Pasif, seferIptal atlandı.");
+            return null;
+        }
+        const { wsdl, username, password } = credentials;
 
         // Trip kontrolü
         const trip = await req.models.Trip.findByPk(tripId);
@@ -324,7 +334,12 @@ async function seferIptal(req, tripId) {
 
 async function seferAktif(req, tripId) {
     try {
-        const { wsdl, username, password } = await getFirmCredentials(req);
+        const credentials = await getFirmCredentials(req);
+        if (!credentials) {
+            console.log("⏭️ [UETDS] Pasif, seferAktif atlandı.");
+            return null;
+        }
+        const { wsdl, username, password } = credentials;
         const trip = await req.models.Trip.findByPk(tripId);
         if (!trip || !trip.uetdsRefNo) throw new Error("Geçerli UETDS referans numarası bulunamadı.");
 
@@ -350,7 +365,12 @@ async function seferAktif(req, tripId) {
 
 async function seferPlakaDegistir(req, tripId, yeniPlaka) {
     try {
-        const { wsdl, username, password } = await getFirmCredentials(req);
+        const credentials = await getFirmCredentials(req);
+        if (!credentials) {
+            console.log("⏭️ [UETDS] Pasif, seferPlakaDegistir atlandı.");
+            return null;
+        }
+        const { wsdl, username, password } = credentials;
 
         const trip = await req.models.Trip.findByPk(tripId);
         if (!trip || !trip.uetdsRefNo) {
@@ -387,7 +407,12 @@ async function seferPlakaDegistir(req, tripId, yeniPlaka) {
 }
 
 async function personelEkle(req, tripId, staffRow) {
-    const { wsdl, username, password } = await getFirmCredentials(req);
+    const credentials = await getFirmCredentials(req);
+    if (!credentials) {
+        console.log("⏭️ [UETDS] Pasif, personelEkle atlandı.");
+        return null;
+    }
+    const { wsdl, username, password } = credentials;
 
     const trip = await req.models.Trip.findByPk(tripId);
     if (!trip || !trip.uetdsRefNo)
@@ -438,7 +463,12 @@ async function personelEkle(req, tripId, staffRow) {
 }
 
 async function personelIptal(req, tripId, staffRow, iptalAciklama = "Personel kaldırıldı") {
-    const { wsdl, username, password } = await getFirmCredentials(req);
+    const credentials = await getFirmCredentials(req);
+    if (!credentials) {
+        console.log("⏭️ [UETDS] Pasif, personelIptal atlandı.");
+        return null;
+    }
+    const { wsdl, username, password } = credentials;
 
     const trip = await req.models.Trip.findByPk(tripId);
     if (!trip || !trip.uetdsRefNo)
@@ -484,7 +514,12 @@ async function personelIptal(req, tripId, staffRow, iptalAciklama = "Personel ka
 
 async function seferGrupEkle(req, trip) {
     try {
-        const { wsdl, username, password } = await getFirmCredentials(req);
+        const credentials = await getFirmCredentials(req);
+        if (!credentials) {
+            console.log("⏭️ [UETDS] Pasif, seferGrupEkle atlandı.");
+            return null;
+        }
+        const { wsdl, username, password } = credentials;
 
         if (!trip || !trip.uetdsRefNo) throw new Error("UETDS sefer referans numarası yok.");
 
@@ -544,7 +579,12 @@ async function seferGrupEkle(req, trip) {
 }
 
 async function seferGrupListesi(req, trip) {
-    const { wsdl, username, password } = await getFirmCredentials(req);
+    const credentials = await getFirmCredentials(req);
+    if (!credentials) {
+        console.log("⏭️ [UETDS] Pasif, seferGrupListesi atlandı.");
+        return null;
+    }
+    const { wsdl, username, password } = credentials;
 
     if (!trip?.uetdsRefNo)
         throw new Error("Seferin UETDS referans numarası bulunamadı.");
@@ -574,7 +614,12 @@ async function seferGrupListesi(req, trip) {
 
 async function seferGrupGuncelle(req, trip, grupId, options = {}) {
     try {
-        const { wsdl, username, password } = await getFirmCredentials(req);
+        const credentials = await getFirmCredentials(req);
+        if (!credentials) {
+            console.log("⏭️ [UETDS] Pasif, seferGrupGuncelle atlandı.");
+            return null;
+        }
+        const { wsdl, username, password } = credentials;
 
         if (!trip?.uetdsRefNo) throw new Error("Seferin UETDS referans numarası yok.");
         if (!grupId) throw new Error("Güncellenecek grup ID'si belirtilmemiş.");
@@ -655,7 +700,12 @@ async function seferGrupGuncelle(req, trip, grupId, options = {}) {
 }
 
 async function yolcuEkle(req, trip, grupRefNo, ticket) {
-    const { wsdl, username, password } = await getFirmCredentials(req);
+    const credentials = await getFirmCredentials(req);
+    if (!credentials) {
+        console.log("⏭️ [UETDS] Pasif, yolcuEkle atlandı.");
+        return null;
+    }
+    const { wsdl, username, password } = credentials;
 
     if (!trip?.uetdsRefNo) throw new Error("Seferin UETDS referans numarası yok.");
     if (!grupRefNo) throw new Error("UETDS grup referans numarası yok.");
@@ -697,7 +747,12 @@ async function yolcuEkle(req, trip, grupRefNo, ticket) {
 }
 
 async function yolcuIptalUetdsYolcuRefNoIle(req, trip, passengerRefNo, reason = "Yolcu iadesi") {
-    const { wsdl, username, password } = await getFirmCredentials(req);
+    const credentials = await getFirmCredentials(req);
+    if (!credentials) {
+        console.log("⏭️ [UETDS] Pasif, yolcuIptal atlandı.");
+        return null;
+    }
+    const { wsdl, username, password } = credentials;
 
     if (!trip?.uetdsRefNo) throw new Error("Seferin UETDS referans numarası yok.");
     if (!passengerRefNo) throw new Error("Yolcu UETDS referans numarası belirtilmemiş.");
@@ -728,7 +783,11 @@ async function yolcuIptalUetdsYolcuRefNoIle(req, trip, passengerRefNo, reason = 
 }
 
 async function seferDetayCiktisiAl(req, tripId) {
-    const { wsdl, username, password } = await getFirmCredentials(req);
+    const credentials = await getFirmCredentials(req);
+    if (!credentials) {
+        throw new Error("Bu firma için UETDS aktif değil.");
+    }
+    const { wsdl, username, password } = credentials;
 
     const trip = await req.models.Trip.findByPk(tripId);
     if (!trip || !trip.uetdsRefNo) {

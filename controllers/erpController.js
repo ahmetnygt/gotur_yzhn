@@ -18,6 +18,7 @@ const generateExternalReturnTicketsReport = require('../utilities/reports/extern
 const generateBusTransactionsReport = require("../utilities/reports/busTransactionsReport");
 const countries = require("world-countries");
 const { seferEkle, kullaniciKontrol, seferIptal, seferAktif, seferPlakaDegistir, personelEkle, personelIptal, seferGrupGuncelle, yolcuEkle, seferGrupListesi, seferGrupEkle, yolcuIptalUetdsYolcuRefNoIle, seferDetayCiktisiAl } = require('../utilities/uetdsService');
+const { findSeatSegmentConflict, seatConflictMessage } = require('../utilities/seatSegmentConflict');
 
 const TURKISH_COLLATOR = (() => {
     try {
@@ -975,7 +976,10 @@ exports.getDayTripsList = async (req, res, next) => {
         const [ticketCountsRaw, allRouteStops, allRestrictions, allOffsets] = await Promise.all([
             tripIds.length
                 ? req.models.Ticket.findAll({
-                    where: { tripId: { [Op.in]: tripIds } },
+                    where: {
+                        tripId: { [Op.in]: tripIds },
+                        status: { [Op.notIn]: NON_ACTIVE_TICKET_STATUSES },
+                    },
                     attributes: ["tripId", [fn("COUNT", col("id")), "count"]],
                     group: ["tripId"],
                     raw: true,
@@ -1036,6 +1040,11 @@ exports.getDayTripsList = async (req, res, next) => {
             t.modifiedTime = t.time
 
             const ticketCount = ticketCountByTripId.get(String(t.id)) || 0
+
+            // İptal seferlerde aktif bilet yoksa listede gösterme
+            if (!t.isActive && ticketCount === 0) {
+                continue
+            }
 
             t.fullness = `${ticketCount}/${busModels.find(bm => bm.id == t.busModelId).maxPassenger}`
 
@@ -1216,7 +1225,14 @@ exports.getTrip = async (req, res, next) => {
             }
             else if (ticketPlaceOrder < currentStopOrder) {
                 ticket.stopOrder = "before"
-                ticket.createdAt = null
+                // Only free the seat after the passenger alights (toOrder <= current).
+                // If they boarded earlier but travel past this stop, keep createdAt so
+                // the UI treats the seat as taken (prevents mid-route double booking).
+                const ticketToOrder = Number(routeStopOrderMap[ticket.toRouteStopId])
+                const currentOrderNum = Number(currentStopOrder)
+                if (Number.isFinite(ticketToOrder) && Number.isFinite(currentOrderNum) && ticketToOrder <= currentOrderNum) {
+                    ticket.createdAt = null
+                }
             }
 
             const futureInfo = seatFutureStopInfo[ticket.seatNo]
@@ -1345,7 +1361,7 @@ exports.getTripTable = async (req, res, next) => {
 
         ticket.from = stops.find(s => s.id == ticket.fromRouteStopId)?.title || ""
         ticket.to = stops.find(s => s.id == ticket.toRouteStopId)?.title || ""
-        ticket.gender = ticket.gender === "m" ? "MALE" : "FEMALE"
+        ticket.gender = ticket.gender === "m" ? "Erkek" : "Kadın"
         ticket.isOtherStop = currentStopId && ticket.fromRouteStopId != currentStopId
 
         const user = userMap[ticket.userId]
@@ -2715,7 +2731,7 @@ exports.getErp = async (req, res, next) => {
 
     const labelFromMap = (value, map) => (map && Object.prototype.hasOwnProperty.call(map, value) ? map[value] : value);
 
-    const genderLabelMap = { m: "Male", f: "Female" };
+    const genderLabelMap = { m: "Erkek", f: "Kadın" };
     const typeLabelMap = {
         adult: "Adult",
         child: "Child",
@@ -3069,86 +3085,66 @@ exports.getTicketRow = async (req, res, next) => {
 
     const seatNumbers = Array.from(seatLabelMap.keys());
 
-    const existingTickets = await req.models.Ticket.findAll({
-        where: {
-            tripId: trip.id,
-            seatNo: { [Op.in]: seatNumbers },
-            status: { [Op.notIn]: ["canceled", "cancelled", "refund"] },
-        },
-        attributes: ["seatNo", "fromRouteStopId", "toRouteStopId"],
-        raw: true,
-    });
-
-    const segmentsOverlap = (startA, endA, startB, endB) => {
-        const values = [startA, endA, startB, endB];
-        if (!values.every((value) => typeof value === "number" && Number.isFinite(value))) {
-            return true;
-        }
-
-        if (startA >= endA || startB >= endB) {
-            return true;
-        }
-
-        return startA < endB && startB < endA;
-    };
-
-    let conflictingSeatNumber = null;
-
-    for (const seatNumber of seatNumbers) {
-        const seatTickets = existingTickets.filter((ticket) => Number(ticket.seatNo) === seatNumber);
-
-        for (const ticket of seatTickets) {
-            const ticketFromOrder = routeStopOrderMap[String(ticket.fromRouteStopId)];
-            const ticketToOrder = routeStopOrderMap[String(ticket.toRouteStopId)];
-
-            if (segmentsOverlap(fromOrder, toOrder, ticketFromOrder, ticketToOrder)) {
-                conflictingSeatNumber = seatNumber;
-                break;
-            }
-        }
-
-        if (conflictingSeatNumber !== null) {
-            break;
-        }
-    }
-
-    if (conflictingSeatNumber !== null) {
-        const seatLabel = seatLabelMap.get(conflictingSeatNumber) ?? String(conflictingSeatNumber);
-        return res.status(409).json({
-            message: `${seatLabel} numaralı koltuk seçilen güzergah için uygun değil.`,
-        });
-    }
-
-    const group = await req.models.TicketGroup.create({ tripId: trip.id });
-    const ticketGroupId = group.id;
+    const proposals = seatNumbers.map((seatNumber) => ({
+        seatNumber,
+        seatLabel: seatLabelMap.get(seatNumber) ?? String(seatNumber),
+        fromStopId: fromId,
+        toStopId: toId,
+    }));
 
     const now = new Date();
     now.setMinutes(now.getMinutes() + 5);
     const nowDate = now.toISOString().split("T")[0];
     const nowTime = now.toTimeString().split(" ")[0];
 
-    let pendingIds = []
+    let pendingIds = [];
+    try {
+        // Overlap check + pending create under trip lock to prevent concurrent double booking.
+        pendingIds = await req.db.transaction(async (t) => {
+            await req.models.Trip.findByPk(trip.id, { transaction: t, lock: t.LOCK.UPDATE });
 
-    for (let i = 0; i < seatArray.length; i++) {
-        const seatNumber = seatArray[i];
+            const conflict = await findSeatSegmentConflict(req.models, {
+                tripId: trip.id,
+                proposals,
+                routeStops,
+                transaction: t,
+            });
 
-        const ticket = await req.models.Ticket.create({
-            seatNo: seatNumber,
-            gender: gender[i],
-            nationality: "tr",
-            tripId: trip.id,
-            ticketGroupId: ticketGroupId,
-            status: "pending",
-            optionTime: nowTime,
-            optionDate: nowDate,
-            fromRouteStopId: fromId,
-            toRouteStopId: toId,
-            userId: req.session.firmUser.id,
+            if (conflict) {
+                const err = new Error(seatConflictMessage(conflict));
+                err.statusCode = 409;
+                throw err;
+            }
+
+            const group = await req.models.TicketGroup.create({ tripId: trip.id }, { transaction: t });
+            const ids = [];
+
+            for (let i = 0; i < seatArray.length; i++) {
+                const seatNumber = seatArray[i];
+                const ticket = await req.models.Ticket.create({
+                    seatNo: seatNumber,
+                    gender: gender[i],
+                    nationality: "tr",
+                    tripId: trip.id,
+                    ticketGroupId: group.id,
+                    status: "pending",
+                    optionTime: nowTime,
+                    optionDate: nowDate,
+                    fromRouteStopId: fromId,
+                    toRouteStopId: toId,
+                    userId: req.session.firmUser.id,
+                }, { transaction: t });
+
+                ids.push(ticket.id);
+            }
+
+            return ids;
         });
-
-        await ticket.save()
-
-        pendingIds.push(ticket.id)
+    } catch (err) {
+        if (err?.statusCode === 409) {
+            return res.status(409).json({ message: err.message });
+        }
+        throw err;
     }
 
     return res.render("mixins/ticketRow", {
@@ -3160,6 +3156,8 @@ exports.getTicketRow = async (req, res, next) => {
         seatTypes,
         action,
         pendingIds,
+        fromId,
+        toId,
         takeOnOptions,
         takeOffOptions,
         nationalityOptions: NATIONALITY_OPTIONS,
@@ -3176,8 +3174,8 @@ exports.postTickets = async (req, res, next) => {
         const tripTime = req.body.tripTime;
         const tripId = req.body.tripId;
         const status = req.body.status;
-        const fromId = req.body.fromId;
-        const toId = req.body.toId;
+        let fromId = req.body.fromId;
+        let toId = req.body.toId;
 
         let normalizedIdNumbers = [];
         const seenIdNumbers = new Set();
@@ -3273,11 +3271,32 @@ exports.postTickets = async (req, res, next) => {
         const group = await req.models.TicketGroup.create({ tripId: trip.id });
         const ticketGroupId = group.id;
 
-        const pnr = fromId && toId ? await generatePNR(req.models, fromId, toId, stops) : null;
-
+        // DÜZELTME: Client bazen rotanın son durağını (varsayılan global toId)
+        // gönderebiliyordu. Pending biletler /get-ticket-row sırasında seçilen
+        // doğru kalkış/varış ile oluşturulduğu için onları kaynak kabul et.
         const pendingIds = Array.isArray(req.body.pendingIds)
             ? req.body.pendingIds
-            : JSON.parse(req.body.pendingIds);
+            : JSON.parse(req.body.pendingIds || "[]");
+
+        if (pendingIds.length) {
+            const firstPending = await req.models.Ticket.findOne({
+                where: {
+                    id: pendingIds[0],
+                    tripId: trip.id,
+                    userId: req.session.firmUser.id,
+                    status: "pending",
+                },
+            });
+
+            if (firstPending?.fromRouteStopId) {
+                fromId = firstPending.fromRouteStopId;
+            }
+            if (firstPending?.toRouteStopId) {
+                toId = firstPending.toRouteStopId;
+            }
+        }
+
+        const pnr = fromId && toId ? await generatePNR(req.models, fromId, toId, stops) : null;
 
         const takeOnCache = await prepareTakeValueCache(req.models.TakeOn);
         const takeOffCache = await prepareTakeValueCache(req.models.TakeOff);
@@ -3297,6 +3316,10 @@ exports.postTickets = async (req, res, next) => {
             // tutmak (ve olası timeout'larda transaction'ı beklemede bırakmak)
             // istemiyoruz.
             const ticket = await req.db.transaction(async (t2) => {
+                // Serialize seat writes on this trip and re-validate segment overlap
+                // at final sale (getTicketRow check alone is not enough).
+                await req.models.Trip.findByPk(trip.id, { transaction: t2, lock: t2.LOCK.UPDATE });
+
                 const pendingTicket = await req.models.Ticket.findOne({
                     where: {
                         id: pendingIds[i],
@@ -3306,6 +3329,38 @@ exports.postTickets = async (req, res, next) => {
                     },
                     transaction: t2,
                 });
+
+                const resolvedFromId = pendingTicket?.fromRouteStopId ?? fromId;
+                const resolvedToId = pendingTicket?.toRouteStopId ?? toId;
+
+                if (!resolvedFromId || !resolvedToId) {
+                    const err = new Error("Bilet güzergah bilgisi eksik. Lütfen koltuk seçimini yenileyiniz.");
+                    err.statusCode = 400;
+                    throw err;
+                }
+
+                const excludeTicketIds = pendingIds
+                    .map((id) => Number(id))
+                    .filter((id) => Number.isFinite(id));
+
+                const conflict = await findSeatSegmentConflict(req.models, {
+                    tripId: trip.id,
+                    proposals: [{
+                        seatNumber: t.seatNumber,
+                        seatLabel: String(t.seatNumber),
+                        fromStopId: resolvedFromId,
+                        toStopId: resolvedToId,
+                    }],
+                    routeStops,
+                    excludeTicketIds,
+                    transaction: t2,
+                });
+
+                if (conflict) {
+                    const err = new Error(seatConflictMessage(conflict));
+                    err.statusCode = 409;
+                    throw err;
+                }
 
                 const pendingTicketGroupId = pendingTicket?.ticketGroupId;
                 if (pendingTicket) await pendingTicket.destroy({ transaction: t2 });
@@ -3337,13 +3392,14 @@ exports.postTickets = async (req, res, next) => {
                     customerCategory: t.category,
                     optionTime: t.optionTime,
                     optionDate: t.optionDate,
-                    fromRouteStopId: fromId,
-                    toRouteStopId: toId,
+                    fromRouteStopId: resolvedFromId,
+                    toRouteStopId: resolvedToId,
                     userId: req.session.firmUser.id,
                     pnr: pnr,
                     payment: t.payment,
                     takeOnText: takeOnTitle,
                     takeOffText: takeOffTitle,
+                    description: (t.description || "").toString().trim() || null,
                 }, { transaction: t2 });
 
                 const nameUp = (t.name || "").toLocaleUpperCase("tr-TR");
@@ -3462,6 +3518,9 @@ exports.postTickets = async (req, res, next) => {
 
         return res.status(200).json({ message: "Biletler başarıyla kaydedildi." });
     } catch (err) {
+        if (err?.statusCode === 409 || err?.statusCode === 400) {
+            return res.status(err.statusCode).json({ message: err.message });
+        }
         console.error("Save error:", err);
         return res.status(500).json({ message: "Kaydetme sırasında bir hata oluştu." });
     }
@@ -3591,6 +3650,7 @@ exports.postCompleteTickets = async (req, res, next) => {
             const takeOffTitle = await ensureTakeValue(takeOffCache, incomingTicket.takeOff);
             ticket.takeOnText = takeOnTitle;
             ticket.takeOffText = takeOffTitle;
+            ticket.description = (incomingTicket.description || "").toString().trim() || null;
 
             const nameUp = (ticket.name || "").toLocaleUpperCase("tr-TR");
             const surnameUp = (ticket.surname || "").toLocaleUpperCase("tr-TR");
@@ -3746,7 +3806,8 @@ exports.postSellOpenTickets = async (req, res, next) => {
                 pnr,
                 payment: t.payment,
                 takeOnText: takeOnTitle,
-                takeOffText: takeOffTitle
+                takeOffText: takeOffTitle,
+                description: (t.description || "").toString().trim() || null,
             });
 
             if (!isReservation && !existingKeys.has(key)) {
@@ -3885,6 +3946,7 @@ exports.postEditTicket = async (req, res, next) => {
             const takeOffTitle = await ensureTakeValue(takeOffCache, incomingTicket.takeOff);
             foundTicket.takeOnText = takeOnTitle;
             foundTicket.takeOffText = takeOffTitle;
+            foundTicket.description = (incomingTicket.description || "").toString().trim() || null;
             return foundTicket.save();
         }));
 
@@ -4470,6 +4532,36 @@ exports.postMoveTickets = async (req, res, next) => {
 
         const oldTripIds = [...new Set(tickets.map((t) => t.tripId))];
 
+        const newRouteStops = newTrip.routeId
+            ? await req.models.RouteStop.findAll({
+                where: { routeId: newTrip.routeId },
+                order: [["order", "ASC"]],
+            })
+            : [];
+
+        if (fromId && toId && newRouteStops.length && newSeatNumbers.length) {
+            const moveConflict = await req.db.transaction(async (t) => {
+                await req.models.Trip.findByPk(newTrip.id, { transaction: t, lock: t.LOCK.UPDATE });
+
+                return findSeatSegmentConflict(req.models, {
+                    tripId: newTrip.id,
+                    proposals: tickets.map((ticket, index) => ({
+                        seatNumber: newSeats[index],
+                        seatLabel: String(newSeats[index]),
+                        fromStopId: fromId,
+                        toStopId: toId,
+                    })),
+                    routeStops: newRouteStops,
+                    excludeTicketIds: tickets.map((ticket) => ticket.id),
+                    transaction: t,
+                });
+            });
+
+            if (moveConflict) {
+                return res.status(409).json({ message: seatConflictMessage(moveConflict) });
+            }
+        }
+
         // BUG DÜZELTMESİ: Ticket modelinde `tripUetdsRefNo` diye bir alan yok
         // (her zaman undefined), bu yüzden aşağıdaki UETDS iptal çağrısı
         // "Seferin UETDS referans numarası yok" hatasıyla her zaman sessizce
@@ -4619,8 +4711,9 @@ exports.postAttachOpenTicket = async (req, res, next) => {
         }
 
         let effectiveTime = trip.time;
+        let routeStops = [];
         if (trip.routeId) {
-            const routeStops = await req.models.RouteStop.findAll({
+            routeStops = await req.models.RouteStop.findAll({
                 where: { routeId: trip.routeId },
                 order: [["order", "ASC"]],
             });
@@ -4644,6 +4737,30 @@ exports.postAttachOpenTicket = async (req, res, next) => {
                 if (matchedStopTime) {
                     effectiveTime = matchedStopTime.time;
                 }
+            }
+        }
+
+        const resolvedToStopId = toStopId !== null ? toStopId : ticket.toRouteStopId;
+        if (routeStops.length && resolvedToStopId) {
+            const attachConflict = await req.db.transaction(async (t) => {
+                await req.models.Trip.findByPk(trip.id, { transaction: t, lock: t.LOCK.UPDATE });
+
+                return findSeatSegmentConflict(req.models, {
+                    tripId: trip.id,
+                    proposals: [{
+                        seatNumber: seatValue,
+                        seatLabel: seatValue,
+                        fromStopId: fromStopId,
+                        toStopId: resolvedToStopId,
+                    }],
+                    routeStops,
+                    excludeTicketIds: [ticket.id],
+                    transaction: t,
+                });
+            });
+
+            if (attachConflict) {
+                return res.status(409).json({ message: seatConflictMessage(attachConflict) });
             }
         }
 
@@ -4738,7 +4855,7 @@ exports.getSearchTable = async (req, res, next) => {
                 ...t,
                 from: fromTitle,
                 to: toTitle,
-                gender: t.gender === "m" ? "MALE" : "FEMALE",
+                gender: t.gender === "m" ? "Erkek" : "Kadın",
                 rawTripDate: tripDate,
                 rawTripTime: tripTime,
                 date: tripDate
@@ -6032,6 +6149,8 @@ exports.postSaveTrip = async (req, res, next) => {
         for (const trip of createdTrips) {
             try {
                 const result = await seferEkle(req, trip.id);
+                if (!result) break; // UETDS pasif → SOAP yok, diğer seferlerde de deneme
+
                 console.log(`✅ UETDS notification successful → Trip #${trip.id}`);
 
                 const fullTrip = await req.models.Trip.findByPk(trip.id, {
