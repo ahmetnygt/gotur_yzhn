@@ -1024,13 +1024,6 @@ exports.getDayTripsList = async (req, res, next) => {
 
             t.fromPlaceString = fromStop.title
 
-            t.isExpired = new Date(`${t.date} ${t.time}`) < new Date()
-
-            if (!isPastPermission) {
-                if (t.isExpired) {
-                    continue
-                }
-            }
             if (!isInactivePermission) {
                 if (!t.isActive) {
                     continue
@@ -1055,7 +1048,7 @@ exports.getDayTripsList = async (req, res, next) => {
             }
             const routeStopOrder = matchedRouteStop.order
 
-            const futureRouteStops = routeStops.filter(rs => rs.order > routeStopOrder)
+            const futureRouteStops = routeStops.filter(rs => Number(rs.order) > Number(routeStopOrder))
             if (futureRouteStops.length) {
                 const restrictions = restrictionsByTripAndFromStop.get(`${t.id}:${matchedRouteStop.id}`) || []
 
@@ -1077,26 +1070,45 @@ exports.getDayTripsList = async (req, res, next) => {
                 }
             }
 
-            if (routeStopOrder !== routeStops.length - 1) {
+            if (Number(routeStopOrder) !== routeStops.length - 1) {
                 const offsets = offsetsByTripId.get(String(t.id)) || []
                 const offsetMap = buildOffsetMap(offsets)
                 const stopTimes = computeRouteStopTimes(t, routeStops, offsetMap)
-                const currentStopTime = stopTimes.find(st => st.order === routeStopOrder)
+                const currentStopTime = stopTimes.find(st => Number(st.order) === Number(routeStopOrder))
                 if (currentStopTime) {
                     t.modifiedTime = currentStopTime.time
+                }
+
+                // Seçili durağın saatine göre süresi dolmuş mu?
+                t.isExpired = new Date(`${t.date} ${t.modifiedTime}`) < new Date()
+
+                if (!isPastPermission && t.isExpired) {
+                    continue
                 }
 
                 newTrips.push(t)
             }
         }
 
+        // DB sırası ilk kalkış (trip.time); liste seçili durağın saatine göre olmalı
+        const toSortMinutes = (t) => {
+            if (!t) return Number.POSITIVE_INFINITY;
+            const [h, m] = String(t).split(":").map(Number);
+            if (!Number.isFinite(h) || !Number.isFinite(m)) {
+                return Number.POSITIVE_INFINITY;
+            }
+            return h * 60 + m;
+        };
+        newTrips.sort((a, b) => toSortMinutes(a.modifiedTime) - toSortMinutes(b.modifiedTime));
+
         const tripArray = newTrips.map(trip => {
             const tripDate = new Date(trip.date);
-            const [hours, minutes] = trip.modifiedTime.split(":");
-            const pad = (num) => String(num).padStart(2, "0");
+            const [hours, minutes] = String(trip.modifiedTime).split(":");
 
             return {
                 ...trip.toJSON(),
+                // modifiedTime model alanı değil; toJSON düşürür — istemci sıralaması için şart
+                modifiedTime: trip.modifiedTime,
                 dateString: `${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long" }).format(tripDate)}`,
                 timeString: `${hours}.${minutes}`,
                 isExpired: trip.isExpired,
