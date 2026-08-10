@@ -18,6 +18,7 @@ const generateExternalReturnTicketsReport = require('../utilities/reports/extern
 const generateBusTransactionsReport = require("../utilities/reports/busTransactionsReport");
 const countries = require("world-countries");
 const { seferEkle, kullaniciKontrol, seferIptal, seferAktif, seferPlakaDegistir, personelEkle, personelIptal, seferGrupGuncelle, yolcuEkle, seferGrupListesi, seferGrupEkle, yolcuIptalUetdsYolcuRefNoIle, seferDetayCiktisiAl } = require('../utilities/uetdsService');
+const { findSeatSegmentConflict, seatConflictMessage } = require('../utilities/seatSegmentConflict');
 
 const TURKISH_COLLATOR = (() => {
     try {
@@ -509,6 +510,71 @@ function buildOffsetMap(offsetRows = []) {
     return map;
 }
 
+/** Keep RouteStop IDs for remaining stops; clean TripStopTime / RouteStopRestriction before removing stops. */
+async function syncRouteStops(models, routeId, sanitizedRouteStops, transaction) {
+    const existingRouteStops = await models.RouteStop.findAll({
+        where: { routeId },
+        transaction,
+    });
+
+    const desiredStopIds = new Set(sanitizedRouteStops.map(rs => Number(rs.stopId)));
+    const existingByStopId = new Map(
+        existingRouteStops.map(rs => [Number(rs.stopId), rs])
+    );
+
+    const removedRouteStops = existingRouteStops.filter(
+        rs => !desiredStopIds.has(Number(rs.stopId))
+    );
+    const removedIds = removedRouteStops.map(rs => rs.id);
+
+    if (removedIds.length > 0) {
+        await models.TripStopTime.destroy({
+            where: { routeStopId: { [Op.in]: removedIds } },
+            transaction,
+        });
+
+        await models.RouteStopRestriction.destroy({
+            where: {
+                [Op.or]: [
+                    { fromRouteStopId: { [Op.in]: removedIds } },
+                    { toRouteStopId: { [Op.in]: removedIds } },
+                ],
+            },
+            transaction,
+        });
+
+        await models.RouteStop.destroy({
+            where: { id: { [Op.in]: removedIds } },
+            transaction,
+        });
+    }
+
+    for (const rs of sanitizedRouteStops) {
+        const stopId = Number(rs.stopId);
+        const existing = existingByStopId.get(stopId);
+
+        if (existing) {
+            await existing.update(
+                {
+                    order: rs.order,
+                    duration: rs.duration,
+                },
+                { transaction }
+            );
+        } else {
+            await models.RouteStop.create(
+                {
+                    routeId,
+                    stopId,
+                    order: rs.order,
+                    duration: rs.duration,
+                },
+                { transaction }
+            );
+        }
+    }
+}
+
 function computeRouteStopTimes(trip, routeStops = [], offsetMap = new Map()) {
     const results = [];
     let baseSeconds = timeToSeconds(trip.time);
@@ -773,8 +839,8 @@ function parseTimeInputToMinutes(value) {
     return Math.floor(totalSeconds / 60);
 }
 
-function getSeatTypes(planBinary) {
-    const SEATS_PER_ROW = 5;
+function getSeatTypes(planBinary, colCount = 5) {
+    const seatsPerRow = (Number(colCount) > 0) ? Number(colCount) : 5;
     const seatTypes = {};
     let seatNo = 0;
 
@@ -782,10 +848,10 @@ function getSeatTypes(planBinary) {
         if (planBinary[i] !== '1') continue;
 
         seatNo++;
-        const col = i % SEATS_PER_ROW;
+        const col = i % seatsPerRow;
 
         const hasLeft = col > 0 && planBinary[i - 1] === '1';
-        const hasRight = col < SEATS_PER_ROW - 1 && planBinary[i + 1] === '1';
+        const hasRight = col < seatsPerRow - 1 && planBinary[i + 1] === '1';
         seatTypes[seatNo] = (hasLeft || hasRight) ? 'double' : 'single';
     }
 
@@ -870,7 +936,7 @@ async function checkSingleSeatLimit(models, trip, route, seatNumbers, excludedTi
         return { exceeded: false };
     }
 
-    const seatTypes = getSeatTypes(busModel.planBinary);
+    const seatTypes = getSeatTypes(busModel.planBinary, busModel.colCount);
     const singleSeatNumbers = Object.entries(seatTypes)
         .filter(([, type]) => type === "single")
         .map(([seat]) => Number(seat))
@@ -975,7 +1041,10 @@ exports.getDayTripsList = async (req, res, next) => {
         const [ticketCountsRaw, allRouteStops, allRestrictions, allOffsets] = await Promise.all([
             tripIds.length
                 ? req.models.Ticket.findAll({
-                    where: { tripId: { [Op.in]: tripIds } },
+                    where: {
+                        tripId: { [Op.in]: tripIds },
+                        status: { [Op.notIn]: NON_ACTIVE_TICKET_STATUSES },
+                    },
                     attributes: ["tripId", [fn("COUNT", col("id")), "count"]],
                     group: ["tripId"],
                     raw: true,
@@ -1020,13 +1089,6 @@ exports.getDayTripsList = async (req, res, next) => {
 
             t.fromPlaceString = fromStop.title
 
-            t.isExpired = new Date(`${t.date} ${t.time}`) < new Date()
-
-            if (!isPastPermission) {
-                if (t.isExpired) {
-                    continue
-                }
-            }
             if (!isInactivePermission) {
                 if (!t.isActive) {
                     continue
@@ -1037,6 +1099,11 @@ exports.getDayTripsList = async (req, res, next) => {
 
             const ticketCount = ticketCountByTripId.get(String(t.id)) || 0
 
+            // İptal seferlerde aktif bilet yoksa listede gösterme
+            if (!t.isActive && ticketCount === 0) {
+                continue
+            }
+
             t.fullness = `${ticketCount}/${busModels.find(bm => bm.id == t.busModelId).maxPassenger}`
 
             const routeStops = routeStopsByRouteId.get(String(t.routeId)) || []
@@ -1046,7 +1113,7 @@ exports.getDayTripsList = async (req, res, next) => {
             }
             const routeStopOrder = matchedRouteStop.order
 
-            const futureRouteStops = routeStops.filter(rs => rs.order > routeStopOrder)
+            const futureRouteStops = routeStops.filter(rs => Number(rs.order) > Number(routeStopOrder))
             if (futureRouteStops.length) {
                 const restrictions = restrictionsByTripAndFromStop.get(`${t.id}:${matchedRouteStop.id}`) || []
 
@@ -1068,26 +1135,45 @@ exports.getDayTripsList = async (req, res, next) => {
                 }
             }
 
-            if (routeStopOrder !== routeStops.length - 1) {
+            if (Number(routeStopOrder) !== routeStops.length - 1) {
                 const offsets = offsetsByTripId.get(String(t.id)) || []
                 const offsetMap = buildOffsetMap(offsets)
                 const stopTimes = computeRouteStopTimes(t, routeStops, offsetMap)
-                const currentStopTime = stopTimes.find(st => st.order === routeStopOrder)
+                const currentStopTime = stopTimes.find(st => Number(st.order) === Number(routeStopOrder))
                 if (currentStopTime) {
                     t.modifiedTime = currentStopTime.time
+                }
+
+                // Seçili durağın saatine göre süresi dolmuş mu?
+                t.isExpired = new Date(`${t.date} ${t.modifiedTime}`) < new Date()
+
+                if (!isPastPermission && t.isExpired) {
+                    continue
                 }
 
                 newTrips.push(t)
             }
         }
 
+        // DB sırası ilk kalkış (trip.time); liste seçili durağın saatine göre olmalı
+        const toSortMinutes = (t) => {
+            if (!t) return Number.POSITIVE_INFINITY;
+            const [h, m] = String(t).split(":").map(Number);
+            if (!Number.isFinite(h) || !Number.isFinite(m)) {
+                return Number.POSITIVE_INFINITY;
+            }
+            return h * 60 + m;
+        };
+        newTrips.sort((a, b) => toSortMinutes(a.modifiedTime) - toSortMinutes(b.modifiedTime));
+
         const tripArray = newTrips.map(trip => {
             const tripDate = new Date(trip.date);
-            const [hours, minutes] = trip.modifiedTime.split(":");
-            const pad = (num) => String(num).padStart(2, "0");
+            const [hours, minutes] = String(trip.modifiedTime).split(":");
 
             return {
                 ...trip.toJSON(),
+                // modifiedTime model alanı değil; toJSON düşürür — istemci sıralaması için şart
+                modifiedTime: trip.modifiedTime,
                 dateString: `${new Intl.DateTimeFormat("tr-TR", { day: "numeric", month: "long" }).format(tripDate)}`,
                 timeString: `${hours}.${minutes}`,
                 isExpired: trip.isExpired,
@@ -1121,7 +1207,7 @@ exports.getTrip = async (req, res, next) => {
         const routeStops = await req.models.RouteStop.findAll({ where: { routeId: trip.routeId }, order: [["order", "ASC"]] })
         const stops = await req.models.Stop.findAll({ where: { id: { [Op.in]: [...new Set(routeStops.map(rs => rs.stopId))] } } })
         const busModel = await req.models.BusModel.findOne({ where: { id: trip.busModelId } })
-        const seatTypes = getSeatTypes(trip?.busModel?.planBinary || [])
+        const seatTypes = getSeatTypes(busModel?.planBinary || trip?.busModel?.planBinary || [], busModel?.colCount)
         const accountCut = await req.models.BusAccountCut.findOne({ where: { tripId: trip.id, stopId: stopId } })
 
         const currentRouteStop = routeStops.find(rs => rs.stopId == stopId)
@@ -1216,7 +1302,14 @@ exports.getTrip = async (req, res, next) => {
             }
             else if (ticketPlaceOrder < currentStopOrder) {
                 ticket.stopOrder = "before"
-                ticket.createdAt = null
+                // Only free the seat after the passenger alights (toOrder <= current).
+                // If they boarded earlier but travel past this stop, keep createdAt so
+                // the UI treats the seat as taken (prevents mid-route double booking).
+                const ticketToOrder = Number(routeStopOrderMap[ticket.toRouteStopId])
+                const currentOrderNum = Number(currentStopOrder)
+                if (Number.isFinite(ticketToOrder) && Number.isFinite(currentOrderNum) && ticketToOrder <= currentOrderNum) {
+                    ticket.createdAt = null
+                }
             }
 
             const futureInfo = seatFutureStopInfo[ticket.seatNo]
@@ -1345,7 +1438,7 @@ exports.getTripTable = async (req, res, next) => {
 
         ticket.from = stops.find(s => s.id == ticket.fromRouteStopId)?.title || ""
         ticket.to = stops.find(s => s.id == ticket.toRouteStopId)?.title || ""
-        ticket.gender = ticket.gender === "m" ? "MALE" : "FEMALE"
+        ticket.gender = ticket.gender === "m" ? "Erkek" : "Kadın"
         ticket.isOtherStop = currentStopId && ticket.fromRouteStopId != currentStopId
 
         const user = userMap[ticket.userId]
@@ -1701,7 +1794,8 @@ exports.getTripSeatPlanReport = async (req, res, next) => {
             trip.captainId ? req.models.Staff.findOne({ where: { id: trip.captainId }, raw: true }) : null,
         ]);
 
-        const planArray = normalizePlanBinary(trip.busPlanString ?? busModel?.planBinary);
+        // ERP koltuk haritası ile aynı kaynak: busModel.planBinary + colCount
+        const planArray = normalizePlanBinary(busModel?.planBinary ?? trip.busPlanString);
         if (!planArray.length) {
             return res.status(400).json({ message: 'Bu sefer için koltuk planı bulunamadı.' });
         }
@@ -1753,7 +1847,7 @@ exports.getTripSeatPlanReport = async (req, res, next) => {
                 filteredCount += 1;
             }
 
-            seatMap[seatNo] = {
+            const entry = {
                 name: [ticket.name, ticket.surname].filter(Boolean).join(' ').trim(),
                 gender: ticket.gender,
                 price,
@@ -1764,11 +1858,19 @@ exports.getTripSeatPlanReport = async (req, res, next) => {
                 pnr: ticket.pnr,
                 isCurrentStop: matchesStop,
             };
+
+            // Aynı koltuğa birden fazla bilet (farklı segment) düşerse,
+            // durak filtresi varsa o durağa ait bileti tercih et.
+            const existing = seatMap[seatNo];
+            if (!existing || (entry.isCurrentStop && !existing.isCurrentStop)) {
+                seatMap[seatNo] = entry;
+            }
         });
 
         const fromTitle = route?.fromStopId !== undefined ? stopTitleMap.get(toKey(route.fromStopId)) || '' : '';
         const toTitle = route?.toStopId !== undefined ? stopTitleMap.get(toKey(route.toStopId)) || '' : '';
         const currentStopTitle = stopKey ? (stopTitleMap.get(stopKey) || '') : fromTitle;
+        const columns = (busModel?.colCount && busModel.colCount > 0) ? busModel.colCount : 5;
 
         const headerData = {
             departure: formatTripDateTime(trip.date, trip.time),
@@ -1796,7 +1898,7 @@ exports.getTripSeatPlanReport = async (req, res, next) => {
             header: headerData,
             layout: {
                 plan: planArray,
-                columns: 5,
+                columns,
                 seats: seatMap,
                 highlightByStop: Boolean(stopKey),
             },
@@ -2706,7 +2808,7 @@ exports.getErp = async (req, res, next) => {
 
     const labelFromMap = (value, map) => (map && Object.prototype.hasOwnProperty.call(map, value) ? map[value] : value);
 
-    const genderLabelMap = { m: "Male", f: "Female" };
+    const genderLabelMap = { m: "Erkek", f: "Kadın" };
     const typeLabelMap = {
         adult: "Adult",
         child: "Child",
@@ -3060,86 +3162,66 @@ exports.getTicketRow = async (req, res, next) => {
 
     const seatNumbers = Array.from(seatLabelMap.keys());
 
-    const existingTickets = await req.models.Ticket.findAll({
-        where: {
-            tripId: trip.id,
-            seatNo: { [Op.in]: seatNumbers },
-            status: { [Op.notIn]: ["canceled", "cancelled", "refund"] },
-        },
-        attributes: ["seatNo", "fromRouteStopId", "toRouteStopId"],
-        raw: true,
-    });
-
-    const segmentsOverlap = (startA, endA, startB, endB) => {
-        const values = [startA, endA, startB, endB];
-        if (!values.every((value) => typeof value === "number" && Number.isFinite(value))) {
-            return true;
-        }
-
-        if (startA >= endA || startB >= endB) {
-            return true;
-        }
-
-        return startA < endB && startB < endA;
-    };
-
-    let conflictingSeatNumber = null;
-
-    for (const seatNumber of seatNumbers) {
-        const seatTickets = existingTickets.filter((ticket) => Number(ticket.seatNo) === seatNumber);
-
-        for (const ticket of seatTickets) {
-            const ticketFromOrder = routeStopOrderMap[String(ticket.fromRouteStopId)];
-            const ticketToOrder = routeStopOrderMap[String(ticket.toRouteStopId)];
-
-            if (segmentsOverlap(fromOrder, toOrder, ticketFromOrder, ticketToOrder)) {
-                conflictingSeatNumber = seatNumber;
-                break;
-            }
-        }
-
-        if (conflictingSeatNumber !== null) {
-            break;
-        }
-    }
-
-    if (conflictingSeatNumber !== null) {
-        const seatLabel = seatLabelMap.get(conflictingSeatNumber) ?? String(conflictingSeatNumber);
-        return res.status(409).json({
-            message: `${seatLabel} numaralı koltuk seçilen güzergah için uygun değil.`,
-        });
-    }
-
-    const group = await req.models.TicketGroup.create({ tripId: trip.id });
-    const ticketGroupId = group.id;
+    const proposals = seatNumbers.map((seatNumber) => ({
+        seatNumber,
+        seatLabel: seatLabelMap.get(seatNumber) ?? String(seatNumber),
+        fromStopId: fromId,
+        toStopId: toId,
+    }));
 
     const now = new Date();
     now.setMinutes(now.getMinutes() + 5);
     const nowDate = now.toISOString().split("T")[0];
     const nowTime = now.toTimeString().split(" ")[0];
 
-    let pendingIds = []
+    let pendingIds = [];
+    try {
+        // Overlap check + pending create under trip lock to prevent concurrent double booking.
+        pendingIds = await req.db.transaction(async (t) => {
+            await req.models.Trip.findByPk(trip.id, { transaction: t, lock: t.LOCK.UPDATE });
 
-    for (let i = 0; i < seatArray.length; i++) {
-        const seatNumber = seatArray[i];
+            const conflict = await findSeatSegmentConflict(req.models, {
+                tripId: trip.id,
+                proposals,
+                routeStops,
+                transaction: t,
+            });
 
-        const ticket = await req.models.Ticket.create({
-            seatNo: seatNumber,
-            gender: gender[i],
-            nationality: "tr",
-            tripId: trip.id,
-            ticketGroupId: ticketGroupId,
-            status: "pending",
-            optionTime: nowTime,
-            optionDate: nowDate,
-            fromRouteStopId: fromId,
-            toRouteStopId: toId,
-            userId: req.session.firmUser.id,
+            if (conflict) {
+                const err = new Error(seatConflictMessage(conflict));
+                err.statusCode = 409;
+                throw err;
+            }
+
+            const group = await req.models.TicketGroup.create({ tripId: trip.id }, { transaction: t });
+            const ids = [];
+
+            for (let i = 0; i < seatArray.length; i++) {
+                const seatNumber = seatArray[i];
+                const ticket = await req.models.Ticket.create({
+                    seatNo: seatNumber,
+                    gender: gender[i],
+                    nationality: "tr",
+                    tripId: trip.id,
+                    ticketGroupId: group.id,
+                    status: "pending",
+                    optionTime: nowTime,
+                    optionDate: nowDate,
+                    fromRouteStopId: fromId,
+                    toRouteStopId: toId,
+                    userId: req.session.firmUser.id,
+                }, { transaction: t });
+
+                ids.push(ticket.id);
+            }
+
+            return ids;
         });
-
-        await ticket.save()
-
-        pendingIds.push(ticket.id)
+    } catch (err) {
+        if (err?.statusCode === 409) {
+            return res.status(409).json({ message: err.message });
+        }
+        throw err;
     }
 
     return res.render("mixins/ticketRow", {
@@ -3151,6 +3233,8 @@ exports.getTicketRow = async (req, res, next) => {
         seatTypes,
         action,
         pendingIds,
+        fromId,
+        toId,
         takeOnOptions,
         takeOffOptions,
         nationalityOptions: NATIONALITY_OPTIONS,
@@ -3167,8 +3251,8 @@ exports.postTickets = async (req, res, next) => {
         const tripTime = req.body.tripTime;
         const tripId = req.body.tripId;
         const status = req.body.status;
-        const fromId = req.body.fromId;
-        const toId = req.body.toId;
+        let fromId = req.body.fromId;
+        let toId = req.body.toId;
 
         let normalizedIdNumbers = [];
         const seenIdNumbers = new Set();
@@ -3264,11 +3348,32 @@ exports.postTickets = async (req, res, next) => {
         const group = await req.models.TicketGroup.create({ tripId: trip.id });
         const ticketGroupId = group.id;
 
-        const pnr = fromId && toId ? await generatePNR(req.models, fromId, toId, stops) : null;
-
+        // DÜZELTME: Client bazen rotanın son durağını (varsayılan global toId)
+        // gönderebiliyordu. Pending biletler /get-ticket-row sırasında seçilen
+        // doğru kalkış/varış ile oluşturulduğu için onları kaynak kabul et.
         const pendingIds = Array.isArray(req.body.pendingIds)
             ? req.body.pendingIds
-            : JSON.parse(req.body.pendingIds);
+            : JSON.parse(req.body.pendingIds || "[]");
+
+        if (pendingIds.length) {
+            const firstPending = await req.models.Ticket.findOne({
+                where: {
+                    id: pendingIds[0],
+                    tripId: trip.id,
+                    userId: req.session.firmUser.id,
+                    status: "pending",
+                },
+            });
+
+            if (firstPending?.fromRouteStopId) {
+                fromId = firstPending.fromRouteStopId;
+            }
+            if (firstPending?.toRouteStopId) {
+                toId = firstPending.toRouteStopId;
+            }
+        }
+
+        const pnr = fromId && toId ? await generatePNR(req.models, fromId, toId, stops) : null;
 
         const takeOnCache = await prepareTakeValueCache(req.models.TakeOn);
         const takeOffCache = await prepareTakeValueCache(req.models.TakeOff);
@@ -3288,6 +3393,10 @@ exports.postTickets = async (req, res, next) => {
             // tutmak (ve olası timeout'larda transaction'ı beklemede bırakmak)
             // istemiyoruz.
             const ticket = await req.db.transaction(async (t2) => {
+                // Serialize seat writes on this trip and re-validate segment overlap
+                // at final sale (getTicketRow check alone is not enough).
+                await req.models.Trip.findByPk(trip.id, { transaction: t2, lock: t2.LOCK.UPDATE });
+
                 const pendingTicket = await req.models.Ticket.findOne({
                     where: {
                         id: pendingIds[i],
@@ -3297,6 +3406,38 @@ exports.postTickets = async (req, res, next) => {
                     },
                     transaction: t2,
                 });
+
+                const resolvedFromId = pendingTicket?.fromRouteStopId ?? fromId;
+                const resolvedToId = pendingTicket?.toRouteStopId ?? toId;
+
+                if (!resolvedFromId || !resolvedToId) {
+                    const err = new Error("Bilet güzergah bilgisi eksik. Lütfen koltuk seçimini yenileyiniz.");
+                    err.statusCode = 400;
+                    throw err;
+                }
+
+                const excludeTicketIds = pendingIds
+                    .map((id) => Number(id))
+                    .filter((id) => Number.isFinite(id));
+
+                const conflict = await findSeatSegmentConflict(req.models, {
+                    tripId: trip.id,
+                    proposals: [{
+                        seatNumber: t.seatNumber,
+                        seatLabel: String(t.seatNumber),
+                        fromStopId: resolvedFromId,
+                        toStopId: resolvedToId,
+                    }],
+                    routeStops,
+                    excludeTicketIds,
+                    transaction: t2,
+                });
+
+                if (conflict) {
+                    const err = new Error(seatConflictMessage(conflict));
+                    err.statusCode = 409;
+                    throw err;
+                }
 
                 const pendingTicketGroupId = pendingTicket?.ticketGroupId;
                 if (pendingTicket) await pendingTicket.destroy({ transaction: t2 });
@@ -3328,13 +3469,14 @@ exports.postTickets = async (req, res, next) => {
                     customerCategory: t.category,
                     optionTime: t.optionTime,
                     optionDate: t.optionDate,
-                    fromRouteStopId: fromId,
-                    toRouteStopId: toId,
+                    fromRouteStopId: resolvedFromId,
+                    toRouteStopId: resolvedToId,
                     userId: req.session.firmUser.id,
                     pnr: pnr,
                     payment: t.payment,
                     takeOnText: takeOnTitle,
                     takeOffText: takeOffTitle,
+                    description: (t.description || "").toString().trim() || null,
                 }, { transaction: t2 });
 
                 const nameUp = (t.name || "").toLocaleUpperCase("tr-TR");
@@ -3453,6 +3595,9 @@ exports.postTickets = async (req, res, next) => {
 
         return res.status(200).json({ message: "Biletler başarıyla kaydedildi." });
     } catch (err) {
+        if (err?.statusCode === 409 || err?.statusCode === 400) {
+            return res.status(err.statusCode).json({ message: err.message });
+        }
         console.error("Save error:", err);
         return res.status(500).json({ message: "Kaydetme sırasında bir hata oluştu." });
     }
@@ -3582,6 +3727,7 @@ exports.postCompleteTickets = async (req, res, next) => {
             const takeOffTitle = await ensureTakeValue(takeOffCache, incomingTicket.takeOff);
             ticket.takeOnText = takeOnTitle;
             ticket.takeOffText = takeOffTitle;
+            ticket.description = (incomingTicket.description || "").toString().trim() || null;
 
             const nameUp = (ticket.name || "").toLocaleUpperCase("tr-TR");
             const surnameUp = (ticket.surname || "").toLocaleUpperCase("tr-TR");
@@ -3737,7 +3883,8 @@ exports.postSellOpenTickets = async (req, res, next) => {
                 pnr,
                 payment: t.payment,
                 takeOnText: takeOnTitle,
-                takeOffText: takeOffTitle
+                takeOffText: takeOffTitle,
+                description: (t.description || "").toString().trim() || null,
             });
 
             if (!isReservation && !existingKeys.has(key)) {
@@ -3876,6 +4023,7 @@ exports.postEditTicket = async (req, res, next) => {
             const takeOffTitle = await ensureTakeValue(takeOffCache, incomingTicket.takeOff);
             foundTicket.takeOnText = takeOnTitle;
             foundTicket.takeOffText = takeOffTitle;
+            foundTicket.description = (incomingTicket.description || "").toString().trim() || null;
             return foundTicket.save();
         }));
 
@@ -3950,6 +4098,15 @@ exports.getCancelOpenTicket = async (req, res, next) => {
     let targetRouteStopId = null;
     let targetRouteStopOrder = Number.POSITIVE_INFINITY;
 
+    // DÜZELTME: Bilet(ler)i satan kullanıcı/şube görüntü şablonunda ("İşlem
+    // Yapan") sabit "Ahmet / Çanakkale" olarak yazılıydı; burada gerçek
+    // satıcı/şube bilgisini çekiyoruz.
+    const sellerUsers = await req.models.FirmUser.findAll({ where: { id: { [Op.in]: [...new Set(foundTickets.map(t => t.userId).filter(Boolean))] } } });
+    const sellerUserMap = new Map(sellerUsers.map(u => [Number(u.id), u]));
+    const sellerBranches = await req.models.Branch.findAll({ where: { id: { [Op.in]: [...new Set(sellerUsers.map(u => u.branchId).filter(Boolean))] } } });
+    const sellerBranchMap = new Map(sellerBranches.map(b => [Number(b.id), b]));
+    const paymentLabels = { cash: "Nakit", card: "Kredi Kartı", point: "Puan" };
+
     const tickets = [];
 
     for (const ticketInstance of foundTickets) {
@@ -3963,6 +4120,11 @@ exports.getCancelOpenTicket = async (req, res, next) => {
         const toStopTitle = stopTitleMap.get(Number(ticket.toRouteStopId));
         ticket.from = fromStopTitle;
         ticket.to = toStopTitle;
+
+        const sellerUser = sellerUserMap.get(Number(ticket.userId));
+        ticket.sellerName = sellerUser ? sellerUser.name : "-";
+        ticket.sellerBranch = sellerUser ? (sellerBranchMap.get(Number(sellerUser.branchId))?.title || "-") : "-";
+        ticket.paymentLabel = paymentLabels[ticket.payment] || ticket.payment || "-";
 
         tickets.push(ticket);
 
@@ -4447,6 +4609,36 @@ exports.postMoveTickets = async (req, res, next) => {
 
         const oldTripIds = [...new Set(tickets.map((t) => t.tripId))];
 
+        const newRouteStops = newTrip.routeId
+            ? await req.models.RouteStop.findAll({
+                where: { routeId: newTrip.routeId },
+                order: [["order", "ASC"]],
+            })
+            : [];
+
+        if (fromId && toId && newRouteStops.length && newSeatNumbers.length) {
+            const moveConflict = await req.db.transaction(async (t) => {
+                await req.models.Trip.findByPk(newTrip.id, { transaction: t, lock: t.LOCK.UPDATE });
+
+                return findSeatSegmentConflict(req.models, {
+                    tripId: newTrip.id,
+                    proposals: tickets.map((ticket, index) => ({
+                        seatNumber: newSeats[index],
+                        seatLabel: String(newSeats[index]),
+                        fromStopId: fromId,
+                        toStopId: toId,
+                    })),
+                    routeStops: newRouteStops,
+                    excludeTicketIds: tickets.map((ticket) => ticket.id),
+                    transaction: t,
+                });
+            });
+
+            if (moveConflict) {
+                return res.status(409).json({ message: seatConflictMessage(moveConflict) });
+            }
+        }
+
         // BUG DÜZELTMESİ: Ticket modelinde `tripUetdsRefNo` diye bir alan yok
         // (her zaman undefined), bu yüzden aşağıdaki UETDS iptal çağrısı
         // "Seferin UETDS referans numarası yok" hatasıyla her zaman sessizce
@@ -4596,8 +4788,9 @@ exports.postAttachOpenTicket = async (req, res, next) => {
         }
 
         let effectiveTime = trip.time;
+        let routeStops = [];
         if (trip.routeId) {
-            const routeStops = await req.models.RouteStop.findAll({
+            routeStops = await req.models.RouteStop.findAll({
                 where: { routeId: trip.routeId },
                 order: [["order", "ASC"]],
             });
@@ -4621,6 +4814,30 @@ exports.postAttachOpenTicket = async (req, res, next) => {
                 if (matchedStopTime) {
                     effectiveTime = matchedStopTime.time;
                 }
+            }
+        }
+
+        const resolvedToStopId = toStopId !== null ? toStopId : ticket.toRouteStopId;
+        if (routeStops.length && resolvedToStopId) {
+            const attachConflict = await req.db.transaction(async (t) => {
+                await req.models.Trip.findByPk(trip.id, { transaction: t, lock: t.LOCK.UPDATE });
+
+                return findSeatSegmentConflict(req.models, {
+                    tripId: trip.id,
+                    proposals: [{
+                        seatNumber: seatValue,
+                        seatLabel: seatValue,
+                        fromStopId: fromStopId,
+                        toStopId: resolvedToStopId,
+                    }],
+                    routeStops,
+                    excludeTicketIds: [ticket.id],
+                    transaction: t,
+                });
+            });
+
+            if (attachConflict) {
+                return res.status(409).json({ message: seatConflictMessage(attachConflict) });
             }
         }
 
@@ -4715,7 +4932,7 @@ exports.getSearchTable = async (req, res, next) => {
                 ...t,
                 from: fromTitle,
                 to: toTitle,
-                gender: t.gender === "m" ? "MALE" : "FEMALE",
+                gender: t.gender === "m" ? "Erkek" : "Kadın",
                 rawTripDate: tripDate,
                 rawTripTime: tripTime,
                 date: tripDate
@@ -5833,11 +6050,16 @@ exports.postSaveRoute = async (req, res, next) => {
 
         let sanitizedRouteStops;
         try {
+            const seenStopIds = new Set();
             sanitizedRouteStops = parsedRouteStops.map((rs, index) => {
                 const stopId = Number(rs?.stopId);
                 if (!stopId || Number.isNaN(stopId)) {
                     throw new Error("Durak bilgisi eksik veya geçersiz.");
                 }
+                if (seenStopIds.has(stopId)) {
+                    throw new Error("Aynı durak hatta birden fazla kez eklenemez.");
+                }
+                seenStopIds.add(stopId);
 
                 const rawDuration = typeof rs?.duration === "string" ? rs.duration.trim() : "";
                 const normalizedDuration = normalizeTimeInput(rawDuration || "00:00") || "00:00:00";
@@ -5883,16 +6105,7 @@ exports.postSaveRoute = async (req, res, next) => {
                 { returning: true, transaction }
             );
 
-            await req.models.RouteStop.destroy({ where: { routeId: route.id }, transaction });
-
-            const routeStopRecords = sanitizedRouteStops.map(rs => ({
-                routeId: route.id,
-                stopId: rs.stopId,
-                order: rs.order,
-                duration: rs.duration,
-            }));
-
-            await req.models.RouteStop.bulkCreate(routeStopRecords, { transaction });
+            await syncRouteStops(req.models, route.id, sanitizedRouteStops, transaction);
 
             await transaction.commit();
 
@@ -5919,8 +6132,16 @@ exports.postDeleteRoute = async (req, res, next) => {
             return res.status(404).json({ message: "Hat bulunamadı." });
         }
 
-        await req.models.RouteStop.destroy({ where: { routeId: id } });
-        await route.destroy();
+        const transaction = await req.models.Route.sequelize.transaction();
+
+        try {
+            await syncRouteStops(req.models, id, [], transaction);
+            await route.destroy({ transaction });
+            await transaction.commit();
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
 
         res.json({ message: "Silindi" });
     } catch (err) {
@@ -6009,6 +6230,8 @@ exports.postSaveTrip = async (req, res, next) => {
         for (const trip of createdTrips) {
             try {
                 const result = await seferEkle(req, trip.id);
+                if (!result) break; // UETDS pasif → SOAP yok, diğer seferlerde de deneme
+
                 console.log(`✅ UETDS notification successful → Trip #${trip.id}`);
 
                 const fullTrip = await req.models.Trip.findByPk(trip.id, {
@@ -8823,5 +9046,114 @@ exports.postChangePassword = async (req, res, next) => {
     } catch (err) {
         console.error("Password update error:", err);
         res.status(500).json({ message: "Şifre güncellenemedi." });
+    }
+};
+
+function parseRequestBoolean(value, defaultValue = false) {
+    if (value === undefined || value === null || value === "") {
+        return defaultValue;
+    }
+    if (typeof value === "boolean") {
+        return value;
+    }
+    if (typeof value === "number") {
+        return value === 1;
+    }
+    const normalized = String(value).trim().toLowerCase();
+    if (["true", "1", "on", "yes"].includes(normalized)) {
+        return true;
+    }
+    if (["false", "0", "off", "no"].includes(normalized)) {
+        return false;
+    }
+    return defaultValue;
+}
+
+exports.getFirmSettings = async (req, res) => {
+    try {
+        if (!req.commonModels?.Firm || !req.tenantKey) {
+            return res.status(500).json({ message: "Firma bilgisi alınamadı." });
+        }
+
+        const firm = await req.commonModels.Firm.findOne({
+            where: { key: req.tenantKey },
+            attributes: [
+                "id",
+                "key",
+                "displayName",
+                "comissionRate",
+                "isReservationAutoCancelActive",
+            ],
+        });
+
+        if (!firm) {
+            return res.status(404).json({ message: "Firma bulunamadı." });
+        }
+
+        return res.json({
+            displayName: firm.displayName,
+            comissionRate: firm.comissionRate,
+            isReservationAutoCancelActive: firm.isReservationAutoCancelActive !== false,
+        });
+    } catch (err) {
+        console.error("getFirmSettings error:", err);
+        return res.status(500).json({ message: "Firma ayarları alınamadı." });
+    }
+};
+
+exports.postSaveFirmSettings = async (req, res) => {
+    try {
+        if (!req.commonModels?.Firm || !req.tenantKey) {
+            return res.status(500).json({ message: "Firma bilgisi kaydedilemedi." });
+        }
+
+        const firm = await req.commonModels.Firm.findOne({
+            where: { key: req.tenantKey },
+        });
+
+        if (!firm) {
+            return res.status(404).json({ message: "Firma bulunamadı." });
+        }
+
+        const isReservationAutoCancelActive = parseRequestBoolean(
+            req.body?.isReservationAutoCancelActive,
+            true
+        );
+
+        let comissionRate = firm.comissionRate;
+        if (
+            req.body?.comissionRate !== undefined &&
+            req.body?.comissionRate !== null &&
+            String(req.body.comissionRate).trim() !== ""
+        ) {
+            const parsed = Number(req.body.comissionRate);
+            if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+                return res.status(400).json({
+                    message: "Komisyon oranı 0-100 arasında olmalıdır.",
+                });
+            }
+            comissionRate = parsed;
+        }
+
+        await firm.update({
+            isReservationAutoCancelActive,
+            comissionRate,
+        });
+
+        const refreshed = await req.commonModels.Firm.findOne({
+            where: { key: req.tenantKey },
+        });
+        req.session.firm = refreshed;
+
+        return res.json({
+            message: "Firma ayarları kaydedildi.",
+            displayName: refreshed.displayName,
+            comissionRate: refreshed.comissionRate,
+            isReservationAutoCancelActive:
+                refreshed.isReservationAutoCancelActive !== false,
+        });
+    } catch (err) {
+        console.error("postSaveFirmSettings error:", err);
+        return res.status(500).json({ message: "Firma ayarları kaydedilemedi." });
     }
 };

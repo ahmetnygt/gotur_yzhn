@@ -35,5 +35,9 @@ div
         span.input-group-text Açıklama
         input.form-control.bus-plan-description(type="text" value=busModel?busModel.description:"")
     .d-flex.gap-3.justify-content-end
-        button.save-bus-plan.btn.btn-outline-primary KAYDET
-        button.btn.btn-outline-danger SİL 
+        button.save-bus-plan.btn.btn-outline-primary(type="button") KAYDET
+        // DÜZELTME: Bu buton hiçbir sınıfa/olaya bağlı değildi (ölü buton);
+        // tıklamak hiçbir şey yapmıyordu. ".delete-bus-plan-panel" sınıfı ile
+        // erp.js'teki delege edilmiş silme handler'ına bağlandı. Henüz
+        // kaydedilmemiş (yeni) bir plan için devre dışı bırakılır.
+        button.delete-bus-plan-panel.btn.btn-outline-danger(type="button" disabled=!busModel) SİL

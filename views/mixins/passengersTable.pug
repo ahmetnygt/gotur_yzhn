@@ -36,7 +36,7 @@ ul.nav.nav-pills(style="height: 2rem;overflow: hidden;line-height: 1rem;")
                         td #{t.from}
                         td #{t.to}
                         td #{t.price}₺
-                        td #{`${t.payment=="cash"?"Nakit":t.payment=="card"?"Card":"Puan"}`}
+                        td #{`${t.payment=="cash"?"Nakit":t.payment=="card"?"Kredi Kartı":"Puan"}`}
                         if t.status == "web"
                             td WEB
                         else if t.status == "completed" || t.status == "gotur"
@@ -76,7 +76,7 @@ ul.nav.nav-pills(style="height: 2rem;overflow: hidden;line-height: 1rem;")
                         td #{t.from}
                         td #{t.to}
                         td #{t.price}₺
-                        td #{`${t.payment=="cash"?"Nakit":t.payment=="card"?"Card":"Puan"}`}
+                        td #{`${t.payment=="cash"?"Nakit":t.payment=="card"?"Kredi Kartı":"Puan"}`}
                         if t.status == "canceled"
                             td İPTAL
                         else if t.status == "refund"

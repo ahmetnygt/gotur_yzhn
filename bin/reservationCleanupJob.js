@@ -3,6 +3,32 @@ const {
   getTenantConnection,
   getActiveTenantKeys,
 } = require('../utilities/database');
+const { initGoturModels, getGoturSyncPromise } = require('../utilities/goturDb');
+
+async function isReservationAutoCancelEnabledForTenant(tenantKey) {
+  try {
+    await getGoturSyncPromise();
+    const { Firm } = initGoturModels();
+    const firm = await Firm.findOne({
+      where: { key: tenantKey },
+      attributes: ['isReservationAutoCancelActive'],
+      raw: true,
+    });
+
+    // Firma kaydı yoksa veya alan henüz sync edilmemişse mevcut davranışı koru (açık).
+    if (!firm) {
+      return true;
+    }
+
+    return firm.isReservationAutoCancelActive !== false;
+  } catch (err) {
+    console.error(
+      `[${tenantKey}] Firma otomatik rezervasyon iptal ayarı okunamadı, varsayılan (açık) kullanılıyor:`,
+      err
+    );
+    return true;
+  }
+}
 
 function readConfiguredTenantKeys() {
   const configured = [];
@@ -37,6 +63,38 @@ try {
   console.warn('node-cron not installed, using setInterval fallback');
 }
 
+/**
+ * MySQL TIME alanları Sequelize/mysql2 ile genelde
+ * `1970-01-01T09:30:00.000Z` gibi UTC Date olarak gelir.
+ * `getHours()` sunucu TZ'sine göre kaydırır (TR'de +3 → 12:30).
+ * Bu yüzden Date için UTC getter, string için saf saat parçası kullanılır.
+ */
+function extractOptionTimeParts(optionTime) {
+  if (optionTime == null || optionTime === '') {
+    return { hours: 0, minutes: 0, seconds: 0 };
+  }
+
+  if (optionTime instanceof Date) {
+    return {
+      hours: optionTime.getUTCHours(),
+      minutes: optionTime.getUTCMinutes(),
+      seconds: optionTime.getUTCSeconds(),
+    };
+  }
+
+  const normalized = String(optionTime).split('.')[0].trim();
+  const timePart = normalized.includes(' ')
+    ? normalized.split(' ').pop()
+    : normalized;
+  const [h = '0', m = '0', s = '0'] = timePart.split(':');
+
+  return {
+    hours: Number(h) || 0,
+    minutes: Number(m) || 0,
+    seconds: Number(s) || 0,
+  };
+}
+
 function buildExpirationDate(optionDate, optionTime, fallbackDateParts) {
   if (!optionDate && !optionTime) {
     return null;
@@ -64,21 +122,7 @@ function buildExpirationDate(optionDate, optionTime, fallbackDateParts) {
     return null;
   }
 
-  let hours = 0;
-  let minutes = 0;
-  let seconds = 0;
-
-  if (optionTime instanceof Date) {
-    hours = optionTime.getHours();
-    minutes = optionTime.getMinutes();
-    seconds = optionTime.getSeconds();
-  } else if (optionTime) {
-    const normalized = String(optionTime).split('.')[0];
-    const [h = '0', m = '0', s = '0'] = normalized.split(':');
-    hours = Number(h) || 0;
-    minutes = Number(m) || 0;
-    seconds = Number(s) || 0;
-  }
+  const { hours, minutes, seconds } = extractOptionTimeParts(optionTime);
 
   const expiration = new Date(year, month - 1, day, hours, minutes, seconds);
   return Number.isNaN(expiration.getTime()) ? null : expiration;
@@ -95,6 +139,9 @@ async function cancelExpiredReservationsForTenant(tenantKey, now, fallbackDatePa
     );
     return;
   }
+
+  const autoCancelReservations =
+    await isReservationAutoCancelEnabledForTenant(tenantKey);
 
   // Tek sorgu ile al, sonra ayır
   const candidateTickets = await Ticket.findAll({
@@ -121,12 +168,26 @@ async function cancelExpiredReservationsForTenant(tenantKey, now, fallbackDatePa
     return;
   }
 
-  const reservationIds = expiredTickets
-    .filter((ticket) => ticket.status === 'reservation')
-    .map((ticket) => ticket.id);
+  // Firma otomatik iptali kapattıysa reservation'lara dokunma;
+  // pending (geçici koltuk kilidi) temizliği yine de çalışır.
+  if (!autoCancelReservations) {
+    console.log(
+      `[${tenantKey}] Firma ayarı: opsiyon süresi biten rezervasyon otomatik iptali kapalı.`
+    );
+  }
+
+  const reservationIds = autoCancelReservations
+    ? expiredTickets
+        .filter((ticket) => ticket.status === 'reservation')
+        .map((ticket) => ticket.id)
+    : [];
   const pendingIds = expiredTickets
     .filter((ticket) => ticket.status === 'pending')
     .map((ticket) => ticket.id);
+
+  if (reservationIds.length === 0 && pendingIds.length === 0) {
+    return;
+  }
 
   // İşlemleri atomik yapmak için transaction
   await sequelize.transaction(async (tx) => {

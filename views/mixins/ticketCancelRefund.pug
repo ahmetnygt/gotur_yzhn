@@ -1,5 +1,5 @@
 p.m-0.text-center.fs-5.fw-bold #{trip.date} - #{trip.time}
-p.mb-3.text-center Select the tickets you want to process.
+p.mb-3.text-center İşlem yapmak istediğiniz biletleri seçiniz.
 .tickets_
     each t in tickets
         .ticket-cancel-box(class=t.gender data-pnr=t.pnr data-seat-number=t.seatNo)
@@ -18,7 +18,7 @@ p.mb-3.text-center Select the tickets you want to process.
                 span.phone #{t.phoneNumber}
             p 
                 b İşlem Yapan:
-                |   Ahmet / Çanakkale
+                |   #{t.sellerName} / #{t.sellerBranch}
             p 
                 b Fiyat:
                 span.price   
@@ -26,8 +26,8 @@ p.mb-3.text-center Select the tickets you want to process.
                 |₺
             p 
                 b Ödeme:
-                span.payment   
-                    |   #{t.payment}
+                span.payment(data-payment=t.payment)
+                    |   #{t.paymentLabel}
             p 
                 b PNR:
                 span.pnr   #{t.pnr}

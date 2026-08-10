@@ -103,6 +103,15 @@ module.exports = (sequelize) => {
         allowNull: false,
         defaultValue: 20.0,
       },
+
+      // 🔹 Opsiyon süresi biten rezervasyonları otomatik iptal et
+      // false olan firmalarda scheduler reservation → canceled yapmaz;
+      // pending (geçici koltuk kilidi) temizliği her zaman devam eder.
+      isReservationAutoCancelActive: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: true,
+      },
     }
   );
 };
