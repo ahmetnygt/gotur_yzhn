@@ -183,10 +183,11 @@ exports.search = async (req, res) => {
         // placeId şehir seviyesidir; aynı şehirde birden fazla durak olabilir
         // (ör. ÇOMÜ Hastane + Çanakkale İskele). findOne sadece birini alırdı
         // ve diğer durağı kullanan hatlar sonuçta görünmezdi.
+        // Durak isActive/isDeleted aramada filtrelenmez; görünürlük yalnızca
+        // seferin isActive / isDeleted alanına bağlıdır.
         const placeStops = await Stop.findAll({
             where: {
                 placeId: { [Op.in]: [from, to] },
-                isDeleted: false,
             },
             attributes: ["id", "placeId", "title"],
         });
