@@ -1292,10 +1292,15 @@ block content
             span FİRMA AYARLARI
         .firm-close
             i.fa-solid.fa-x
-        .d-flex.flex-column.gap-2
+        .d-flex.flex-column.gap-3.p-3
             .input-group
                 span.input-group-text Bilet Başına Acenta Komisyonu (%)
-                input.form-control(type="text")
+                input.firm-commission-rate.form-control(type="number" min="0" max="100" step="0.01")
+            .form-check
+                input#isReservationAutoCancelActive.firm-reservation-auto-cancel.form-check-input(type="checkbox" checked)
+                label.form-check-label(for="isReservationAutoCancelActive") Opsiyon süresi biten rezervasyonları otomatik iptal et
+            p.form-text.text-muted.mb-0 Kapalıysa süre dolan rezervasyonlar sistem tarafından iptal edilmez. Geçici koltuk kilitleri (pending) yine temizlenir.
+            button.save-firm-settings.btn.btn-outline-primary KAYDET
 
     .branch
         .gtr-header

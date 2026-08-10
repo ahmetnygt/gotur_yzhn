@@ -5411,15 +5411,61 @@ $(".searched-ticket-op[data-action='go_trip']").off().on("click", async e => {
     await loadTrip(currentTripDate, currentTripTime, currentTripId);
 });
 
-$(".firm-settings-nav").on("click", e => {
-    $(".blackout").css("display", "block")
-    $(".firm").css("display", "block")
-})
+$(".firm-settings-nav").on("click", async e => {
+    try {
+        const response = await $.ajax({
+            url: "/get-firm-settings",
+            type: "GET",
+        });
+
+        $(".firm-commission-rate").val(
+            response?.comissionRate != null ? response.comissionRate : ""
+        );
+        $("#isReservationAutoCancelActive").prop(
+            "checked",
+            response?.isReservationAutoCancelActive !== false
+        );
+        $(".blackout").css("display", "block");
+        $(".firm").css("display", "block");
+    } catch (xhr) {
+        const message =
+            xhr?.responseJSON?.message ||
+            "Firma ayarları yüklenemedi.";
+        showError(message);
+    }
+});
 
 $(".firm-close").on("click", e => {
-    $(".blackout").css("display", "none")
-    $(".firm").css("display", "none")
-})
+    $(".blackout").css("display", "none");
+    $(".firm").css("display", "none");
+});
+
+$(".save-firm-settings").on("click", async e => {
+    const comissionRate = $(".firm-commission-rate").val();
+    const isReservationAutoCancelActive = $("#isReservationAutoCancelActive").prop("checked");
+
+    try {
+        await $.ajax({
+            url: "/post-save-firm-settings",
+            type: "POST",
+            data: {
+                comissionRate,
+                isReservationAutoCancelActive,
+            },
+        });
+
+        $(".blackout").css("display", "none");
+        $(".firm").css("display", "none");
+        if (window.GTR && typeof window.GTR.toast === "function") {
+            window.GTR.toast("Firma ayarları kaydedildi.", "success");
+        }
+    } catch (xhr) {
+        const message =
+            xhr?.responseJSON?.message ||
+            "Firma ayarları kaydedilemedi.";
+        showError(message);
+    }
+});
 
 let isRegisterShown = false
 $(".register-nav").on("click", async e => {

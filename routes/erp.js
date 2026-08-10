@@ -139,6 +139,9 @@ router.get('/get-branch', erpController.getBranch);
 router.post('/post-save-branch', erpController.postSaveBranch);
 router.post('/post-delete-branch', erpController.postDeleteBranch);
 
+router.get('/get-firm-settings', requirePermission("ADMIN_PANEL_MANAGE"), erpController.getFirmSettings);
+router.post('/post-save-firm-settings', requirePermission("ADMIN_PANEL_MANAGE"), erpController.postSaveFirmSettings);
+
 router.get('/get-users-list', erpController.getUsersList);
 router.get('/get-user', erpController.getUser);
 router.get('/get-users-by-branch', erpController.getUsersByBranch);

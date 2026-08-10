@@ -3,6 +3,32 @@ const {
   getTenantConnection,
   getActiveTenantKeys,
 } = require('../utilities/database');
+const { initGoturModels, getGoturSyncPromise } = require('../utilities/goturDb');
+
+async function isReservationAutoCancelEnabledForTenant(tenantKey) {
+  try {
+    await getGoturSyncPromise();
+    const { Firm } = initGoturModels();
+    const firm = await Firm.findOne({
+      where: { key: tenantKey },
+      attributes: ['isReservationAutoCancelActive'],
+      raw: true,
+    });
+
+    // Firma kaydı yoksa veya alan henüz sync edilmemişse mevcut davranışı koru (açık).
+    if (!firm) {
+      return true;
+    }
+
+    return firm.isReservationAutoCancelActive !== false;
+  } catch (err) {
+    console.error(
+      `[${tenantKey}] Firma otomatik rezervasyon iptal ayarı okunamadı, varsayılan (açık) kullanılıyor:`,
+      err
+    );
+    return true;
+  }
+}
 
 function readConfiguredTenantKeys() {
   const configured = [];
@@ -114,6 +140,9 @@ async function cancelExpiredReservationsForTenant(tenantKey, now, fallbackDatePa
     return;
   }
 
+  const autoCancelReservations =
+    await isReservationAutoCancelEnabledForTenant(tenantKey);
+
   // Tek sorgu ile al, sonra ayır
   const candidateTickets = await Ticket.findAll({
     where: {
@@ -139,12 +168,26 @@ async function cancelExpiredReservationsForTenant(tenantKey, now, fallbackDatePa
     return;
   }
 
-  const reservationIds = expiredTickets
-    .filter((ticket) => ticket.status === 'reservation')
-    .map((ticket) => ticket.id);
+  // Firma otomatik iptali kapattıysa reservation'lara dokunma;
+  // pending (geçici koltuk kilidi) temizliği yine de çalışır.
+  if (!autoCancelReservations) {
+    console.log(
+      `[${tenantKey}] Firma ayarı: opsiyon süresi biten rezervasyon otomatik iptali kapalı.`
+    );
+  }
+
+  const reservationIds = autoCancelReservations
+    ? expiredTickets
+        .filter((ticket) => ticket.status === 'reservation')
+        .map((ticket) => ticket.id)
+    : [];
   const pendingIds = expiredTickets
     .filter((ticket) => ticket.status === 'pending')
     .map((ticket) => ticket.id);
+
+  if (reservationIds.length === 0 && pendingIds.length === 0) {
+    return;
+  }
 
   // İşlemleri atomik yapmak için transaction
   await sequelize.transaction(async (tx) => {

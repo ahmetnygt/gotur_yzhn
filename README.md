@@ -79,6 +79,11 @@ The reservation cleanup job cancels expired ticket reservations automatically.
 It is implemented in [`bin/reservationCleanupJob.js`](bin/reservationCleanupJob.js)
 and starts together with the HTTP server via `bin/www`.
 
+Per-firm control lives on the common `Firm` record
+(`isReservationAutoCancelActive`, default `true`). When a firm turns this off
+from **Yönetim → Firma Ayarları**, expired `reservation` tickets are left alone;
+expired `pending` seat locks are still deleted so inventory does not stick.
+
 ### Scheduling options
 
 Set `RESERVATION_JOB_TENANT_KEYS` in the `.env` file to a comma-separated list

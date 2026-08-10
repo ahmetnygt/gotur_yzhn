@@ -8967,3 +8967,112 @@ exports.postChangePassword = async (req, res, next) => {
         res.status(500).json({ message: "Şifre güncellenemedi." });
     }
 };
+
+function parseRequestBoolean(value, defaultValue = false) {
+    if (value === undefined || value === null || value === "") {
+        return defaultValue;
+    }
+    if (typeof value === "boolean") {
+        return value;
+    }
+    if (typeof value === "number") {
+        return value === 1;
+    }
+    const normalized = String(value).trim().toLowerCase();
+    if (["true", "1", "on", "yes"].includes(normalized)) {
+        return true;
+    }
+    if (["false", "0", "off", "no"].includes(normalized)) {
+        return false;
+    }
+    return defaultValue;
+}
+
+exports.getFirmSettings = async (req, res) => {
+    try {
+        if (!req.commonModels?.Firm || !req.tenantKey) {
+            return res.status(500).json({ message: "Firma bilgisi alınamadı." });
+        }
+
+        const firm = await req.commonModels.Firm.findOne({
+            where: { key: req.tenantKey },
+            attributes: [
+                "id",
+                "key",
+                "displayName",
+                "comissionRate",
+                "isReservationAutoCancelActive",
+            ],
+        });
+
+        if (!firm) {
+            return res.status(404).json({ message: "Firma bulunamadı." });
+        }
+
+        return res.json({
+            displayName: firm.displayName,
+            comissionRate: firm.comissionRate,
+            isReservationAutoCancelActive: firm.isReservationAutoCancelActive !== false,
+        });
+    } catch (err) {
+        console.error("getFirmSettings error:", err);
+        return res.status(500).json({ message: "Firma ayarları alınamadı." });
+    }
+};
+
+exports.postSaveFirmSettings = async (req, res) => {
+    try {
+        if (!req.commonModels?.Firm || !req.tenantKey) {
+            return res.status(500).json({ message: "Firma bilgisi kaydedilemedi." });
+        }
+
+        const firm = await req.commonModels.Firm.findOne({
+            where: { key: req.tenantKey },
+        });
+
+        if (!firm) {
+            return res.status(404).json({ message: "Firma bulunamadı." });
+        }
+
+        const isReservationAutoCancelActive = parseRequestBoolean(
+            req.body?.isReservationAutoCancelActive,
+            true
+        );
+
+        let comissionRate = firm.comissionRate;
+        if (
+            req.body?.comissionRate !== undefined &&
+            req.body?.comissionRate !== null &&
+            String(req.body.comissionRate).trim() !== ""
+        ) {
+            const parsed = Number(req.body.comissionRate);
+            if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) {
+                return res.status(400).json({
+                    message: "Komisyon oranı 0-100 arasında olmalıdır.",
+                });
+            }
+            comissionRate = parsed;
+        }
+
+        await firm.update({
+            isReservationAutoCancelActive,
+            comissionRate,
+        });
+
+        const refreshed = await req.commonModels.Firm.findOne({
+            where: { key: req.tenantKey },
+        });
+        req.session.firm = refreshed;
+
+        return res.json({
+            message: "Firma ayarları kaydedildi.",
+            displayName: refreshed.displayName,
+            comissionRate: refreshed.comissionRate,
+            isReservationAutoCancelActive:
+                refreshed.isReservationAutoCancelActive !== false,
+        });
+    } catch (err) {
+        console.error("postSaveFirmSettings error:", err);
+        return res.status(500).json({ message: "Firma ayarları kaydedilemedi." });
+    }
+};
