@@ -510,6 +510,71 @@ function buildOffsetMap(offsetRows = []) {
     return map;
 }
 
+/** Keep RouteStop IDs for remaining stops; clean TripStopTime / RouteStopRestriction before removing stops. */
+async function syncRouteStops(models, routeId, sanitizedRouteStops, transaction) {
+    const existingRouteStops = await models.RouteStop.findAll({
+        where: { routeId },
+        transaction,
+    });
+
+    const desiredStopIds = new Set(sanitizedRouteStops.map(rs => Number(rs.stopId)));
+    const existingByStopId = new Map(
+        existingRouteStops.map(rs => [Number(rs.stopId), rs])
+    );
+
+    const removedRouteStops = existingRouteStops.filter(
+        rs => !desiredStopIds.has(Number(rs.stopId))
+    );
+    const removedIds = removedRouteStops.map(rs => rs.id);
+
+    if (removedIds.length > 0) {
+        await models.TripStopTime.destroy({
+            where: { routeStopId: { [Op.in]: removedIds } },
+            transaction,
+        });
+
+        await models.RouteStopRestriction.destroy({
+            where: {
+                [Op.or]: [
+                    { fromRouteStopId: { [Op.in]: removedIds } },
+                    { toRouteStopId: { [Op.in]: removedIds } },
+                ],
+            },
+            transaction,
+        });
+
+        await models.RouteStop.destroy({
+            where: { id: { [Op.in]: removedIds } },
+            transaction,
+        });
+    }
+
+    for (const rs of sanitizedRouteStops) {
+        const stopId = Number(rs.stopId);
+        const existing = existingByStopId.get(stopId);
+
+        if (existing) {
+            await existing.update(
+                {
+                    order: rs.order,
+                    duration: rs.duration,
+                },
+                { transaction }
+            );
+        } else {
+            await models.RouteStop.create(
+                {
+                    routeId,
+                    stopId,
+                    order: rs.order,
+                    duration: rs.duration,
+                },
+                { transaction }
+            );
+        }
+    }
+}
+
 function computeRouteStopTimes(trip, routeStops = [], offsetMap = new Map()) {
     const results = [];
     let baseSeconds = timeToSeconds(trip.time);
@@ -5985,11 +6050,16 @@ exports.postSaveRoute = async (req, res, next) => {
 
         let sanitizedRouteStops;
         try {
+            const seenStopIds = new Set();
             sanitizedRouteStops = parsedRouteStops.map((rs, index) => {
                 const stopId = Number(rs?.stopId);
                 if (!stopId || Number.isNaN(stopId)) {
                     throw new Error("Durak bilgisi eksik veya geçersiz.");
                 }
+                if (seenStopIds.has(stopId)) {
+                    throw new Error("Aynı durak hatta birden fazla kez eklenemez.");
+                }
+                seenStopIds.add(stopId);
 
                 const rawDuration = typeof rs?.duration === "string" ? rs.duration.trim() : "";
                 const normalizedDuration = normalizeTimeInput(rawDuration || "00:00") || "00:00:00";
@@ -6035,16 +6105,7 @@ exports.postSaveRoute = async (req, res, next) => {
                 { returning: true, transaction }
             );
 
-            await req.models.RouteStop.destroy({ where: { routeId: route.id }, transaction });
-
-            const routeStopRecords = sanitizedRouteStops.map(rs => ({
-                routeId: route.id,
-                stopId: rs.stopId,
-                order: rs.order,
-                duration: rs.duration,
-            }));
-
-            await req.models.RouteStop.bulkCreate(routeStopRecords, { transaction });
+            await syncRouteStops(req.models, route.id, sanitizedRouteStops, transaction);
 
             await transaction.commit();
 
@@ -6071,8 +6132,16 @@ exports.postDeleteRoute = async (req, res, next) => {
             return res.status(404).json({ message: "Hat bulunamadı." });
         }
 
-        await req.models.RouteStop.destroy({ where: { routeId: id } });
-        await route.destroy();
+        const transaction = await req.models.Route.sequelize.transaction();
+
+        try {
+            await syncRouteStops(req.models, id, [], transaction);
+            await route.destroy({ transaction });
+            await transaction.commit();
+        } catch (error) {
+            await transaction.rollback();
+            throw error;
+        }
 
         res.json({ message: "Silindi" });
     } catch (err) {
