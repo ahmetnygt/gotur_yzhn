@@ -122,6 +122,51 @@ function emptyLikeToNull(value) {
     return value;
 }
 
+const UI_COOKIE_NAME = "gtr_ui";
+const UI_COOKIE_MAX_AGE = 365 * 24 * 60 * 60 * 1000;
+
+function preferredUiFromRequest(req) {
+    const fromBody = req.body && req.body.ui;
+    const fromCookie = req.cookies && req.cookies[UI_COOKIE_NAME];
+    if (fromBody === "m" || fromBody === "d") return fromBody;
+    if (fromCookie === "m" || fromCookie === "d") return fromCookie;
+    return "d";
+}
+
+function setUiCookie(res, ui) {
+    res.cookie(UI_COOKIE_NAME, ui === "m" ? "m" : "d", {
+        maxAge: UI_COOKIE_MAX_AGE,
+        sameSite: "lax",
+        httpOnly: false,
+        path: "/",
+        secure: res.app.get("env") === "production",
+    });
+}
+
+function homePathForUi(ui) {
+    return ui === "m" ? "/m" : "/";
+}
+
+async function refreshSessionPermissions(req) {
+    const userPerms = await req.models.FirmUserPermission.findAll({
+        where: { firmUserId: req.session.firmUser.id, allow: true },
+        attributes: ["permissionId"],
+    });
+
+    const permissionIds = userPerms.map(p => p.permissionId);
+    if (permissionIds.length) {
+        const permissionRows = await req.models.Permission.findAll({
+            where: { id: { [Op.in]: permissionIds } },
+            attributes: ["code"],
+        });
+        req.session.permissions = permissionRows.map(p => p.code);
+    } else {
+        req.session.permissions = [];
+    }
+
+    await req.session.save();
+}
+
 const removeDiacritics = (value) =>
     typeof value === "string"
         ? value.normalize("NFD").replace(/[\u0300-\u036f]/g, "")
@@ -2781,6 +2826,10 @@ exports.getTicketOpsPopUp = async (req, res, next) => {
 exports.getErp = async (req, res, next) => {
     res.set("Cache-Control", "no-store, private");
 
+    if (preferredUiFromRequest(req) === "m") {
+        return res.redirect("/m");
+    }
+
     let busModel = await req.models.BusModel.findAll()
     let staff = await req.models.Staff.findAll()
     let branches = await req.models.Branch.findAll()
@@ -2788,23 +2837,7 @@ exports.getErp = async (req, res, next) => {
     let places = await req.commonModels.Place.findAll()
     let stops = await req.models.Stop.findAll()
 
-    const userPerms = await req.models.FirmUserPermission.findAll({
-        where: { firmUserId: req.session.firmUser.id, allow: true },
-        attributes: ["permissionId"],
-    });
-
-    const permissionIds = userPerms.map(p => p.permissionId);
-    if (permissionIds.length) {
-        const permissionRows = await req.models.Permission.findAll({
-            where: { id: { [Op.in]: permissionIds } },
-            attributes: ["code"],
-        });
-        req.session.permissions = permissionRows.map(p => p.code);
-    } else {
-        req.session.permissions = [];
-    }
-
-    await req.session.save()
+    await refreshSessionPermissions(req)
 
     const branchStopId = stops.find(s => s.id == branches.find(b => b.id == req.session.firmUser.branchId)?.stopId)?.id
 
@@ -2855,11 +2888,33 @@ exports.getErp = async (req, res, next) => {
     });
 }
 
+exports.getMobileErp = async (req, res, next) => {
+    res.set("Cache-Control", "no-store, private");
+
+    await refreshSessionPermissions(req);
+    res.locals.permissions = req.session.permissions || [];
+
+    const user = await req.models.FirmUser.findOne({ where: { id: req.session.firmUser.id } });
+    const branches = await req.models.Branch.findAll();
+    const stops = await req.models.Stop.findAll();
+    const branchStopId = stops.find(s => s.id == branches.find(b => b.id == req.session.firmUser.branchId)?.stopId)?.id;
+    const logo = await resolveFirmLoginLogo(req);
+
+    res.render("mobilescreen", {
+        title: req.session?.firm?.displayName || "GötürYZHN",
+        tenantKey: req.tenantKey,
+        user,
+        stops,
+        branchStopId,
+        firmLogo: logo,
+    });
+}
+
 exports.getErpLogin = async (req, res, next) => {
     res.set("Cache-Control", "no-store, private");
 
     if (req.session?.isAuthenticated) {
-        return res.redirect("/");
+        return res.redirect(homePathForUi(preferredUiFromRequest(req)));
     }
 
     const DEFAULT_TITLE = "GötürYZHN";
@@ -2954,8 +3009,11 @@ exports.postErpLogin = async (req, res, next) => {
             description: `Giriş yapıldı | kullanıcı: ${u.username}`,
         });
 
+        const ui = preferredUiFromRequest(req);
+        setUiCookie(res, ui);
+
         req.session.save(() => {
-            res.redirect("/");
+            res.redirect(homePathForUi(ui));
         });
 
 

@@ -35,6 +35,7 @@ router.post('/login', (req, res, next) => {
 router.use(auth);
 
 router.get('/', erpController.getErp);
+router.get('/m', erpController.getMobileErp);
 
 router.post('/logout', erpController.postErpLogout);
 router.post('/post-update-profile', erpController.postUpdateProfile);

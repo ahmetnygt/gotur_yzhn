@@ -76,7 +76,13 @@ app.use(logger("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, "public"), {
+  setHeaders(res, filePath) {
+    if (filePath.endsWith(".webmanifest")) {
+      res.setHeader("Content-Type", "application/manifest+json");
+    }
+  },
+}));
 app.use(express.static(path.join(__dirname, "node_modules")));
 
 app.use((req, res, next) => {

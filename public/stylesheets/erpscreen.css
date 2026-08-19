@@ -2413,7 +2413,27 @@ div.ticket-cancel-refund-open-close {
     }
 }
 
+@media (max-width: 991px) {
+    .login-page {
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+    }
+}
+
+html:has(.login-page),
+body:has(.login-page) {
+    overflow: auto;
+    min-width: 0;
+    height: auto;
+}
+
 @media (max-width: 576px) {
+
+    .login-page {
+        padding-left: 1.25rem;
+        padding-right: 1.25rem;
+        min-height: calc(100dvh - 2rem);
+    }
 
     .login-card,
     .login-brand {
