@@ -1,0 +1,49 @@
+if !entries.length
+    p.text-center.text-muted.my-4 Seçilen ölçütlere uygun kayıt bulunamadı.
+else
+    table.table.table-bordered.table-hover.table-sm.m-0.bg-white.system-logs-table
+        thead
+            tr
+                th(scope="col") Tarih
+                th(scope="col") Modül
+                th(scope="col") İşlem
+                th(scope="col") Kullanıcı
+                th(scope="col") Şube
+                th(scope="col") Sefer / Koltuk
+                th(scope="col") Detay
+        tbody
+            each entry in entries
+                tr
+                    td.text-nowrap #{entry.createdAtLabel}
+                    td #{entry.moduleLabel}
+                    td
+                        span.system-log-action(class=`action-${entry.action}`) #{entry.actionLabel}
+                    td #{entry.userLabel}
+                    td #{entry.branchLabel}
+                    td.text-nowrap
+                        if entry.tripId && entry.seatNo
+                            | ##{entry.tripId} / #{entry.seatNo}
+                        else if entry.tripId
+                            | ##{entry.tripId}
+                        else
+                            | -
+                    td
+                        if entry.description
+                            p.mb-0 #{entry.description}
+                        .system-log-detail-meta
+                            if entry.passengerName
+                                span #{entry.passengerName}
+                            if entry.pnr
+                                span PNR: #{entry.pnr}
+                            if entry.referenceId
+                                span Kayıt: ##{entry.referenceId}
+                        if entry.changes.length
+                            ul.system-log-changes
+                                each change in entry.changes
+                                    li #{change.label}: #{change.from} → #{change.to}
+
+    .system-logs-footer.d-flex.justify-content-between.align-items-center.pt-2
+        span.text-muted Toplam #{total} kayıt | Sayfa #{page}/#{totalPages}
+        .d-flex.gap-2
+            button.btn.btn-sm.btn-outline-secondary.system-logs-prev(type="button" disabled=(page <= 1)) Önceki
+            button.btn.btn-sm.btn-outline-secondary.system-logs-next(type="button" disabled=(page >= totalPages)) Sonraki

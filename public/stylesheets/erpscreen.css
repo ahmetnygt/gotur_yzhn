@@ -388,6 +388,8 @@ div.report-close,
 div.bus-transaction-close,
 div.user-profile-close,
 div.firm-close,
+div.seat-history-close,
+div.system-logs-close,
 div.change-password-close {
     position: absolute;
     top: .5rem;
@@ -2426,4 +2428,187 @@ div.ticket-cancel-refund-open-close {
     .login-support-link {
         width: 100%;
     }
+}
+
+/* --- Koltuk geçmişi --- */
+
+.seat-history-pop-up {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 110;
+    background-color: white;
+    border-radius: .6rem;
+    box-shadow: 0 0.5rem 1rem rgb(0 0 0 / 20%);
+    width: 34rem;
+    max-width: 92vw;
+    overflow: hidden;
+    display: none;
+}
+
+.seat-history-body {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.seat-history-entry {
+    border: 1px solid #dee2e6;
+    border-left: 4px solid #adb5bd;
+    border-radius: .3rem;
+    padding: .5rem .75rem;
+    background-color: #fbfbfb;
+}
+
+.seat-history-entry.action-sell,
+.seat-history-entry.action-complete,
+.seat-history-entry.action-sell_open,
+.seat-history-entry.action-web_sale,
+.seat-history-entry.action-attach_open {
+    border-left-color: #198754;
+}
+
+.seat-history-entry.action-reserve,
+.seat-history-entry.action-web_reserve {
+    border-left-color: #ffc107;
+}
+
+.seat-history-entry.action-cancel,
+.seat-history-entry.action-refund,
+.seat-history-entry.action-web_cancel,
+.seat-history-entry.action-web_refund,
+.seat-history-entry.action-auto_cancel,
+.seat-history-entry.action-delete_pending,
+.seat-history-entry.action-auto_delete {
+    border-left-color: #dc3545;
+}
+
+.seat-history-entry.action-move_in,
+.seat-history-entry.action-move_out,
+.seat-history-entry.action-open {
+    border-left-color: #0d6efd;
+}
+
+.seat-history-entry.action-edit {
+    border-left-color: #6f42c1;
+}
+
+.seat-history-action {
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: .8rem;
+}
+
+.seat-history-date {
+    font-size: .75rem;
+    white-space: nowrap;
+}
+
+.seat-history-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .25rem .75rem;
+    font-size: .75rem;
+    color: #495057;
+    margin-top: .15rem;
+}
+
+.seat-history-description {
+    font-size: .8rem;
+    margin-top: .25rem;
+}
+
+.seat-history-changes {
+    list-style: none;
+    padding: 0;
+    margin: .35rem 0 0 0;
+    font-size: .75rem;
+    color: #495057;
+}
+
+.seat-history-change-label {
+    font-weight: 600;
+    margin-right: .25rem;
+}
+
+.seat-history-change-from {
+    text-decoration: line-through;
+    opacity: .7;
+}
+
+.seat-history-change-to {
+    font-weight: 600;
+}
+
+/* --- Sistem kayıtları paneli --- */
+
+.system-logs {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 100;
+    background-color: white;
+    border-radius: .6rem;
+    box-shadow: 0 0.5rem 1rem rgb(0 0 0 / 20%);
+    width: 90vw;
+    max-height: 95vh;
+    overflow: hidden;
+    display: none;
+}
+
+.system-logs-search .input-group {
+    width: auto;
+    flex-wrap: nowrap;
+}
+
+.system-logs-search input,
+.system-logs-search select {
+    min-width: 9rem;
+}
+
+.system-logs-list {
+    max-height: 65vh;
+    overflow-y: auto;
+}
+
+.system-logs-table {
+    font-size: .8rem;
+}
+
+.system-log-action {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.system-log-action.action-cancel,
+.system-log-action.action-refund,
+.system-log-action.action-login_failed,
+.system-log-action.action-auto_cancel,
+.system-log-action.action-auto_delete,
+.system-log-action.action-delete_pending {
+    color: #dc3545;
+}
+
+.system-log-action.action-sell,
+.system-log-action.action-complete,
+.system-log-action.action-sell_open,
+.system-log-action.action-web_sale {
+    color: #198754;
+}
+
+.system-log-detail-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .15rem .6rem;
+    font-size: .7rem;
+    color: #6c757d;
+}
+
+.system-log-changes {
+    list-style: none;
+    padding: 0;
+    margin: .2rem 0 0 0;
+    font-size: .7rem;
+    color: #495057;
 }

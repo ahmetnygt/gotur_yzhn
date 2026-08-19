@@ -19,6 +19,16 @@ const generateBusTransactionsReport = require("../utilities/reports/busTransacti
 const countries = require("world-countries");
 const { seferEkle, kullaniciKontrol, seferIptal, seferAktif, seferPlakaDegistir, personelEkle, personelIptal, seferGrupGuncelle, yolcuEkle, seferGrupListesi, seferGrupEkle, yolcuIptalUetdsYolcuRefNoIle, seferDetayCiktisiAl } = require('../utilities/uetdsService');
 const { findSeatSegmentConflict, seatConflictMessage } = require('../utilities/seatSegmentConflict');
+const {
+    LOG_MODULES,
+    LOG_ACTIONS,
+    LOG_MODULE_LABELS,
+    LOG_ACTION_LABELS,
+    moduleLabel,
+    actionLabel,
+    ticketSnapshot,
+    diffSnapshots,
+} = require('../utilities/systemLog');
 
 const TURKISH_COLLATOR = (() => {
     try {
@@ -2870,8 +2880,22 @@ exports.postErpLogin = async (req, res, next) => {
     try {
         const { username, password } = req.body;
 
+        // Başarısız denemeler de kaydedilir; parola hiçbir durumda loglanmaz.
+        const logFailedLogin = async (reason, user = null) => {
+            await req.logSystem({
+                module: LOG_MODULES.AUTH,
+                action: LOG_ACTIONS.LOGIN_FAILED,
+                referenceId: user?.id ?? null,
+                userId: user?.id ?? null,
+                branchId: user?.branchId ?? null,
+                newData: { username: username ?? null, reason, ip: req.ip ?? null },
+                description: `Başarısız giriş denemesi | kullanıcı: ${username || "-"} | sebep: ${reason}`,
+            });
+        };
+
         const u = await req.models.FirmUser.findOne({ where: { username } });
         if (!u) {
+            await logFailedLogin("kullanıcı bulunamadı");
             return res.redirect("/login?error=1");
         }
 
@@ -2881,11 +2905,13 @@ exports.postErpLogin = async (req, res, next) => {
         // isDeleted=true (silinmiş) kullanıcılar da aynı şekilde reddedilir;
         // postDeleteUser kaydı sadece isDeleted=true yapar, satırı silmez.
         if (u.isActive === false || u.isDeleted === true) {
+            await logFailedLogin(u.isDeleted ? "kullanıcı silinmiş" : "kullanıcı pasif", u);
             return res.redirect("/login?error=1");
         }
 
         const success = await bcrypt.compare(password, u.password);
         if (!success) {
+            await logFailedLogin("şifre hatalı", u);
             return res.redirect("/login?error=1");
         }
 
@@ -2910,6 +2936,16 @@ exports.postErpLogin = async (req, res, next) => {
             req.session.permissions = [];
         }
 
+        await req.logSystem({
+            module: LOG_MODULES.AUTH,
+            action: LOG_ACTIONS.LOGIN,
+            referenceId: u.id,
+            userId: u.id,
+            branchId: u.branchId,
+            newData: { username: u.username, ip: req.ip ?? null },
+            description: `Giriş yapıldı | kullanıcı: ${u.username}`,
+        });
+
         req.session.save(() => {
             res.redirect("/");
         });
@@ -2921,9 +2957,21 @@ exports.postErpLogin = async (req, res, next) => {
     }
 };
 
-exports.postErpLogout = (req, res, next) => {
+exports.postErpLogout = async (req, res, next) => {
     if (!req.session) {
         return res.redirect("/login");
+    }
+
+    // Oturum temizlenmeden önce yazılıyor; sonrasında aktör bilgisi kalmaz.
+    const loggedOutUser = req.session.firmUser || null;
+    if (loggedOutUser) {
+        await req.logSystem({
+            module: LOG_MODULES.AUTH,
+            action: LOG_ACTIONS.LOGOUT,
+            referenceId: loggedOutUser.id,
+            newData: { username: loggedOutUser.username ?? null },
+            description: `Çıkış yapıldı | kullanıcı: ${loggedOutUser.username || "-"}`,
+        });
     }
 
     const tenantKey = req.tenantKey;
@@ -3553,6 +3601,19 @@ exports.postTickets = async (req, res, next) => {
                 return ticket;
             });
 
+            // UETDS bloğu grup bulunamadığında `continue` ile iterasyonu
+            // atladığı için log, o bloktan ÖNCE yazılıyor; aksi halde bilet
+            // oluşmuş olmasına rağmen kaydı düşerdi.
+            await req.logSystem({
+                module: LOG_MODULES.TICKET,
+                action: isReservationStatus ? LOG_ACTIONS.RESERVE : LOG_ACTIONS.SELL,
+                referenceId: ticket.id,
+                tripId: trip.id,
+                seatNo: ticket.seatNo,
+                newData: ticketSnapshot(ticket),
+                description: `${isReservationStatus ? "Rezervasyon" : "Satış"} | ${ticket.seatNo} nolu koltuk | ${ticket.name || ""} ${ticket.surname || ""}`.trim(),
+            });
+
             if (status === "completed" && trip.uetdsRefNo) {
                 try {
                     const grup = await seferGrupListesi(req, trip);
@@ -3698,6 +3759,7 @@ exports.postCompleteTickets = async (req, res, next) => {
         for (let i = 0; i < foundTickets.length; i++) {
             const ticket = foundTickets[i];
             const incomingTicket = tickets[i] || {};
+            const beforeSnapshot = ticketSnapshot(ticket);
 
             const normalizedIdNumber =
                 typeof incomingTicket.idNumber === "string"
@@ -3790,6 +3852,17 @@ exports.postCompleteTickets = async (req, res, next) => {
                         await register.increment("card_balance", { by: Number(ticket.price) || 0, transaction: t });
                     }
                 }
+            });
+
+            await req.logSystem({
+                module: LOG_MODULES.TICKET,
+                action: LOG_ACTIONS.COMPLETE,
+                referenceId: ticket.id,
+                tripId: trip.id,
+                seatNo: ticket.seatNo,
+                oldData: beforeSnapshot,
+                newData: ticketSnapshot(ticket),
+                description: `Satışa çevrildi | ${ticket.seatNo} nolu koltuk | ${ticket.name || ""} ${ticket.surname || ""}`.trim(),
             });
         }
 
@@ -3948,6 +4021,16 @@ exports.postSellOpenTickets = async (req, res, next) => {
             await register.save();
         }
 
+        // Açık biletin seferi/koltuğu yok; tripId ve seatNo boş bırakılıyor,
+        // kayıt yalnızca sistem kayıtları panelinde görünür.
+        await req.logSystemMany(createdTickets.map(ticket => ({
+            module: LOG_MODULES.TICKET,
+            action: LOG_ACTIONS.SELL_OPEN,
+            referenceId: ticket.id,
+            newData: ticketSnapshot(ticket),
+            description: `Açık bilet ${isReservation ? "rezervasyonu" : "satışı"} | ${fromStop?.title || ""} - ${toStop?.title || ""} | ${ticket.name || ""} ${ticket.surname || ""}`.trim(),
+        })));
+
         res.status(200).json({
             success: true,
             groupId: ticketGroupId,
@@ -4009,6 +4092,8 @@ exports.postEditTicket = async (req, res, next) => {
         const takeOnCache = await prepareTakeValueCache(req.models.TakeOn);
         const takeOffCache = await prepareTakeValueCache(req.models.TakeOff);
 
+        const beforeSnapshots = foundTickets.map(foundTicket => ticketSnapshot(foundTicket));
+
         await Promise.all(foundTickets.map(async (foundTicket, i) => {
             const incomingTicket = tickets[i] || {};
             foundTicket.idNumber = incomingTicket.idNumber;
@@ -4026,6 +4111,26 @@ exports.postEditTicket = async (req, res, next) => {
             foundTicket.description = (incomingTicket.description || "").toString().trim() || null;
             return foundTicket.save();
         }));
+
+        // Düzenlemede tüm alanları değil, gerçekten değişen alanları kaydediyoruz;
+        // hiçbir şey değişmediyse log da yazılmıyor.
+        await req.logSystemMany(foundTickets.map((foundTicket, i) => {
+            const changes = diffSnapshots(beforeSnapshots[i], ticketSnapshot(foundTicket));
+            if (!changes) {
+                return null;
+            }
+
+            return {
+                module: LOG_MODULES.TICKET,
+                action: LOG_ACTIONS.EDIT,
+                referenceId: foundTicket.id,
+                tripId: trip.id,
+                seatNo: foundTicket.seatNo,
+                oldData: changes.oldData,
+                newData: changes.newData,
+                description: `Bilet düzenlendi | ${foundTicket.seatNo} nolu koltuk | değişen alanlar: ${Object.keys(changes.newData).join(", ")}`,
+            };
+        }).filter(Boolean));
 
         res.status(200).json({ message: "Biletler başarıyla kaydedildi." });
     } catch (err) {
@@ -4202,8 +4307,20 @@ exports.postCancelTicket = async (req, res, next) => {
             if (ticket.tripId !== trip.id) continue;
 
             const currentStatus = ticket.status;
+            const beforeSnapshot = ticketSnapshot(ticket);
             ticket.status = currentStatus === "reservation" ? "canceled" : "refund";
             await ticket.save();
+
+            await req.logSystem({
+                module: LOG_MODULES.TICKET,
+                action: ticket.status === "canceled" ? LOG_ACTIONS.CANCEL : LOG_ACTIONS.REFUND,
+                referenceId: ticket.id,
+                tripId: trip.id,
+                seatNo: ticket.seatNo,
+                oldData: beforeSnapshot,
+                newData: ticketSnapshot(ticket),
+                description: `${ticket.status === "canceled" ? "Rezervasyon iptali" : "Bilet iadesi"} | ${ticket.seatNo} nolu koltuk | ${ticket.name || ""} ${ticket.surname || ""}`.trim(),
+            });
 
             if (ticket.status === "refund" && ticket.payment !== "point") {
                 didAnyRefund = true;
@@ -4324,6 +4441,20 @@ exports.postDeletePendingTickets = async (req, res, next) => {
             }
         })
 
+        if (!trip) {
+            return res.status(404).json({ message: "Sefer bulunamadı." });
+        }
+
+        // Satırlar silineceği için anlık görüntüleri önceden alıyoruz; aksi halde
+        // koltuk geçmişinde "kim, hangi bileti sildi" bilgisi kaybolurdu.
+        const ticketsToDelete = await req.models.Ticket.findAll({
+            where: {
+                tripId: trip.id,
+                seatNo: { [Op.in]: seats },
+                id: { [Op.in]: pendingIds }
+            }
+        });
+
         const deleted = await req.models.Ticket.destroy({
             where: {
                 tripId: trip.id,
@@ -4335,6 +4466,17 @@ exports.postDeletePendingTickets = async (req, res, next) => {
         if (deleted === 0) {
             return res.status(404).json({ message: "Silinecek uygun kayıt bulunamadı." });
         }
+
+        await req.logSystemMany(ticketsToDelete.map(ticket => ({
+            module: LOG_MODULES.TICKET,
+            action: LOG_ACTIONS.DELETE_PENDING,
+            referenceId: ticket.id,
+            tripId: trip.id,
+            seatNo: ticket.seatNo,
+            oldData: ticketSnapshot(ticket),
+            newData: { deleted: true },
+            description: `Koltuk kilidi kaldırıldı | ${ticket.seatNo} nolu koltuk`,
+        })));
 
         return res.status(200).json({
             message: "Bekleyen bilet(ler) başarıyla silindi.",
@@ -4358,11 +4500,27 @@ exports.postOpenTicket = async (req, res, next) => {
 
         for (let i = 0; i < tickets.length; i++) {
             if (tickets[i].tripId == trip.id) {
+                const beforeSnapshot = ticketSnapshot(tickets[i]);
+                const releasedSeatNo = tickets[i].seatNo;
+
                 tickets[i].status = "open"
                 tickets[i].tripId = null
                 tickets[i].seatNo = null
 
                 await tickets[i].save()
+
+                // Bilet artık bu sefere bağlı değil; kaydı, koltuğun boşaldığı
+                // yerde görünsün diye eski sefer/koltuk bilgisiyle yazıyoruz.
+                await req.logSystem({
+                    module: LOG_MODULES.TICKET,
+                    action: LOG_ACTIONS.OPEN,
+                    referenceId: tickets[i].id,
+                    tripId: trip.id,
+                    seatNo: releasedSeatNo,
+                    oldData: beforeSnapshot,
+                    newData: ticketSnapshot(tickets[i]),
+                    description: `Açığa alındı | ${releasedSeatNo} nolu koltuk | ${tickets[i].name || ""} ${tickets[i].surname || ""}`.trim(),
+                });
             }
         }
 
@@ -4651,6 +4809,9 @@ exports.postMoveTickets = async (req, res, next) => {
 
         for (let i = 0; i < tickets.length; i++) {
             const t = tickets[i];
+            const beforeSnapshot = ticketSnapshot(t);
+            const previousTripId = t.tripId;
+            const previousSeatNo = t.seatNo;
 
             if (t.uetdsRefNo && t.tripId) {
                 try {
@@ -4673,6 +4834,36 @@ exports.postMoveTickets = async (req, res, next) => {
             if (t.status === "open") t.status = "completed";
 
             await t.save();
+
+            // Transfer iki koltuğu birden etkilediği için iki kayıt yazılıyor:
+            // biri biletin ayrıldığı koltuğun geçmişine, diğeri geldiği koltuğa.
+            const afterSnapshot = ticketSnapshot(t);
+            const passengerLabel = `${t.name || ""} ${t.surname || ""}`.trim();
+
+            await req.logSystemMany([
+                previousTripId ? {
+                    module: LOG_MODULES.TICKET,
+                    action: LOG_ACTIONS.MOVE_OUT,
+                    referenceId: t.id,
+                    tripId: previousTripId,
+                    seatNo: previousSeatNo,
+                    oldData: beforeSnapshot,
+                    newData: afterSnapshot,
+                    description: `Transfer çıkışı | ${previousSeatNo ?? "-"} nolu koltuktan ${newTrip.date} ${newTrip.time} seferi ${t.seatNo} nolu koltuğa | ${passengerLabel}`,
+                } : null,
+                {
+                    module: LOG_MODULES.TICKET,
+                    action: LOG_ACTIONS.MOVE_IN,
+                    referenceId: t.id,
+                    tripId: newTrip.id,
+                    seatNo: t.seatNo,
+                    oldData: beforeSnapshot,
+                    newData: afterSnapshot,
+                    description: previousTripId
+                        ? `Transfer girişi | ${previousSeatNo ?? "-"} nolu koltuktan geldi | ${passengerLabel}`
+                        : `Transfer girişi | açık biletten bağlandı | ${passengerLabel}`,
+                },
+            ].filter(Boolean));
 
             const group = await seferGrupListesi(req, newTrip);
 
@@ -4841,6 +5032,8 @@ exports.postAttachOpenTicket = async (req, res, next) => {
             }
         }
 
+        const beforeSnapshot = ticketSnapshot(ticket);
+
         ticket.seatNo = seatValue;
         ticket.tripId = trip.id;
         ticket.fromRouteStopId = fromStopId;
@@ -4850,6 +5043,17 @@ exports.postAttachOpenTicket = async (req, res, next) => {
         ticket.status = "completed";
 
         await ticket.save();
+
+        await req.logSystem({
+            module: LOG_MODULES.TICKET,
+            action: LOG_ACTIONS.ATTACH_OPEN,
+            referenceId: ticket.id,
+            tripId: trip.id,
+            seatNo: ticket.seatNo,
+            oldData: beforeSnapshot,
+            newData: ticketSnapshot(ticket),
+            description: `Açık bilet sefere bağlandı | ${ticket.seatNo} nolu koltuk | ${ticket.name || ""} ${ticket.surname || ""}`.trim(),
+        });
 
         return res.status(200).json({ message: "Açık bilet sefere başarıyla bağlandı." });
     } catch (error) {
@@ -9156,4 +9360,315 @@ exports.postSaveFirmSettings = async (req, res) => {
         console.error("postSaveFirmSettings error:", err);
         return res.status(500).json({ message: "Firma ayarları kaydedilemedi." });
     }
+};
+
+// ---------------------------------------------------------------------------
+// SİSTEM KAYITLARI (systemLogs) — koltuk geçmişi ve yönetim paneli
+// ---------------------------------------------------------------------------
+
+const SYSTEM_LOG_PAGE_SIZE = 50;
+
+// oldData/newData içindeki alanların ekranda gösterilen adları.
+const LOG_FIELD_LABELS = Object.freeze({
+    name: "İsim",
+    surname: "Soyisim",
+    idNumber: "Kimlik No",
+    phoneNumber: "Telefon",
+    gender: "Cinsiyet",
+    nationality: "Uyruk",
+    price: "Fiyat",
+    payment: "Ödeme",
+    status: "Durum",
+    seatNo: "Koltuk",
+    pnr: "PNR",
+    tripId: "Sefer",
+    ticketGroupId: "Bilet grubu",
+    fromRouteStopId: "Kalkış",
+    toRouteStopId: "Varış",
+    optionDate: "Opsiyon tarihi",
+    optionTime: "Opsiyon saati",
+    takeOnText: "Biniş yeri",
+    takeOffText: "İniş yeri",
+    description: "Açıklama",
+    deleted: "Silindi",
+    username: "Kullanıcı adı",
+    reason: "Sebep",
+    ip: "IP adresi",
+});
+
+const LOG_STATUS_LABELS = Object.freeze({
+    completed: "Satış",
+    reservation: "Rezervasyon",
+    canceled: "İptal",
+    cancelled: "İptal",
+    refund: "İade",
+    open: "Açık bilet",
+    pending: "Bekliyor",
+    web: "Web",
+    gotur: "Götür",
+});
+
+const LOG_PAYMENT_LABELS = Object.freeze({
+    cash: "Nakit",
+    card: "Kredi Kartı",
+    point: "Puan",
+});
+
+function formatLogTimestamp(value) {
+    if (!value) {
+        return "-";
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return "-";
+    }
+
+    return date.toLocaleString("tr-TR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+    });
+}
+
+function formatLogFieldValue(field, value, stopTitles) {
+    if (value === undefined || value === null || value === "") {
+        return "—";
+    }
+
+    if (field === "status") {
+        return LOG_STATUS_LABELS[value] || value;
+    }
+
+    if (field === "payment") {
+        return LOG_PAYMENT_LABELS[value] || value;
+    }
+
+    if (field === "gender") {
+        return value === "m" ? "Erkek" : value === "f" ? "Kadın" : value;
+    }
+
+    if (field === "deleted") {
+        return value === true || value === "true" ? "Evet" : "Hayır";
+    }
+
+    if ((field === "fromRouteStopId" || field === "toRouteStopId") && stopTitles) {
+        return stopTitles.get(String(value)) || `#${value}`;
+    }
+
+    if (field === "price") {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? `${numeric}₺` : String(value);
+    }
+
+    return String(value);
+}
+
+// Log satırlarını arayüzün doğrudan basabileceği hale getirir: aktör adı,
+// biçimlenmiş tarih ve (varsa) değişen alan listesi.
+async function decorateSystemLogs(req, logs) {
+    if (!logs.length) {
+        return [];
+    }
+
+    const userIds = [...new Set(logs.map(log => log.userId).filter(Boolean))];
+    const branchIds = [...new Set(logs.map(log => log.branchId).filter(Boolean))];
+
+    const stopIds = new Set();
+    logs.forEach(log => {
+        [log.oldData, log.newData].forEach(payload => {
+            if (!payload || typeof payload !== "object") return;
+            ["fromRouteStopId", "toRouteStopId"].forEach(field => {
+                if (payload[field]) stopIds.add(payload[field]);
+            });
+        });
+    });
+
+    const [users, branches, stops] = await Promise.all([
+        userIds.length
+            ? req.models.FirmUser.findAll({ where: { id: { [Op.in]: userIds } }, attributes: ["id", "name", "username", "branchId"], raw: true })
+            : [],
+        branchIds.length
+            ? req.models.Branch.findAll({ where: { id: { [Op.in]: branchIds } }, attributes: ["id", "title"], raw: true })
+            : [],
+        stopIds.size
+            ? req.models.Stop.findAll({ where: { id: { [Op.in]: [...stopIds] } }, attributes: ["id", "title"], raw: true })
+            : [],
+    ]);
+
+    const userMap = new Map(users.map(user => [String(user.id), user]));
+    const branchMap = new Map(branches.map(branch => [String(branch.id), branch.title]));
+    const stopTitles = new Map(stops.map(stop => [String(stop.id), stop.title]));
+
+    return logs.map(log => {
+        const user = log.userId ? userMap.get(String(log.userId)) : null;
+        const payload = log.newData && typeof log.newData === "object" ? log.newData : {};
+        const previous = log.oldData && typeof log.oldData === "object" ? log.oldData : {};
+
+        // İptal/iade gibi işlemlerde oldData ve newData tam anlık görüntü olduğu
+        // için gerçekten farklı olan alanlarla sınırlıyoruz; aksi halde tüm bilet
+        // alanları "değişmiş" gibi listelenirdi.
+        const changes = Object.keys(payload)
+            .filter(field => Object.prototype.hasOwnProperty.call(previous, field))
+            .filter(field => String(previous[field] ?? "") !== String(payload[field] ?? ""))
+            .map(field => ({
+                label: LOG_FIELD_LABELS[field] || field,
+                from: formatLogFieldValue(field, previous[field], stopTitles),
+                to: formatLogFieldValue(field, payload[field], stopTitles),
+            }));
+
+        const passengerName = [payload.name || previous.name, payload.surname || previous.surname]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+
+        return {
+            id: log.id,
+            module: log.module,
+            moduleLabel: moduleLabel(log.module),
+            action: log.action,
+            actionLabel: actionLabel(log.action),
+            createdAtLabel: formatLogTimestamp(log.createdAt),
+            userLabel: user ? (user.name || user.username) : "Sistem",
+            branchLabel: log.branchId ? (branchMap.get(String(log.branchId)) || "-") : "-",
+            referenceId: log.referenceId,
+            tripId: log.tripId,
+            seatNo: log.seatNo,
+            pnr: payload.pnr || previous.pnr || null,
+            passengerName: passengerName || null,
+            statusLabel: payload.status ? (LOG_STATUS_LABELS[payload.status] || payload.status) : null,
+            priceLabel: payload.price !== undefined && payload.price !== null
+                ? formatLogFieldValue("price", payload.price, stopTitles)
+                : null,
+            description: log.description || "",
+            changes,
+        };
+    });
+}
+
+exports.getSeatHistory = async (req, res, next) => {
+    try {
+        const tripId = toIntegerOrNull(req.query.tripId);
+        const seatNo = toIntegerOrNull(req.query.seatNumber);
+
+        if (!tripId || !seatNo) {
+            return res.status(400).json({ message: "Sefer ve koltuk bilgisi gereklidir." });
+        }
+
+        const trip = await req.models.Trip.findByPk(tripId);
+        if (!trip) {
+            return res.status(404).json({ message: "Sefer bulunamadı." });
+        }
+
+        // Bu sefer+koltuktaki (iptal/iade dahil) biletlerin id'leri: tripId/seatNo
+        // kolonları eklenmeden önce yazılmış kayıtları (örn. scheduler'ın
+        // auto_cancel logları) da yakalayabilmek için referenceId ile eşleştiriyoruz.
+        const seatTickets = await req.models.Ticket.findAll({
+            where: { tripId, seatNo },
+            attributes: ["id"],
+            raw: true,
+        });
+        const seatTicketIds = seatTickets.map(ticket => ticket.id);
+
+        const orConditions = [{ tripId, seatNo }];
+        if (seatTicketIds.length) {
+            orConditions.push({
+                module: LOG_MODULES.TICKET,
+                referenceId: { [Op.in]: seatTicketIds },
+            });
+        }
+
+        const logs = await req.models.SystemLog.findAll({
+            where: { [Op.or]: orConditions },
+            order: [["createdAt", "DESC"], ["id", "DESC"]],
+            limit: 200,
+            raw: true,
+        });
+
+        const entries = await decorateSystemLogs(req, logs);
+
+        return res.render("mixins/seatHistory", {
+            entries,
+            seatNo,
+            tripLabel: `${formatTripDateForDisplay(trip.date)} ${formatTimeWithoutSeconds(trip.time)}`.trim(),
+        });
+    } catch (err) {
+        console.error("getSeatHistory error:", err);
+        return res.status(500).json({ message: "Koltuk geçmişi alınamadı." });
+    }
+};
+
+exports.getSystemLogs = async (req, res, next) => {
+    try {
+        const { module: moduleFilter, action, userId, search } = req.query;
+
+        const where = {};
+
+        if (moduleFilter && LOG_MODULE_LABELS[moduleFilter]) {
+            where.module = moduleFilter;
+        }
+
+        if (action && LOG_ACTION_LABELS[action]) {
+            where.action = action;
+        }
+
+        const filterUserId = toIntegerOrNull(userId);
+        if (filterUserId) {
+            where.userId = filterUserId;
+        }
+
+        const startDate = parseDateTimeInput(req.query.startDate);
+        const endDate = parseDateTimeInput(req.query.endDate);
+        if (startDate || endDate) {
+            where.createdAt = {};
+            if (startDate) where.createdAt[Op.gte] = startDate;
+            if (endDate) {
+                // Bitiş tarihi saat verilmeden geldiğinde o günün tamamı kapsanır.
+                const inclusiveEnd = new Date(endDate);
+                if (inclusiveEnd.getHours() === 0 && inclusiveEnd.getMinutes() === 0) {
+                    inclusiveEnd.setHours(23, 59, 59, 999);
+                }
+                where.createdAt[Op.lte] = inclusiveEnd;
+            }
+        }
+
+        const searchTerm = typeof search === "string" ? search.trim() : "";
+        if (searchTerm) {
+            where.description = { [Op.like]: `%${searchTerm}%` };
+        }
+
+        const page = Math.max(1, toIntegerOrNull(req.query.page) || 1);
+        const offset = (page - 1) * SYSTEM_LOG_PAGE_SIZE;
+
+        const { rows, count } = await req.models.SystemLog.findAndCountAll({
+            where,
+            order: [["createdAt", "DESC"], ["id", "DESC"]],
+            limit: SYSTEM_LOG_PAGE_SIZE,
+            offset,
+            raw: true,
+        });
+
+        const entries = await decorateSystemLogs(req, rows);
+        const totalPages = Math.max(1, Math.ceil(count / SYSTEM_LOG_PAGE_SIZE));
+
+        return res.render("mixins/systemLogsList", {
+            entries,
+            total: count,
+            page,
+            totalPages,
+        });
+    } catch (err) {
+        console.error("getSystemLogs error:", err);
+        return res.status(500).json({ message: "Sistem kayıtları alınamadı." });
+    }
+};
+
+exports.getSystemLogFilters = (req, res) => {
+    res.json({
+        modules: Object.entries(LOG_MODULE_LABELS).map(([value, label]) => ({ value, label })),
+        actions: Object.entries(LOG_ACTION_LABELS).map(([value, label]) => ({ value, label })),
+    });
 };

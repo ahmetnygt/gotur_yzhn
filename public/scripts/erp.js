@@ -588,7 +588,9 @@ const ESC_CLOSE_BUTTON_SELECTORS = [
     ".report-close",
     ".reports-close",
     ".route-close",
+    ".seat-history-close",
     ".staff-close",
+    ".system-logs-close",
     ".stops-close",
     ".ticket-close",
     ".ticket-search-close",
@@ -4829,9 +4831,49 @@ $(".taken-ticket-op").on("click", async e => {
         });
     }
 
+    else if (action == "seat_history") {
+        // Koltuk geçmişi kendi pop-up'ını karartma ile birlikte açtığı için
+        // aşağıdaki ortak "karartmayı kapat" satırlarına düşmeden dönüyoruz.
+        const seatNumber = seatNumbers[0];
+
+        if (!tripId || !seatNumber) {
+            showError("Koltuk geçmişi için sefer ve koltuk bilgisi bulunamadı.");
+            return;
+        }
+
+        $(".taken-ticket-ops-pop-up").hide();
+        $(".seat").removeClass("selected");
+        selectedTakenSeats = [];
+        clearSelectedTakenTicketContext();
+
+        await openSeatHistory(tripId, seatNumber);
+        return;
+    }
+
     $(".ticket-search-pop-up").css("display", "none")
     $(".blackout").css("display", "none")
 })
+
+async function openSeatHistory(tripId, seatNumber) {
+    await $.ajax({
+        url: "/get-seat-history",
+        type: "GET",
+        data: { tripId, seatNumber },
+        success: function (response) {
+            $(".seat-history-body").html(response);
+            $(".seat-history-pop-up").css("display", "block");
+            $(".blackout").css("display", "block");
+        },
+        error: function (xhr) {
+            showError(getAjaxErrorMessage(xhr));
+        }
+    });
+}
+
+$(".seat-history-close").on("click", () => {
+    $(".seat-history-pop-up").css("display", "none");
+    $(".blackout").css("display", "none");
+});
 
 $(".moving-confirm").on("click", async e => {
     // DÜZELTME: Çift gönderim koruması yoktu; hızlı çift tıklama aynı
@@ -10082,3 +10124,113 @@ $(loadAnnouncements);
         getInstances: () => Array.from(instances),
     };
 })();
+
+// --- Sistem kayıtları paneli (Yönetim → Sistem Kayıtları) ---
+
+let systemLogsPage = 1;
+
+const buildSystemLogsQuery = page => ({
+    page,
+    startDate: $(".system-logs-start").val() || "",
+    endDate: $(".system-logs-end").val() || "",
+    module: $(".system-logs-module").val() || "",
+    action: $(".system-logs-action").val() || "",
+    userId: $(".system-logs-user").val() || "",
+    search: $(".system-logs-search-text").val() || "",
+});
+
+async function loadSystemLogs(page = 1) {
+    await $.ajax({
+        url: "/get-system-logs",
+        type: "GET",
+        data: buildSystemLogsQuery(page),
+        success: function (response) {
+            systemLogsPage = page;
+            $(".system-logs-list").html(response);
+        },
+        error: function (xhr) {
+            showError(getAjaxErrorMessage(xhr));
+        }
+    });
+}
+
+async function initSystemLogsFilters() {
+    const $panel = $(".system-logs");
+    if ($panel.data("initialized")) {
+        return;
+    }
+
+    try {
+        const [filters, users] = await Promise.all([
+            fetch("/get-system-log-filters").then(r => r.json()),
+            fetch("/get-users-list?onlyData=true").then(r => r.json()),
+        ]);
+
+        const $moduleSelect = $(".system-logs-module").empty().append('<option value="">Tümü</option>');
+        filters.modules.forEach(item => {
+            $moduleSelect.append(`<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`);
+        });
+
+        const $actionSelect = $(".system-logs-action").empty().append('<option value="">Tümü</option>');
+        filters.actions.forEach(item => {
+            $actionSelect.append(`<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`);
+        });
+
+        const $userSelect = $(".system-logs-user").empty().append('<option value="">Tümü</option>');
+        users.forEach(user => {
+            $userSelect.append(`<option value="${user.id}">${escapeHtml(user.name)}</option>`);
+        });
+
+        // Rapor pop-up'larıyla aynı format: sunucu "Y-m-d H:i" bekliyor.
+        const datePickerOptions = {
+            enableTime: true,
+            dateFormat: "Y-m-d H:i",
+            time_24hr: true,
+            altInput: true,
+            altFormat: "d F Y H:i",
+            locale: "tr",
+        };
+
+        const now = new Date();
+        flatpickr($(".system-logs-start")[0], {
+            ...datePickerOptions,
+            defaultDate: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0),
+        });
+        flatpickr($(".system-logs-end")[0], {
+            ...datePickerOptions,
+            defaultDate: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 0),
+        });
+
+        $panel.data("initialized", true);
+    } catch (err) {
+        console.error("system logs filter init error", err);
+    }
+}
+
+$(".system-logs-nav").on("click", async e => {
+    e.preventDefault();
+
+    await initSystemLogsFilters();
+    await loadSystemLogs(1);
+
+    $(".blackout").css("display", "block");
+    $(".system-logs").css("display", "block");
+});
+
+$(".system-logs-search-btn").on("click", () => loadSystemLogs(1));
+
+// Liste her aramada yeniden basıldığı için sayfalama butonları delege ediliyor.
+$(document).on("click", ".system-logs-prev", () => {
+    if (systemLogsPage > 1) {
+        loadSystemLogs(systemLogsPage - 1);
+    }
+});
+
+$(document).on("click", ".system-logs-next", () => {
+    loadSystemLogs(systemLogsPage + 1);
+});
+
+$(".system-logs-close").on("click", () => {
+    $(".system-logs").css("display", "none");
+    $(".blackout").css("display", "none");
+});

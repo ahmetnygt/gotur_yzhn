@@ -1671,7 +1671,7 @@ block content
             span TRANSFER
         .taken-ticket-op(data-action="delete_pending")
             span İPTAL
-        .taken-ticket-op(data-action="")
+        .taken-ticket-op(data-action="seat_history")
             span KOLTUK GEÇMİŞİ
 
     .search-ticket-ops-pop-up
@@ -1691,6 +1691,43 @@ block content
             span TRANSFER
         .taken-ticket-op.searched-ticket-op(data-action="go_trip")
             span SEFERE GİT
+
+    .seat-history-pop-up
+        .gtr-header
+            span KOLTUK GEÇMİŞİ
+        .seat-history-close
+            i.fa-solid.fa-x
+        .seat-history-body
+
+    .system-logs
+        .gtr-header
+            span SİSTEM KAYITLARI
+        .system-logs-close
+            i.fa-solid.fa-x
+        .system-logs-search.p-3.d-flex.gap-2.flex-wrap.align-items-end
+            .input-group
+                span.input-group-text Başlangıç
+                input.form-control.system-logs-start(type="text")
+            .input-group
+                span.input-group-text Bitiş
+                input.form-control.system-logs-end(type="text")
+            .input-group
+                span.input-group-text Modül
+                select.form-select.system-logs-module
+                    option(value="") Tümü
+            .input-group
+                span.input-group-text İşlem
+                select.form-select.system-logs-action
+                    option(value="") Tümü
+            .input-group
+                span.input-group-text Kullanıcı
+                select.form-select.system-logs-user
+                    option(value="") Tümü
+            .input-group
+                span.input-group-text Açıklama
+                input.form-control.system-logs-search-text(type="text" placeholder="Ara")
+            button.btn.btn-outline-primary.system-logs-search-btn(type="button") ARA
+        .system-logs-list.p-3
 
     .customer-blacklist-pop-up.p-3
         textarea.customer-blacklist-description.form-control(placeholder="Sebep")

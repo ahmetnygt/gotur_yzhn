@@ -7,8 +7,9 @@ const requirePermission = require("../middlewares/permissionMiddleware")
 const { ensureCsrfToken, verifyCsrfToken } = require("../middlewares/csrf")
 const erpController = require("../controllers/erpController")
 
-// Tüm POST/PUT/DELETE işlemleri için global middleware
-// router.use(autoLogMiddleware);
+// Her isteğe req.logSystem / req.logSystemMany yardımcılarını bağlar
+// (bkz. middlewares/autoLogMiddleware.js).
+router.use(autoLogMiddleware);
 
 // GÜVENLİK: CSRF koruması login dahil TÜM rotalara uygulanıyor. ensureCsrfToken
 // her istekte (login sayfası dahil) token'ı oturuma/cookie'ye yazıyor;
@@ -67,6 +68,8 @@ router.get('/get-bus-account-cut-receipt', erpController.getBusAccountCutReceipt
 router.get('/trip-seat-plan', erpController.getTripSeatPlanReport);
 
 router.get('/get-ticketops-popup', erpController.getTicketOpsPopUp);
+
+router.get('/get-seat-history', erpController.getSeatHistory);
 
 router.get('/get-ticket-row', erpController.getTicketRow);
 
@@ -138,6 +141,9 @@ router.get('/get-branches-list', erpController.getBranchesList);
 router.get('/get-branch', erpController.getBranch);
 router.post('/post-save-branch', erpController.postSaveBranch);
 router.post('/post-delete-branch', erpController.postDeleteBranch);
+
+router.get('/get-system-logs', requirePermission("ADMIN_PANEL_MANAGE"), erpController.getSystemLogs);
+router.get('/get-system-log-filters', requirePermission("ADMIN_PANEL_MANAGE"), erpController.getSystemLogFilters);
 
 router.get('/get-firm-settings', requirePermission("ADMIN_PANEL_MANAGE"), erpController.getFirmSettings);
 router.post('/post-save-firm-settings', requirePermission("ADMIN_PANEL_MANAGE"), erpController.postSaveFirmSettings);
