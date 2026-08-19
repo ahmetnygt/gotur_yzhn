@@ -54,3 +54,6 @@ if !reservationOptionExpiredF || permissions.includes("PAST_TRIP_RESERVATION")
                         button.ticket-op-button.restricted(type="button" disabled data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
                     else
                         button.ticket-op-button(type="button" data-gender="f" data-action="reservation" data-route-stop=rs.title data-stop-id=rs.stopId data-route-order=(rs && rs.order != null ? rs.order : "")) #{rs.title}
+
+.ticket-op(data-action="seat_history")
+    p KOLTUK GEÇMİŞİ

@@ -52,8 +52,31 @@ function getCookieValue(name) {
     const match = document.cookie.match(new RegExp("(?:^|; )" + escaped + "=([^;]*)"));
     return match ? decodeURIComponent(match[1]) : null;
 }
+
+function redirectToLogin(url) {
+    const target = typeof url === "string" && url.trim() ? url.trim() : "/login";
+    window.location.href = target;
+}
+
+function looksLikeLoginHtml(html) {
+    if (typeof html !== "string") {
+        return false;
+    }
+    return html.includes("login-form") || html.includes("login-page");
+}
+
+function attachErpRequestHeaders(headers) {
+    headers.set("X-Requested-With", "XMLHttpRequest");
+    const token = getCookieValue("XSRF-TOKEN");
+    if (token) {
+        headers.set("X-CSRF-Token", token);
+    }
+    return headers;
+}
+
 $.ajaxSetup({
     beforeSend: function (xhr) {
+        xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
         const token = getCookieValue("XSRF-TOKEN");
         if (token) {
             xhr.setRequestHeader("X-CSRF-Token", token);
@@ -736,16 +759,31 @@ const getAjaxErrorMessage = err =>
 
 const originalFetch = window.fetch;
 window.fetch = async (...args) => {
-    let [input, init] = args;
+    let [input, init = {}] = args;
     if (typeof input === "string") {
         input = normalizeErpUrl(input);
     } else if (typeof Request !== "undefined" && input instanceof Request) {
         input = new Request(normalizeErpUrl(input.url), input);
     }
 
+    const headers = new Headers(init.headers || undefined);
+    attachErpRequestHeaders(headers);
+    init = Object.assign({}, init, { headers });
+
     showLoading();
     try {
         const res = await originalFetch(input, init);
+        if (res.status === 401) {
+            let redirectUrl = "/login";
+            try {
+                const data = await res.clone().json();
+                if (data && data.redirect) {
+                    redirectUrl = data.redirect;
+                }
+            } catch (_) { /* login HTML veya boş gövde */ }
+            redirectToLogin(redirectUrl);
+            return res;
+        }
         if (!res.ok) {
             try {
                 const clone = res.clone();
@@ -772,7 +810,15 @@ window.fetch = async (...args) => {
 
 $(document).ajaxSend(showLoading);
 $(document).ajaxComplete(hideLoading);
-$(document).ajaxError((_e, _xhr, _settings, _err) => hideLoading())
+$(document).ajaxError((_e, xhr) => {
+    hideLoading();
+    if (xhr && xhr.status === 401) {
+        const redirectUrl = xhr.responseJSON && xhr.responseJSON.redirect
+            ? xhr.responseJSON.redirect
+            : "/login";
+        redirectToLogin(redirectUrl);
+    }
+})
 
 $.ajaxPrefilter((options, originalOptions) => {
     if (options && typeof options.url === "string") {
@@ -2720,6 +2766,25 @@ async function loadTrip(date, time, tripId) {
         // tetiklenmesine (handler yığılmasına) yol açıyordu.
         $(".ticket-op").off("click").on("click", e => {
             e.stopPropagation();
+
+            // Boş koltuk menüsündeki geçmiş satırının alt menüsü yok;
+            // satış/rezervasyon gibi durak listesi açılmaz.
+            if (e.currentTarget.dataset.action === "seat_history") {
+                const seatNumber = (currentSeat && currentSeat.data("seat-number")) || selectedSeats[0];
+
+                $(".ticket-ops-pop-up").hide();
+                $(".seat").removeClass("selected");
+                selectedSeats = [];
+
+                if (!currentTripId || !seatNumber) {
+                    showError("Koltuk geçmişi için sefer ve koltuk bilgisi bulunamadı.");
+                    return;
+                }
+
+                openSeatHistory(currentTripId, seatNumber);
+                return;
+            }
+
             $(".ticket-op ul").css("display", "none");
             const ul = e.currentTarget.querySelector("ul");
             const isVisible = $(ul).css("display") === "flex";
@@ -3411,6 +3476,11 @@ function highlightTripRowByData(date, time, tripId) {
 
 async function renderTripRows(html, options = {}) {
     const { autoSelect = false } = options || {};
+
+    if (looksLikeLoginHtml(html)) {
+        redirectToLogin("/login");
+        return false;
+    }
 
     const $tripRowsContainer = $(".tripRows");
     $tripRowsContainer.html(html);
