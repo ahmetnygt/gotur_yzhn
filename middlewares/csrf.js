@@ -25,10 +25,14 @@ function ensureCsrfToken(req, res, next) {
     // Not httpOnly: istemci tarafındaki erp.js bu cookie'yi okuyup her
     // AJAX isteğine header olarak ekliyor (bkz. public/scripts/erp.js
     // en üstündeki $.ajaxSetup çağrısı).
+    const sessionMaxAge = req.session?.cookie?.maxAge;
     res.cookie(CSRF_COOKIE_NAME, req.session.csrfToken, {
         httpOnly: false,
         sameSite: "lax",
         secure: req.app.get("env") === "production",
+        // Session cookie ile aynı ömür: maxAge yoksa tarayıcı kapanınca
+        // XSRF-TOKEN silinir, connect.sid kalır ve POST'lar 403 olur.
+        maxAge: typeof sessionMaxAge === "number" ? sessionMaxAge : 86400000,
     });
 
     next();

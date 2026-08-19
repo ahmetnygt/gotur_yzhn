@@ -2779,6 +2779,8 @@ exports.getTicketOpsPopUp = async (req, res, next) => {
 }
 
 exports.getErp = async (req, res, next) => {
+    res.set("Cache-Control", "no-store, private");
+
     let busModel = await req.models.BusModel.findAll()
     let staff = await req.models.Staff.findAll()
     let branches = await req.models.Branch.findAll()
@@ -2854,6 +2856,12 @@ exports.getErp = async (req, res, next) => {
 }
 
 exports.getErpLogin = async (req, res, next) => {
+    res.set("Cache-Control", "no-store, private");
+
+    if (req.session?.isAuthenticated) {
+        return res.redirect("/");
+    }
+
     const DEFAULT_TITLE = "GötürYZHN";
     let firmRecord = req.session?.firm || null;
 
