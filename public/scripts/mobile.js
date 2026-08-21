@@ -22,6 +22,7 @@
     let movingToId = null;
     let cancelingSeatPNR = null;
     let loadToken = 0;
+    let tripStopsCache = { tripId: null, stops: [] };
     window.permissions = [];
 
     function getCookieValue(name) {
@@ -798,6 +799,127 @@
         }
     }
 
+    async function tripStopsOrdered() {
+        if (tripStopsCache.tripId === currentTripId) {
+            return tripStopsCache.stops;
+        }
+        let stops = [];
+        try {
+            const response = await $.get("/get-trip-stops", { tripId: currentTripId });
+            if (Array.isArray(response)) stops = response;
+        } catch (err) { /* sıralama olmadan da listelenebilir */ }
+        tripStopsCache = { tripId: currentTripId, stops };
+        return stops;
+    }
+
+    // Koltuk planı bu durak, önceki ve sonraki durakların biletlerini birlikte
+    // taşıyor; listede yalnızca bu duraktan ve sonrasından binenler gösterilir.
+    function collectPassengers() {
+        const skipStatus = ["pending", "canceled", "refund"];
+        const passengers = [];
+        $(".m-busPlan .seat").each(function () {
+            const $seat = $(this);
+            const name = getTrimmedValue($seat.data("name"));
+            const status = getTrimmedValue($seat.data("status"));
+            if (!name || $seat.hasClass("before") || skipStatus.includes(status)) return;
+            passengers.push({
+                seat: getTrimmedValue($seat.data("seat-number")),
+                name,
+                phone: getTrimmedValue($seat.data("phone")),
+                from: getTrimmedValue($seat.data("from")),
+                to: getTrimmedValue($seat.data("to")),
+                price: getTrimmedValue($seat.data("price")),
+                pnr: getTrimmedValue($seat.data("pnr")),
+                branch: getTrimmedValue($seat.data("branch")),
+                gender: getTrimmedValue($seat.data("gender")),
+                status,
+                isAhead: $seat.hasClass("ahead")
+            });
+        });
+        passengers.sort((a, b) => Number(a.seat) - Number(b.seat));
+        return passengers;
+    }
+
+    function groupPassengersByStop(passengers, orderedStops) {
+        const orderOf = new Map();
+        orderedStops.forEach((stop, index) => {
+            const title = getTrimmedValue(stop && stop.title);
+            if (title && !orderOf.has(title)) orderOf.set(title, index);
+        });
+
+        const groups = [];
+        const byTitle = new Map();
+        passengers.forEach(passenger => {
+            const title = passenger.from || "-";
+            if (!byTitle.has(title)) {
+                const group = { title, passengers: [], isCurrent: !passenger.isAhead };
+                byTitle.set(title, group);
+                groups.push(group);
+            }
+            const group = byTitle.get(title);
+            if (!passenger.isAhead) group.isCurrent = true;
+            group.passengers.push(passenger);
+        });
+
+        return groups.sort((a, b) => {
+            if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
+            const orderA = orderOf.has(a.title) ? orderOf.get(a.title) : Number.MAX_SAFE_INTEGER;
+            const orderB = orderOf.has(b.title) ? orderOf.get(b.title) : Number.MAX_SAFE_INTEGER;
+            if (orderA !== orderB) return orderA - orderB;
+            return a.title.localeCompare(b.title, "tr");
+        });
+    }
+
+    function passengerCardHtml(passenger) {
+        const phoneDigits = toOnlyDigits(passenger.phone);
+        const phoneHtml = phoneDigits
+            ? `<a class="m-pax-phone" href="tel:${escapeHtml(phoneDigits)}">${escapeHtml(passenger.phone)}</a>`
+            : "<span class=\"m-pax-muted\">Telefon yok</span>";
+        const seatLabel = passenger.seat.length < 2 ? `0${passenger.seat}` : passenger.seat;
+        return `
+            <article class="m-pax-card ${escapeHtml(passenger.gender)}${passenger.isAhead ? " ahead" : ""}">
+                <div class="m-pax-card-top">
+                    <span class="m-pax-seat">${escapeHtml(seatLabel)}</span>
+                    <span class="m-pax-name">${escapeHtml(passenger.name)}</span>
+                    <span class="m-pax-status">${escapeHtml(statusLabel(passenger.status))}</span>
+                </div>
+                <div class="m-pax-card-row">
+                    <span>${escapeHtml(passenger.from)} → ${escapeHtml(passenger.to)}</span>
+                    <span class="m-pax-price">${passenger.price ? escapeHtml(passenger.price) + "₺" : "-"}</span>
+                </div>
+                <div class="m-pax-card-row">
+                    ${phoneHtml}
+                    <span class="m-pax-muted">${escapeHtml(passenger.pnr || passenger.branch || "")}</span>
+                </div>
+            </article>`;
+    }
+
+    async function openPassengers() {
+        if (!currentTripId) return;
+        const passengers = collectPassengers();
+        if (!passengers.length) {
+            openSheet("Yolcu listesi", "<p class=\"text-muted mb-0\">Bu durak ve sonrası için yolcu bulunmuyor.</p>");
+            return;
+        }
+        const groups = groupPassengersByStop(passengers, await tripStopsOrdered());
+        const currentCount = passengers.filter(p => !p.isAhead).length;
+        const aheadCount = passengers.length - currentCount;
+        const summary = `
+            <p class="m-pax-summary">
+                <strong>${escapeHtml(currentStopStr)}</strong>: ${currentCount} yolcu
+                · Sonraki duraklar: ${aheadCount} yolcu
+            </p>`;
+        const body = groups.map(group => `
+            <section class="m-pax-group">
+                <h3 class="m-pax-group-head${group.isCurrent ? " is-current" : ""}">
+                    <span>${escapeHtml(group.title)}</span>
+                    <span class="m-pax-group-count">${group.passengers.length}</span>
+                </h3>
+                ${group.passengers.map(passengerCardHtml).join("")}
+            </section>`).join("");
+        openSheet("Yolcu listesi", summary + body);
+    }
+
     async function openRevenues() {
         if (!hasPermission("TRIP_FINANCIAL_DETAILS_VIEW")) return;
         try {
@@ -893,6 +1015,7 @@
         $(document).on("click", "#mMoveConfirmBtn", confirmMove);
         $(document).on("click", ".m-move-cancel", stopMoving);
 
+        $("#mPaxBtn").on("click", openPassengers);
         $("#mRevenueBtn").on("click", openRevenues);
         $("#mSheetClose, .m-sheet-backdrop").on("click", () => closeSheet());
         $(document).on("click", ".m-form-cancel", () => closeSheet());

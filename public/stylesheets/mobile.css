@@ -277,6 +277,15 @@ body.m-body {
     white-space: nowrap;
 }
 
+.m-chip-btn.m-chip-btn-ghost {
+    background-color: var(--m-card-bg);
+    color: var(--m-primary);
+}
+
+.m-chip-btn:active {
+    transform: scale(0.95);
+}
+
 .m-busPlan {
     flex: 1;
     min-height: 0;
@@ -614,6 +623,148 @@ body.m-body {
     flex-direction: column;
     gap: 0.45rem;
     margin-top: 1rem;
+}
+
+/* ---------- Yolcu listesi ---------- */
+.m-pax-summary {
+    font-size: 0.8rem;
+    color: var(--m-muted);
+    margin: 0 0 0.6rem;
+}
+
+.m-pax-group {
+    margin-bottom: 0.9rem;
+}
+
+.m-pax-group-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    background-color: #2660ff14;
+    border-left: 3px solid var(--m-primary);
+    color: var(--m-primary);
+    font-size: 0.8rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    padding: 0.35rem 0.5rem;
+    margin: 0 0 0.45rem;
+}
+
+.m-pax-group-head.is-current {
+    background-color: var(--m-primary);
+    border-left-color: var(--m-primary-darker);
+    color: #fff;
+}
+
+.m-pax-group-count {
+    font-size: 0.75rem;
+    font-weight: 700;
+    background-color: #fff;
+    color: var(--m-primary);
+    border-radius: var(--m-radius);
+    padding: 0 0.35rem;
+}
+
+.m-pax-card {
+    background-color: var(--m-card-bg);
+    border: 1px solid var(--m-line);
+    border-radius: var(--m-radius);
+    box-shadow: 0 0 5px rgb(0 0 0 / 10%);
+    padding: 0.5rem 0.6rem;
+    margin-bottom: 0.4rem;
+    font-size: 0.8rem;
+}
+
+.m-pax-card.m {
+    background-color: #21639618;
+    border-color: #21639650;
+}
+
+.m-pax-card.f {
+    background-color: #92025618;
+    border-color: #92025650;
+}
+
+.m-pax-card.ahead {
+    border-style: dashed;
+}
+
+.m-pax-card-top {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.3rem;
+}
+
+.m-pax-seat {
+    flex: 0 0 auto;
+    min-width: 1.8rem;
+    text-align: center;
+    background-color: var(--m-primary);
+    color: #fff;
+    border-radius: var(--m-radius);
+    font-weight: 700;
+    padding: 0.05rem 0.3rem;
+}
+
+.m-pax-card.m .m-pax-seat {
+    background-color: var(--m-male);
+}
+
+.m-pax-card.f .m-pax-seat {
+    background-color: var(--m-female);
+}
+
+.m-pax-name {
+    flex: 1;
+    min-width: 0;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.m-pax-status {
+    flex: 0 0 auto;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--m-muted);
+    border: 1px solid var(--m-line);
+    background-color: #fff;
+    border-radius: var(--m-radius);
+    padding: 0 0.3rem;
+}
+
+.m-pax-card-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.m-pax-card-row>span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.m-pax-price {
+    flex: 0 0 auto;
+    font-weight: 700;
+}
+
+.m-pax-phone {
+    color: var(--m-primary);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.m-pax-muted {
+    color: var(--m-muted);
+    flex: 0 0 auto;
 }
 
 /* ---------- Varış / cinsiyet seçimi ---------- */

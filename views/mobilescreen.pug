@@ -38,6 +38,8 @@ block content
           .m-trip-chrome-title
             span#mTripTitle Sefer
             small#mTripMeta.m-trip-chrome-meta
+          button#mPaxBtn.m-chip-btn.m-chip-btn-ghost(type="button" aria-label="Yolcu listesi")
+            i.fa-solid.fa-users
           if permissions.includes("TRIP_FINANCIAL_DETAILS_VIEW")
             button#mRevenueBtn.m-chip-btn(type="button")
               | ₺ Hasılat
