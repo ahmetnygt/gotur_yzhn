@@ -2232,22 +2232,24 @@ div.ticket-cancel-refund-open-close {
 }
 
 /* Login page styling */
+.login-wrap {
+    min-height: 100dvh;
+}
+
 .login-page {
     position: relative;
     width: 100%;
-    min-height: calc(100vh - 2rem);
-    padding: clamp(2rem, 4vw, 4rem);
-    padding-left: 10rem;
-    padding-right: 10rem;
-    border-radius: 24px;
+    min-height: 100dvh;
+    padding: max(1rem, env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+    border-radius: 0;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: clamp(2rem, 4vw, 4rem);
+    gap: 1.25rem;
     background: linear-gradient(135deg, #eef5ff 0%, #f8fbff 60%, #f1f9ff 100%);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+    box-shadow: none;
 }
 
 .login-page>* {
@@ -2285,9 +2287,15 @@ div.ticket-cancel-refund-open-close {
 }
 
 .login-logo {
-    width: min(220px, 60vw);
+    width: min(160px, 42vw);
     height: auto;
     object-fit: contain;
+}
+
+.login-brand .d-flex {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem;
 }
 
 .login-brand h1 {
@@ -2389,6 +2397,7 @@ div.ticket-cancel-refund-open-close {
 }
 
 .login-submit {
+    width: 100%;
     border-radius: 0.85rem;
     font-weight: 600;
     padding: 0.85rem;
@@ -2406,17 +2415,64 @@ div.ticket-cancel-refund-open-close {
 }
 
 @media (min-width: 992px) {
+    .login-wrap {
+        padding: 1rem 1rem 0;
+        min-height: auto;
+    }
+
     .login-page {
+        min-height: calc(100vh - 2rem);
+        padding: clamp(2rem, 4vw, 4rem) 10rem;
+        border-radius: 24px;
+        gap: clamp(2rem, 4vw, 4rem);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.45);
         flex-direction: row;
         align-items: center;
         justify-content: space-between;
+    }
+
+    .login-logo {
+        width: min(220px, 60vw);
+    }
+
+    .login-brand .d-flex {
+        justify-content: flex-start;
+    }
+
+    .login-submit {
+        width: auto;
     }
 }
 
 @media (max-width: 991px) {
     .login-page {
-        padding-left: 1.5rem;
-        padding-right: 1.5rem;
+        justify-content: flex-start;
+        padding-top: max(1.25rem, env(safe-area-inset-top));
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+
+    .login-card {
+        order: -1;
+        padding: 1.25rem;
+    }
+
+    .login-highlights {
+        display: none;
+    }
+
+    .login-brand h1 {
+        font-size: 1.5rem;
+        margin-bottom: 0.5rem;
+    }
+
+    .login-brand .lead {
+        font-size: 0.95rem;
+        margin-bottom: 0;
+    }
+
+    .login-brand .mb-4 {
+        margin-bottom: 0.75rem !important;
     }
 }
 
@@ -2428,11 +2484,8 @@ body:has(.login-page) {
 }
 
 @media (max-width: 576px) {
-
     .login-page {
-        padding-left: 1.25rem;
-        padding-right: 1.25rem;
-        min-height: calc(100dvh - 2rem);
+        min-height: 100dvh;
     }
 
     .login-card,
@@ -2447,6 +2500,7 @@ body:has(.login-page) {
 
     .login-support-link {
         width: 100%;
+        font-size: 0.85rem;
     }
 }
 

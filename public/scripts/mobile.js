@@ -23,7 +23,6 @@
     let movingToId = null;
     let cancelingSeatPNR = null;
     let loadToken = 0;
-    let tripStopsCache = { tripId: null, stops: [] };
     window.permissions = [];
 
     function getCookieValue(name) {
@@ -475,6 +474,72 @@
         return true;
     }
 
+    function fillTicketRowFromCustomer($row, customer) {
+        if (!$row.length || !customer) return;
+        $row.find(".name input").val(customer.name || "");
+        $row.find(".surname input").val(customer.surname || "");
+        if (customer.nationality) {
+            const nat = String(customer.nationality).trim().toLowerCase();
+            const $nat = $row.find(".nationality select");
+            const $opt = $nat.find("option").filter((_, opt) => String(opt.value).toLowerCase() === nat).first();
+            if ($opt.length) $nat.val($opt.val());
+        }
+        if (customer.customerType) $row.find(".type select").val(customer.customerType);
+        if (customer.customerCategory) $row.find(".category select").val(customer.customerCategory);
+        if (customer.gender === "m") {
+            $row.find(".gender input.male").prop("checked", true);
+            $row.find(".gender input.female").prop("checked", false);
+            $row.addClass("m").removeClass("f");
+        } else if (customer.gender === "f") {
+            $row.find(".gender input.male").prop("checked", false);
+            $row.find(".gender input.female").prop("checked", true);
+            $row.addClass("f").removeClass("m");
+        }
+        if (customer.phoneNumber) {
+            $("#mSheetBody .phone input").val(customer.phoneNumber);
+        }
+        const $price = $row.find(".price input");
+        if ($price.length && $price.data("originalPrice") == null && $price.val() !== "") {
+            $price.data("originalPrice", Number($price.val()));
+        }
+        const originalPrice = Number($price.data("originalPrice"));
+        const $point = $row.find(".price span.customer-point");
+        if (customer.pointOrPercent === "point") {
+            $point.html(`${customer.point_amount || 0} p`).addClass("text-danger")
+                .data("pointorpercent", "point")
+                .data("pointamount", customer.point_amount);
+            if (!Number.isNaN(originalPrice)) $price.val(originalPrice);
+        } else if (customer.pointOrPercent === "percent") {
+            $point.html(`${customer.percent || 0}%`).addClass("text-danger")
+                .data("pointorpercent", "percent")
+                .data("pointamount", customer.point_amount);
+            if (!Number.isNaN(originalPrice)) {
+                const discount = Number(customer.percent) || 0;
+                $price.val(originalPrice - (originalPrice / 100 * discount));
+            }
+        } else if ($point.length) {
+            $point.html("").removeClass("text-danger")
+                .data("pointorpercent", "")
+                .data("pointamount", "");
+            if (!Number.isNaN(originalPrice)) $price.val(originalPrice);
+        }
+    }
+
+    function bindCustomerLookup() {
+        $("#mSheetBody .identity input").off("blur.customerLookup").on("blur.customerLookup", async function () {
+            const idNumber = getTrimmedValue($(this).val());
+            if (!idNumber) return;
+            try {
+                const customer = await $.ajax({
+                    url: "/get-customer",
+                    type: "GET",
+                    data: { idNumber }
+                });
+                if (customer) fillTicketRowFromCustomer($(this).closest(".ticket-row"), customer);
+            } catch (err) { /* kayıt yok */ }
+        });
+    }
+
     async function abortPending() {
         const payload = pendingAbortPayload;
         pendingAbortPayload = null;
@@ -553,6 +618,7 @@
             if (pendingFormOpen) capturePendingAbort(seatsForForm);
             else pendingAbortPayload = null;
             $("#mSheetBody select[data-searchable-select]").removeAttr("data-searchable-select");
+            bindCustomerLookup();
         } catch (err) {
             toast(ajaxError(err, "Bilet formu alınamadı."), "error");
         }
@@ -925,21 +991,16 @@
         }
     }
 
-    async function tripStopsOrdered() {
-        if (tripStopsCache.tripId === currentTripId) {
-            return tripStopsCache.stops;
-        }
-        let stops = [];
-        try {
-            const response = await $.get("/get-trip-stops", { tripId: currentTripId });
-            if (Array.isArray(response)) stops = response;
-        } catch (err) { /* sıralama olmadan da listelenebilir */ }
-        tripStopsCache = { tripId: currentTripId, stops };
-        return stops;
+    function formatListPhone(phone) {
+        let digits = toOnlyDigits(phone);
+        if (!digits) return { display: "", tel: "" };
+        if (digits.startsWith("90") && digits.length >= 12) digits = digits.slice(2);
+        if (!digits.startsWith("0")) digits = `0${digits}`;
+        return { display: digits, tel: digits };
     }
 
-    // Koltuk planı bu durak, önceki ve sonraki durakların biletlerini birlikte
-    // taşıyor; listede yalnızca bu duraktan ve sonrasından binenler gösterilir.
+    // Koltuk planı önceki/sonraki durak biletlerini de taşır; listede yalnızca
+    // bu durakta araçta olanlar (binen + henüz inmemiş) gösterilir.
     function collectPassengers() {
         const skipStatus = ["pending", "canceled", "refund"];
         const passengers = [];
@@ -947,7 +1008,9 @@
             const $seat = $(this);
             const name = getTrimmedValue($seat.data("name"));
             const status = getTrimmedValue($seat.data("status"));
-            if (!name || $seat.hasClass("before") || skipStatus.includes(status)) return;
+            if (!name || skipStatus.includes(status)) return;
+            if ($seat.hasClass("ahead")) return;
+            if ($seat.hasClass("before") && !isTakenSeat($seat)) return;
             passengers.push({
                 seat: getTrimmedValue($seat.data("seat-number")),
                 name,
@@ -958,52 +1021,21 @@
                 pnr: getTrimmedValue($seat.data("pnr")),
                 branch: getTrimmedValue($seat.data("branch")),
                 gender: getTrimmedValue($seat.data("gender")),
-                status,
-                isAhead: $seat.hasClass("ahead")
+                status
             });
         });
         passengers.sort((a, b) => Number(a.seat) - Number(b.seat));
         return passengers;
     }
 
-    function groupPassengersByStop(passengers, orderedStops) {
-        const orderOf = new Map();
-        orderedStops.forEach((stop, index) => {
-            const title = getTrimmedValue(stop && stop.title);
-            if (title && !orderOf.has(title)) orderOf.set(title, index);
-        });
-
-        const groups = [];
-        const byTitle = new Map();
-        passengers.forEach(passenger => {
-            const title = passenger.from || "-";
-            if (!byTitle.has(title)) {
-                const group = { title, passengers: [], isCurrent: !passenger.isAhead };
-                byTitle.set(title, group);
-                groups.push(group);
-            }
-            const group = byTitle.get(title);
-            if (!passenger.isAhead) group.isCurrent = true;
-            group.passengers.push(passenger);
-        });
-
-        return groups.sort((a, b) => {
-            if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
-            const orderA = orderOf.has(a.title) ? orderOf.get(a.title) : Number.MAX_SAFE_INTEGER;
-            const orderB = orderOf.has(b.title) ? orderOf.get(b.title) : Number.MAX_SAFE_INTEGER;
-            if (orderA !== orderB) return orderA - orderB;
-            return a.title.localeCompare(b.title, "tr");
-        });
-    }
-
     function passengerCardHtml(passenger) {
-        const phoneDigits = toOnlyDigits(passenger.phone);
-        const phoneHtml = phoneDigits
-            ? `<a class="m-pax-phone" href="tel:${escapeHtml(phoneDigits)}">${escapeHtml(passenger.phone)}</a>`
+        const phone = formatListPhone(passenger.phone);
+        const phoneHtml = phone.display
+            ? `<a class="m-pax-phone" href="tel:${escapeHtml(phone.tel)}">${escapeHtml(phone.display)}</a>`
             : "<span class=\"m-pax-muted\">Telefon yok</span>";
         const seatLabel = passenger.seat.length < 2 ? `0${passenger.seat}` : passenger.seat;
         return `
-            <article class="m-pax-card ${escapeHtml(passenger.gender)}${passenger.isAhead ? " ahead" : ""}">
+            <article class="m-pax-card ${escapeHtml(passenger.gender)}">
                 <div class="m-pax-card-top">
                     <span class="m-pax-seat">${escapeHtml(seatLabel)}</span>
                     <span class="m-pax-name">${escapeHtml(passenger.name)}</span>
@@ -1020,57 +1052,75 @@
             </article>`;
     }
 
-    async function openPassengers() {
+    function openPassengers() {
         if (!currentTripId) return;
         const passengers = collectPassengers();
         if (!passengers.length) {
-            openSheet("Yolcu listesi", "<p class=\"text-muted mb-0\">Bu durak ve sonrası için yolcu bulunmuyor.</p>");
+            openSheet("Yolcu listesi", "<p class=\"text-muted mb-0\">Bu durakta araçta yolcu bulunmuyor.</p>");
             return;
         }
-        const groups = groupPassengersByStop(passengers, await tripStopsOrdered());
-        const currentCount = passengers.filter(p => !p.isAhead).length;
-        const aheadCount = passengers.length - currentCount;
         const summary = `
             <p class="m-pax-summary">
-                <strong>${escapeHtml(currentStopStr)}</strong>: ${currentCount} yolcu
-                · Sonraki duraklar: ${aheadCount} yolcu
+                <strong>${escapeHtml(currentStopStr)}</strong>: ${passengers.length} yolcu
             </p>`;
-        const body = groups.map(group => `
-            <section class="m-pax-group">
-                <h3 class="m-pax-group-head${group.isCurrent ? " is-current" : ""}">
-                    <span>${escapeHtml(group.title)}</span>
-                    <span class="m-pax-group-count">${group.passengers.length}</span>
-                </h3>
-                ${group.passengers.map(passengerCardHtml).join("")}
-            </section>`).join("");
-        openSheet("Yolcu listesi", summary + body);
+        openSheet("Yolcu listesi", summary + passengers.map(passengerCardHtml).join(""));
     }
 
     async function openRevenues() {
-        if (!hasPermission("TRIP_FINANCIAL_DETAILS_VIEW")) return;
+        if (!currentTripId) {
+            toast("Önce bir sefer açın.", "error");
+            return;
+        }
         try {
-            const revenues = await $.get("/get-trip-revenues", { tripId: currentTripId, stopId: fromId || currentStop });
-            const summary = [];
+            const revenues = await $.get("/get-trip-revenues", { tripId: currentTripId, stopId: currentStop });
+            const summaryRows = [];
             $(".m-busPlan .trip-incomes-popup .input-group").each(function () {
                 const label = $(this).find(".input-group-text").text().trim();
                 const vals = $(this).find("input").map((_, el) => $(el).val()).get();
-                if (label) summary.push(`<div class="m-revenue-card"><h3>${escapeHtml(label)}</h3><div>${escapeHtml(vals.join(" / "))}</div></div>`);
+                if (!label) return;
+                summaryRows.push(`
+                    <div class="m-revenue-row">
+                        <span>${escapeHtml(label)}</span>
+                        <span>${escapeHtml(vals[0] || "0")}</span>
+                        <span>${escapeHtml(vals[1] || "0")}</span>
+                    </div>`);
             });
-            const branches = (revenues.branches || []).map(b => `
-                <div class="m-revenue-card">
-                    <h3>${escapeHtml(b.title || "")}</h3>
-                    <div>Durak: ${b.currentCount} / ${b.currentAmount}₺</div>
-                    <div>Toplam: ${b.totalCount} / ${b.totalAmount}₺</div>
-                </div>`).join("");
+            const branchRows = (revenues.branches || []).map(b => `
+                <tr>
+                    <td>${escapeHtml(b.title || "")}</td>
+                    <td>${b.currentCount}</td>
+                    <td>${b.currentAmount}₺</td>
+                    <td>${b.totalCount}</td>
+                    <td>${b.totalAmount}₺</td>
+                </tr>`).join("");
             const totals = revenues.totals || {};
             openSheet("Sefer hasılatı", `
-                ${summary.join("")}
-                <h3 class="h6 mt-3">Şubeler</h3>
-                ${branches || "<p class='text-muted'>Kayıt yok.</p>"}
-                <div class="m-revenue-card">
-                    <h3>Toplam</h3>
-                    <div>Durak: ${totals.currentCount || 0} / ${totals.currentAmount || 0}₺</div>
-                    <div>Tümü: ${totals.totalCount || 0} / ${totals.totalAmount || 0}₺</div>
+                ${summaryRows.length ? `<h3 class="h6">Özet</h3><div class="m-revenue-summary">${summaryRows.join("")}</div>` : ""}
+                <h3 class="h6${summaryRows.length ? " mt-3" : ""}">Şubeler</h3>
+                <div class="m-revenue-table-wrap">
+                    <table class="table table-sm table-bordered mb-0 m-revenue-table">
+                        <thead>
+                            <tr>
+                                <th>Şube</th>
+                                <th>Durak Adet</th>
+                                <th>Durak Miktar</th>
+                                <th>Toplam Adet</th>
+                                <th>Toplam Miktar</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${branchRows || `<tr><td colspan="5" class="text-muted">Kayıt yok.</td></tr>`}
+                        </tbody>
+                        <tfoot>
+                            <tr>
+                                <th>Toplam</th>
+                                <th>${totals.currentCount || 0}</th>
+                                <th>${totals.currentAmount || 0}₺</th>
+                                <th>${totals.totalCount || 0}</th>
+                                <th>${totals.totalAmount || 0}₺</th>
+                            </tr>
+                        </tfoot>
+                    </table>
                 </div>
             `);
         } catch (err) {

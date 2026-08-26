@@ -957,6 +957,38 @@ body.m-body {
 }
 
 /* ---------- Hasılat ---------- */
+.m-revenue-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.m-revenue-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 0.75rem;
+    align-items: center;
+    background-color: #f8f9fa;
+    border: 1px solid var(--m-line);
+    border-radius: var(--m-radius);
+    padding: 0.5rem 0.7rem;
+    font-size: 0.85rem;
+}
+
+.m-revenue-row span:first-child {
+    font-weight: 600;
+}
+
+.m-revenue-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.m-revenue-table {
+    font-size: 0.75rem;
+    min-width: 28rem;
+}
+
 .m-revenue-card {
     background-color: #f8f9fa;
     border: 1px solid var(--m-line);
