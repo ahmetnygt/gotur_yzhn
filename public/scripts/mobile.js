@@ -14,6 +14,7 @@
     let fromId = null;
     let toId = null;
     let pendingFormOpen = false;
+    let pendingAbortPayload = null;
     let sheetOnClose = null;
     let isMoving = false;
     let movingSeatPNR = null;
@@ -129,12 +130,64 @@
         $("#mSheet, .m-sheet-backdrop").removeAttr("hidden");
     }
 
-    function closeSheet(skipCallback) {
+    async function closeSheet(skipCallback) {
         const cb = sheetOnClose;
         sheetOnClose = null;
         $("#mSheet, .m-sheet-backdrop").attr("hidden", true);
         $("#mSheetBody, #mSheetFoot").empty();
-        if (!skipCallback && typeof cb === "function") cb();
+        if (!skipCallback && typeof cb === "function") await cb();
+    }
+
+    function parsePendingIdsValue(value) {
+        if (value == null || value === "") return [];
+        if (Array.isArray(value)) return value.map(String).filter(Boolean);
+        const str = String(value).trim();
+        if (!str) return [];
+        try {
+            const parsed = JSON.parse(str);
+            if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+            if (parsed != null && parsed !== "") return [String(parsed)];
+        } catch (err) { /* comma-separated from Pug */ }
+        return str.split(",").map(part => part.trim()).filter(Boolean);
+    }
+
+    function capturePendingAbort(seats) {
+        pendingAbortPayload = {
+            pendingIds: parsePendingIdsValue($("#mSheetBody #pendingIds").val()),
+            seats: (seats || []).map(String),
+            date: currentTripDate,
+            time: currentTripTime,
+            tripId: currentTripId
+        };
+    }
+
+    async function dismissOpenSheet() {
+        if (pendingFormOpen) {
+            await abortPending();
+            pendingFormOpen = false;
+        }
+        await closeSheet(true);
+    }
+
+    async function closeOpenTrip() {
+        loadToken += 1;
+        await dismissOpenSheet();
+        if (isMoving) stopMoving();
+        currentTripId = null;
+        currentTripDate = null;
+        currentTripTime = null;
+        currentTripPlaceTime = null;
+        currentGroupId = null;
+        fromId = currentStop;
+        selectedSeats = [];
+        selectedTakenSeats = [];
+        $(".m-busPlan").empty();
+        $(".m-ticketops").empty();
+        $(".m-tripRows .tripRow").removeClass("selected");
+        $("#mTripTitle").text("Sefer");
+        $("#mTripMeta").text("");
+        syncSelectionBar();
+        showPanel("#mTripsPanel");
     }
 
     function syncSelectionBar() {
@@ -423,18 +476,19 @@
     }
 
     async function abortPending() {
-        const pendingIds = $("#mSheetBody #pendingIds").val();
-        if (!pendingIds) return;
+        const payload = pendingAbortPayload;
+        pendingAbortPayload = null;
+        if (!payload || !payload.pendingIds.length || !payload.seats.length) return;
         try {
             await $.ajax({
                 url: "/post-delete-pending-tickets",
                 type: "POST",
                 data: {
-                    seats: JSON.stringify(selectedSeats),
-                    pendingIds,
-                    date: currentTripDate,
-                    time: currentTripTime,
-                    tripId: currentTripId
+                    seats: JSON.stringify(payload.seats),
+                    pendingIds: JSON.stringify(payload.pendingIds),
+                    date: payload.date,
+                    time: payload.time,
+                    tripId: payload.tripId
                 }
             });
         } catch (err) { /* still reload */ }
@@ -496,6 +550,8 @@
                     }
                 }
             );
+            if (pendingFormOpen) capturePendingAbort(seatsForForm);
+            else pendingAbortPayload = null;
             $("#mSheetBody select[data-searchable-select]").removeAttr("data-searchable-select");
         } catch (err) {
             toast(ajaxError(err, "Bilet formu alınamadı."), "error");
@@ -542,6 +598,7 @@
                 });
             }
             pendingFormOpen = false;
+            pendingAbortPayload = null;
             closeSheet(true);
             toast("İşlem tamamlandı.", "success");
             await reloadCurrent();
@@ -577,6 +634,9 @@
             if (!ownTicket && ownStop && !hasPermission("CONVERT_OTHER_BRANCH_RESERVATION_TO_SALE_IN_OWN_BRANCH")) return false;
             if (!ownTicket && !ownStop && !hasPermission("CONVERT_OTHER_BRANCH_RESERVATION_TO_SALE_IN_OTHER_BRANCH")) return false;
             return true;
+        }
+        if (action === "delete_pending") {
+            return status === "pending";
         }
         if (action === "cancel") {
             if (status !== "reservation") return false;
@@ -616,6 +676,9 @@
         if (takenActionAllowed($seat, "complete")) {
             actions.push('<button type="button" class="btn btn-primary m-taken-act" data-action="complete">Satışa çevir</button>');
         }
+        if (takenActionAllowed($seat, "delete_pending")) {
+            actions.push('<button type="button" class="btn btn-outline-danger m-taken-act" data-action="delete_pending">İptal</button>');
+        }
         if (takenActionAllowed($seat, "cancel")) {
             actions.push('<button type="button" class="btn btn-outline-danger m-taken-act" data-action="cancel">İptal</button>');
         }
@@ -649,6 +712,10 @@
             await startTicketForm("complete", $seat.data("gender"), null, $seat.data("to") || "", true);
             return;
         }
+        if (action === "delete_pending") {
+            await deletePendingSeats();
+            return;
+        }
         if (action === "cancel" || action === "refund") {
             try {
                 const html = await $.ajax({
@@ -672,8 +739,56 @@
             return;
         }
         if (action === "move") {
-            await startMove(pnr);
+            await closeSheet(true);
+            openMoveTargetSheet(pnr);
         }
+    }
+
+    async function deletePendingSeats() {
+        const seats = selectedTakenSeats.slice();
+        const pendingIds = seats.map(num => {
+            const id = $(`.m-busPlan .seat[data-seat-number='${num}']`).data("pending-ticket-id");
+            return id == null || id === "" ? null : String(id);
+        }).filter(Boolean);
+        if (!seats.length || !pendingIds.length) {
+            toast("Silinecek bekleyen koltuk bulunamadı.", "error");
+            return;
+        }
+        try {
+            await $.ajax({
+                url: "/post-delete-pending-tickets",
+                type: "POST",
+                data: {
+                    seats: JSON.stringify(seats),
+                    pendingIds: JSON.stringify(pendingIds),
+                    date: currentTripDate,
+                    time: currentTripTime,
+                    tripId: currentTripId
+                }
+            });
+            await closeSheet(true);
+            toast("Koltuk kilidi kaldırıldı.", "success");
+            await reloadCurrent();
+        } catch (err) {
+            toast(ajaxError(err, "Koltuk kilidi kaldırılamadı."), "error");
+        }
+    }
+
+    function openMoveTargetSheet(pnr) {
+        openSheet(
+            "Bilet transfer",
+            `<p class="mb-3">Transfer bu seferde mi, başka seferde mi yapılsın?</p>
+             <div class="m-action-stack">
+                <button type="button" class="btn btn-primary m-move-choice" data-stay="1">Bu seferde</button>
+                <button type="button" class="btn btn-outline-primary m-move-choice" data-stay="0">Başka seferde</button>
+             </div>`,
+            `<button type="button" class="btn btn-outline-secondary w-100 m-form-cancel">Vazgeç</button>`
+        );
+        $("#mSheetBody .m-move-choice").on("click", async function () {
+            const stayOnTrip = String($(this).data("stay")) === "1";
+            await closeSheet(true);
+            await startMove(pnr, { stayOnTrip });
+        });
     }
 
     function bindCancelBoxes() {
@@ -710,7 +825,8 @@
         });
     }
 
-    async function startMove(pnr) {
+    async function startMove(pnr, options = {}) {
+        const stayOnTrip = Boolean(options.stayOnTrip);
         movingSeatPNR = pnr;
         try {
             const html = await $.ajax({
@@ -724,7 +840,7 @@
                 data: { date: currentTripDate, time: currentTripTime, tripId: currentTripId, stopId: currentStop }
             });
             const allowedStops = (stops.arr || []).filter(rs => !rs.isRestricted);
-            const options = (stops.arr || []).map(rs => {
+            const optionsHtml = (stops.arr || []).map(rs => {
                 if (rs.isRestricted) return `<option value="" disabled>${rs.stopStr}</option>`;
                 const selected = String(rs.stopId) === String(toId) ? " selected" : "";
                 return `<option value="${rs.stopId}"${selected}>${rs.stopStr}</option>`;
@@ -739,11 +855,14 @@
             selectedSeats = [];
             $(".seat").removeClass("selected");
             $(".m-move-banner").remove();
+            const bannerText = stayOnTrip
+                ? "Transfer: bu seferde boş koltuk seçin"
+                : "Transfer: hedef sefer ve boş koltuk seçin";
             $(".m-toolbar").after(`
                 <div class="m-move-banner">
                     <div>
-                        <div>Transfer: hedef sefer ve boş koltuk seçin</div>
-                        <select class="form-select form-select-sm mt-1 m-move-to">${options}</select>
+                        <div>${bannerText}</div>
+                        <select class="form-select form-select-sm mt-1 m-move-to">${optionsHtml}</select>
                     </div>
                     <button type="button" class="btn btn-sm btn-light m-move-cancel">Vazgeç</button>
                 </div>`);
@@ -751,8 +870,11 @@
             $(document).off("change.mMoveTo").on("change.mMoveTo", ".m-move-to", function () {
                 movingToId = $(this).val();
             });
-            showPanel("#mTripsPanel");
+            if (!stayOnTrip) showPanel("#mTripsPanel");
             syncSelectionBar();
+            toast(stayOnTrip
+                ? "Bu seferde boş koltuk seçip Transfer et’e basın."
+                : "Hedef seferi açın, boş koltuk seçip Transfer et’e basın.", "success");
         } catch (err) {
             isMoving = false;
             toast(ajaxError(err, "Transfer başlatılamadı."), "error");
@@ -778,6 +900,9 @@
             return;
         }
         const destTo = movingToId || $(".m-move-to").val() || toId;
+        const $btn = $("#mMoveConfirmBtn");
+        if ($btn.prop("disabled")) return;
+        $btn.prop("disabled", true).text("Transfer ediliyor…");
         try {
             await $.ajax({
                 url: "/post-move-tickets",
@@ -795,6 +920,7 @@
             toast("Transfer tamamlandı.", "success");
             await reloadCurrent();
         } catch (err) {
+            $btn.prop("disabled", false).text("Transfer et");
             toast(ajaxError(err, "Transfer başarısız."), "error");
         }
     }
@@ -980,6 +1106,10 @@
         currentStopStr = $("#currentStop").find("option:selected").text().trim();
 
         // Takvim eklentisi yüklenemezse sefer listesi yine de açılabilsin.
+        const onCalendarDateChange = async (dateInput) => {
+            await closeOpenTrip();
+            await loadTripsList(dateInput);
+        };
         try {
             flatpickr("#calendar", {
                 locale: "tr",
@@ -988,22 +1118,42 @@
                 altFormat: "d F Y",
                 dateFormat: "Y-m-d",
                 onChange: function (selectedDates, dateStr) {
-                    loadTripsList(dateStr || selectedDates[0]);
+                    onCalendarDateChange(dateStr || selectedDates[0]);
                 }
             });
         } catch (err) {
             $("#calendar").attr("type", "date").val(formatDateForRequest(new Date())).on("change", function () {
-                loadTripsList($(this).val());
+                onCalendarDateChange($(this).val());
             });
         }
 
         loadTripsList(new Date());
 
-        $("#currentStop").on("change", function () {
+        $("#currentStop").on("change", async function () {
             currentStop = $(this).val();
             currentStopStr = $(this).find("option:selected").text().trim();
             const dateVal = $("#calendar").val() || new Date();
-            loadTripsList(dateVal);
+            const openTripId = currentTripId;
+            const openTripDate = currentTripDate;
+            const openTripTime = currentTripTime;
+            const tripWasOpen = $("#mTripPanel").hasClass("is-active");
+
+            if (tripWasOpen) await dismissOpenSheet();
+            await loadTripsList(dateVal);
+
+            if (!openTripId) return;
+
+            const $match = $(`.m-tripRows .tripRow[data-tripid='${openTripId}']`);
+            if ($match.length && tripWasOpen) {
+                await loadTrip(
+                    openTripDate || $match.data("date") || dateVal,
+                    openTripTime || $match.data("time"),
+                    openTripId
+                );
+            } else if (!$match.length) {
+                await closeOpenTrip();
+                await loadTripsList(dateVal);
+            }
         });
 
         $("#mBackToTrips").on("click", function () {
