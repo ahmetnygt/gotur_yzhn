@@ -122,6 +122,24 @@ function emptyLikeToNull(value) {
     return value;
 }
 
+function toArrayParam(value) {
+    if (value === undefined || value === null || value === "") {
+        return [];
+    }
+    if (Array.isArray(value)) {
+        return value.filter((item) => item !== undefined && item !== null && item !== "");
+    }
+    if (typeof value === "object") {
+        return Object.values(value).filter((item) => item !== undefined && item !== null && item !== "");
+    }
+    return [value];
+}
+
+function moneyAmount(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+}
+
 const UI_COOKIE_NAME = "gtr_ui";
 const UI_COOKIE_MAX_AGE = 365 * 24 * 60 * 60 * 1000;
 
@@ -1385,28 +1403,26 @@ exports.getTrip = async (req, res, next) => {
 
             if (soldStatuses.includes(ticket.status)) {
                 totalSoldCount++
-                totalSoldAmount += ticket.price
+                totalSoldAmount += moneyAmount(ticket.price)
                 if (ticket.fromRouteStopId == stopId) {
                     currentSoldCount++
-                    currentSoldAmount += ticket.price
+                    currentSoldAmount += moneyAmount(ticket.price)
                 }
             } else if (ticket.status === "reservation") {
                 totalReservedCount++
-                totalReservedAmount += ticket.price
+                totalReservedAmount += moneyAmount(ticket.price)
                 if (ticket.fromRouteStopId == stopId) {
                     currentReservedCount++
-                    currentReservedAmount += ticket.price
+                    currentReservedAmount += moneyAmount(ticket.price)
                 }
             }
         }
 
         cargos.forEach(cargoInstance => {
             const cargo = cargoInstance.get({ plain: true });
-            const amount = Number(cargo.price);
+            const amount = moneyAmount(cargo.price);
             cargoCount += 1
-            if (!Number.isNaN(amount)) {
-                cargoAmount += amount
-            }
+            cargoAmount += amount
         })
         const fromStr = stops.find(s => s.id == stopId).title
         const toStr = stops.find(s => s.id == routeStops[routeStops.length - 1].stopId).title
@@ -2481,9 +2497,13 @@ exports.getTripRevenues = async (req, res, next) => {
         });
 
         const userIds = [...new Set(tickets.map(t => t.userId).filter(id => id))];
-        const users = await req.models.FirmUser.findAll({ where: { id: userIds }, raw: true });
+        const users = userIds.length
+            ? await req.models.FirmUser.findAll({ where: { id: { [Op.in]: userIds } }, raw: true })
+            : [];
         const branchIds = [...new Set(users.map(u => u.branchId).filter(id => id))];
-        const branches = await req.models.Branch.findAll({ where: { id: { [Op.in]: branchIds } }, raw: true });
+        const branches = branchIds.length
+            ? await req.models.Branch.findAll({ where: { id: { [Op.in]: branchIds } }, raw: true })
+            : [];
 
         const userBranch = {};
         users.forEach(u => userBranch[u.id] = u.branchId);
@@ -2506,7 +2526,7 @@ exports.getTripRevenues = async (req, res, next) => {
                 };
             }
 
-            const amount = Number(ticket.price);
+            const amount = moneyAmount(ticket.price);
             branchData[branchId].totalAmount += amount;
             branchData[branchId].totalCount += 1;
 
@@ -2525,7 +2545,54 @@ exports.getTripRevenues = async (req, res, next) => {
             return acc;
         }, { currentAmount: 0, currentCount: 0, totalAmount: 0, totalCount: 0 });
 
-        res.json({ branches: branchesArr, totals });
+        const soldStatuses = ["completed", "web"];
+        const summary = {
+            currentSoldCount: 0,
+            currentSoldAmount: 0,
+            totalSoldCount: 0,
+            totalSoldAmount: 0,
+            currentReservedCount: 0,
+            currentReservedAmount: 0,
+            totalReservedCount: 0,
+            totalReservedAmount: 0,
+            cargoCount: 0,
+            cargoAmount: 0,
+            grandCount: 0,
+            grandAmount: 0,
+        };
+
+        tickets.forEach(ticket => {
+            const amount = moneyAmount(ticket.price);
+            if (soldStatuses.includes(ticket.status)) {
+                summary.totalSoldCount += 1;
+                summary.totalSoldAmount += amount;
+                if (ticket.fromRouteStopId == stopId) {
+                    summary.currentSoldCount += 1;
+                    summary.currentSoldAmount += amount;
+                }
+            } else if (ticket.status === "reservation") {
+                summary.totalReservedCount += 1;
+                summary.totalReservedAmount += amount;
+                if (ticket.fromRouteStopId == stopId) {
+                    summary.currentReservedCount += 1;
+                    summary.currentReservedAmount += amount;
+                }
+            }
+        });
+
+        const cargos = await req.models.Cargo.findAll({
+            where: { tripId, fromStopId: stopId },
+            raw: true,
+        });
+        cargos.forEach(cargo => {
+            summary.cargoCount += 1;
+            summary.cargoAmount += moneyAmount(cargo.price);
+        });
+
+        summary.grandCount = summary.totalSoldCount + summary.totalReservedCount + summary.cargoCount;
+        summary.grandAmount = summary.totalSoldAmount + summary.totalReservedAmount + summary.cargoAmount;
+
+        res.json({ branches: branchesArr, totals, summary });
     } catch (err) {
         console.error("getTripRevenues error:", err);
         res.status(500).json({ message: "Gelir bilgisi alınamadı." });
@@ -2929,13 +2996,18 @@ exports.getErpLogin = async (req, res, next) => {
     }
 
     const title = firmRecord?.displayName || DEFAULT_TITLE;
+    const loginError = req.query.error === "csrf"
+        ? "Güvenlik doğrulaması başarısız oldu. Sayfa yenilendi, tekrar deneyin."
+        : req.query.error === "1"
+            ? "Kullanıcı adı veya şifre hatalı."
+            : null;
 
     try {
         const firmLogo = await resolveFirmLoginLogo(req, firmRecord);
-        res.render("erplogin", { isNoNavbar: true, firmLogo, title });
+        res.render("erplogin", { isNoNavbar: true, firmLogo, title, loginError });
     } catch (error) {
         console.error("Login logo resolution failed:", error);
-        res.render("erplogin", { isNoNavbar: true, firmLogo: DEFAULT_LOGIN_LOGO, title });
+        res.render("erplogin", { isNoNavbar: true, firmLogo: DEFAULT_LOGIN_LOGO, title, loginError });
     }
 }
 
@@ -3073,6 +3145,7 @@ exports.getPermissions = (req, res) => res.json(req.session.permissions || []);
 
 exports.getTicketRow = async (req, res, next) => {
     const { isOpen, isTaken, date: tripDate, time: tripTime, tripId, stopId, seatTypes, action } = req.query;
+    const seatTypeList = toArrayParam(seatTypes);
 
     const tripWhere = {};
     if (tripDate) tripWhere.date = tripDate;
@@ -3147,7 +3220,7 @@ exports.getTicketRow = async (req, res, next) => {
             price,
             trip,
             isOwnBranch,
-            seatTypes,
+            seatTypes: seatTypeList,
             action,
             takeOnOptions,
             takeOffOptions,
@@ -3156,10 +3229,19 @@ exports.getTicketRow = async (req, res, next) => {
     }
 
     if (isTaken) {
-        const { seatNumbers } = req.query;
-        const ticket = seatNumbers
-            ? await req.models.Ticket.findAll({ where: { tripId: trip.id, seatNo: { [Op.in]: seatNumbers }, fromRouteStopId: stopId, status: { [Op.notIn]: ["canceled", "refund"] } } })
-            : [];
+        const seatNumberList = toArrayParam(req.query.seatNumbers);
+        if (!seatNumberList.length) {
+            return res.status(400).json({ message: "Lütfen en az bir koltuk seçiniz." });
+        }
+
+        const ticket = await req.models.Ticket.findAll({
+            where: {
+                tripId: trip.id,
+                seatNo: { [Op.in]: seatNumberList },
+                fromRouteStopId: stopId,
+                status: { [Op.notIn]: ["canceled", "refund"] },
+            },
+        });
 
         if (!ticket.length) {
             return res.status(404).json({ message: "Bilet bulunamadı" });
@@ -3212,11 +3294,11 @@ exports.getTicketRow = async (req, res, next) => {
 
         return res.render("mixins/ticketRow", {
             gender,
-            seats: seatNumbers,
+            seats: seatNumberList,
             ticket,
             trip,
             isOwnBranch,
-            seatTypes,
+            seatTypes: seatTypeList,
             action,
             price: pricesForTickets,
             takeOnOptions,
@@ -3342,11 +3424,11 @@ exports.getTicketRow = async (req, res, next) => {
         gender,
         seats: seatArray,
         price,
-        trip,
-        isOwnBranch,
-        seatTypes,
-        action,
-        pendingIds,
+            trip,
+            isOwnBranch,
+            seatTypes: seatTypeList,
+            action,
+            pendingIds,
         fromId,
         toId,
         takeOnOptions,

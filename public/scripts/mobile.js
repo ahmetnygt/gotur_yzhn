@@ -37,11 +37,17 @@
 
     $.ajaxSetup({
         beforeSend: function (xhr) {
+            xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
             const token = getCookieValue("XSRF-TOKEN");
             if (token) xhr.setRequestHeader("X-CSRF-Token", token);
         },
         statusCode: {
             401: function (xhr) {
+                const code = xhr && xhr.responseJSON && xhr.responseJSON.code;
+                if (code === "SESSION_EXPIRED" || code === "CSRF_FAILED") {
+                    window.location.reload();
+                    return;
+                }
                 let redirectUrl = "/login";
                 try {
                     if (xhr.responseJSON && xhr.responseJSON.redirect) {
@@ -49,6 +55,12 @@
                     }
                 } catch (err) { /* ignore */ }
                 window.location.href = redirectUrl;
+            },
+            403: function (xhr) {
+                const code = xhr && xhr.responseJSON && xhr.responseJSON.code;
+                if (code === "CSRF_FAILED" || code === "SESSION_EXPIRED") {
+                    window.location.reload();
+                }
             }
         }
     });
@@ -291,6 +303,28 @@
         return Boolean($seat.attr("data-created-at"));
     }
 
+    function selectTakenGroupBySeat($seat) {
+        const seatNumber = String($seat.data("seat-number"));
+        const groupId = String($seat.data("group-id") || "");
+        selectedSeats = [];
+        selectedTakenSeats = [];
+        $(".seat").removeClass("selected");
+        const seats = [];
+        $(".m-busPlan .seat").each(function () {
+            if (String($(this).data("group-id")) === groupId && groupId) {
+                seats.push(String($(this).data("seat-number")));
+                $(this).addClass("selected");
+            }
+        });
+        if (!seats.length) {
+            seats.push(seatNumber);
+            $seat.addClass("selected");
+        }
+        selectedTakenSeats = seats;
+        currentGroupId = $seat.data("group-id");
+        return $seat;
+    }
+
     function bindSeats() {
         $(".m-busPlan").off("click.seat").on("click.seat", ".seat:not(.hidden)", function () {
             const $seat = $(this);
@@ -327,23 +361,7 @@
             }
 
             if (taken) {
-                const groupId = String($seat.data("group-id") || "");
-                selectedSeats = [];
-                selectedTakenSeats = [];
-                $(".seat").removeClass("selected");
-                const seats = [];
-                $(".m-busPlan .seat").each(function () {
-                    if (String($(this).data("group-id")) === groupId && groupId) {
-                        seats.push(String($(this).data("seat-number")));
-                        $(this).addClass("selected");
-                    }
-                });
-                if (!seats.length) {
-                    seats.push(seatNumber);
-                    $seat.addClass("selected");
-                }
-                selectedTakenSeats = seats;
-                currentGroupId = $seat.data("group-id");
+                selectTakenGroupBySeat($seat);
                 openTakenSheet($seat);
                 return;
             }
@@ -438,7 +456,7 @@
     function validateTicketForm(action) {
         const $rows = $("#mSheetBody .ticket-row");
         const phoneValue = getTrimmedValue($("#mSheetBody .phone input").val());
-        const requiresPassengerInfo = action === "reservation" || action === "sell" || action === "complete";
+        const requiresPassengerInfo = action === "reservation" || action === "sell" || action === "complete" || action === "edit";
         if (requiresPassengerInfo && !phoneValue) {
             toast("Lütfen bir telefon numarası giriniz.", "error");
             return false;
@@ -569,7 +587,7 @@
         try {
             const data = isTaken
                 ? {
-                    action: "complete",
+                    action,
                     isTaken: true,
                     seatNumbers: seatsForForm,
                     seatTypes,
@@ -601,9 +619,16 @@
                 return;
             }
             pendingFormOpen = action === "sell" || action === "reservation";
-            const label = action === "sell" ? "SATIŞ" : (action === "complete" ? "SATIŞA ÇEVİR" : "REZERVASYON");
+            const label = action === "sell"
+                ? "SATIŞ"
+                : (action === "complete"
+                    ? "SATIŞA ÇEVİR"
+                    : (action === "edit" ? "KAYDET" : "REZERVASYON"));
+            const title = action === "edit"
+                ? `Düzenle — ${currentStopStr} → ${destTitle || ""}`
+                : `${label} — ${currentStopStr} → ${destTitle || ""}`;
             openSheet(
-                `${label} — ${currentStopStr} → ${destTitle || ""}`,
+                title,
                 html,
                 `<button type="button" class="btn btn-outline-secondary flex-fill m-form-cancel">İptal</button>
                  <button type="button" class="btn btn-primary flex-fill m-form-submit" data-action="${action}">${label}</button>`,
@@ -625,14 +650,27 @@
     }
 
     async function submitTicketForm(action) {
-        if ((action === "reservation" || action === "sell" || action === "complete") && !validateTicketForm(action)) {
+        if ((action === "reservation" || action === "sell" || action === "complete" || action === "edit") && !validateTicketForm(action)) {
             return;
         }
         const tickets = collectTicketsFromForm(action);
         const selectedFromId = $("#mSheetBody #ticketFormFromId").val() || currentStop;
         const selectedToId = $("#mSheetBody #ticketFormToId").val() || toId;
         try {
-            if (action === "complete") {
+            if (action === "edit") {
+                await $.ajax({
+                    url: "/post-edit-ticket",
+                    type: "POST",
+                    data: {
+                        tickets: JSON.stringify(tickets),
+                        tripDate: currentTripDate,
+                        tripTime: currentTripTime,
+                        fromId: selectedFromId,
+                        toId: selectedToId,
+                        tripId: currentTripId
+                    }
+                });
+            } else if (action === "complete") {
                 await $.ajax({
                     url: "/post-complete-tickets",
                     type: "POST",
@@ -725,6 +763,23 @@
             if (optionExpired && !hasPermission("TRANSFER_EXPIRED_OPTION_TICKET")) return false;
             return status === "completed" || status === "reservation" || status === "web";
         }
+        if (action === "edit") {
+            if (status === "pending" || status === "canceled" || status === "refund") return false;
+            if (status === "web" && !hasPermission("INTERNET_TICKET_EDIT")) return false;
+            if (status === "reservation") {
+                if (!ownTicket && ownStop && !hasPermission("UPDATE_OTHER_BRANCH_RESERVATION_OWN_BRANCH")) return false;
+                if (!ownTicket && !ownStop && !hasPermission("UPDATE_OTHER_BRANCH_RESERVATION_OTHER_BRANCH")) return false;
+                return true;
+            }
+            if (status === "completed") {
+                if (ownTicket && !hasPermission("EDIT_OWN_BRANCH_SALES")) return false;
+                if (!ownTicket && ownStop && !hasPermission("EDIT_OTHER_BRANCH_SALES_IN_OWN_BRANCH")) return false;
+                if (!ownTicket && !ownStop && !hasPermission("EDIT_OTHER_BRANCH_SALES_IN_OTHER_BRANCH")) return false;
+                if (!ownTicket && !hasPermission("EDIT_OTHER_BRANCH_SALES")) return false;
+                return true;
+            }
+            return true;
+        }
         return false;
     }
 
@@ -741,6 +796,9 @@
         const actions = [];
         if (takenActionAllowed($seat, "complete")) {
             actions.push('<button type="button" class="btn btn-primary m-taken-act" data-action="complete">Satışa çevir</button>');
+        }
+        if (takenActionAllowed($seat, "edit")) {
+            actions.push('<button type="button" class="btn btn-outline-primary m-taken-act" data-action="edit">Düzenle</button>');
         }
         if (takenActionAllowed($seat, "delete_pending")) {
             actions.push('<button type="button" class="btn btn-outline-danger m-taken-act" data-action="delete_pending">İptal</button>');
@@ -776,6 +834,10 @@
         const pnr = $seat.data("pnr");
         if (action === "complete") {
             await startTicketForm("complete", $seat.data("gender"), null, $seat.data("to") || "", true);
+            return;
+        }
+        if (action === "edit") {
+            await startTicketForm("edit", $seat.data("gender"), null, $seat.data("to") || "", true);
             return;
         }
         if (action === "delete_pending") {
@@ -1021,7 +1083,8 @@
                 pnr: getTrimmedValue($seat.data("pnr")),
                 branch: getTrimmedValue($seat.data("branch")),
                 gender: getTrimmedValue($seat.data("gender")),
-                status
+                status,
+                canEdit: takenActionAllowed($seat, "edit")
             });
         });
         passengers.sort((a, b) => Number(a.seat) - Number(b.seat));
@@ -1049,6 +1112,7 @@
                     ${phoneHtml}
                     <span class="m-pax-muted">${escapeHtml(passenger.pnr || passenger.branch || "")}</span>
                 </div>
+                ${passenger.canEdit ? `<div class="m-pax-card-actions"><button type="button" class="btn btn-sm btn-outline-primary m-pax-edit" data-seat="${escapeHtml(passenger.seat)}">Düzenle</button></div>` : ""}
             </article>`;
     }
 
@@ -1064,6 +1128,16 @@
                 <strong>${escapeHtml(currentStopStr)}</strong>: ${passengers.length} yolcu
             </p>`;
         openSheet("Yolcu listesi", summary + passengers.map(passengerCardHtml).join(""));
+        $("#mSheetBody .m-pax-edit").on("click", function () {
+            const seatNumber = String($(this).data("seat"));
+            const $seat = $(`.m-busPlan .seat[data-seat-number='${seatNumber}']`).first();
+            if (!$seat.length) {
+                toast("Koltuk bulunamadı.", "error");
+                return;
+            }
+            selectTakenGroupBySeat($seat);
+            handleTakenAction("edit", $seat);
+        });
     }
 
     async function openRevenues() {
@@ -1073,25 +1147,49 @@
         }
         try {
             const revenues = await $.get("/get-trip-revenues", { tripId: currentTripId, stopId: currentStop });
+            const formatAmount = (value) => {
+                const n = Number(value);
+                return Number.isFinite(n) ? String(n) : "0";
+            };
+            const summary = revenues.summary;
             const summaryRows = [];
-            $(".m-busPlan .trip-incomes-popup .input-group").each(function () {
-                const label = $(this).find(".input-group-text").text().trim();
-                const vals = $(this).find("input").map((_, el) => $(el).val()).get();
-                if (!label) return;
-                summaryRows.push(`
+            if (summary) {
+                const rows = [
+                    ["Satış (Durak)", summary.currentSoldCount, summary.currentSoldAmount],
+                    ["Satış (Tümü)", summary.totalSoldCount, summary.totalSoldAmount],
+                    ["Rezervasyon (Durak)", summary.currentReservedCount, summary.currentReservedAmount],
+                    ["Rezervasyon (Tümü)", summary.totalReservedCount, summary.totalReservedAmount],
+                    ["Kargo", summary.cargoCount, summary.cargoAmount],
+                    ["Toplam", summary.grandCount, summary.grandAmount]
+                ];
+                rows.forEach(([label, count, amount]) => {
+                    summaryRows.push(`
+                    <div class="m-revenue-row">
+                        <span>${escapeHtml(label)}</span>
+                        <span>${escapeHtml(formatAmount(count))}</span>
+                        <span>${escapeHtml(formatAmount(amount))}₺</span>
+                    </div>`);
+                });
+            } else {
+                $(".m-busPlan .trip-incomes-popup .input-group").each(function () {
+                    const label = $(this).find(".input-group-text").text().trim();
+                    const vals = $(this).find("input").map((_, el) => $(el).val()).get();
+                    if (!label) return;
+                    summaryRows.push(`
                     <div class="m-revenue-row">
                         <span>${escapeHtml(label)}</span>
                         <span>${escapeHtml(vals[0] || "0")}</span>
                         <span>${escapeHtml(vals[1] || "0")}</span>
                     </div>`);
-            });
+                });
+            }
             const branchRows = (revenues.branches || []).map(b => `
                 <tr>
                     <td>${escapeHtml(b.title || "")}</td>
-                    <td>${b.currentCount}</td>
-                    <td>${b.currentAmount}₺</td>
-                    <td>${b.totalCount}</td>
-                    <td>${b.totalAmount}₺</td>
+                    <td>${formatAmount(b.currentCount)}</td>
+                    <td>${formatAmount(b.currentAmount)}₺</td>
+                    <td>${formatAmount(b.totalCount)}</td>
+                    <td>${formatAmount(b.totalAmount)}₺</td>
                 </tr>`).join("");
             const totals = revenues.totals || {};
             openSheet("Sefer hasılatı", `
@@ -1114,10 +1212,10 @@
                         <tfoot>
                             <tr>
                                 <th>Toplam</th>
-                                <th>${totals.currentCount || 0}</th>
-                                <th>${totals.currentAmount || 0}₺</th>
-                                <th>${totals.totalCount || 0}</th>
-                                <th>${totals.totalAmount || 0}₺</th>
+                                <th>${formatAmount(totals.currentCount)}</th>
+                                <th>${formatAmount(totals.currentAmount)}₺</th>
+                                <th>${formatAmount(totals.totalCount)}</th>
+                                <th>${formatAmount(totals.totalAmount)}₺</th>
                             </tr>
                         </tfoot>
                     </table>

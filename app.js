@@ -120,16 +120,14 @@ app.use(
     saveUninitialized: false,
     rolling: true,
     store: store,
-    // GÜVENLİK: cookie'ler production'da secure (HTTPS-only) ve sameSite=lax
-    // olarak işaretleniyor; CSRF ve HTTP üzerinden çalınma riskini azaltır.
-    // Local/geliştirme ortamı HTTPS kullanmadığından secure orada kapalı
-    // bırakılıyor (aksi halde session hiç kalıcı olmazdı).
+    // GÜVENLİK: cookie'ler HTTPS'te secure, sameSite=lax. `secure: "auto"`
+    // req.secure'a bakar (production'da trust proxy: 1 ile X-Forwarded-Proto).
     // rolling: her istekte maxAge yenilenir; aksi halde süre giriş anından
     // işler ve gece PC kapatıp sabah açınca oturum düşer.
     cookie: {
       maxAge: 86400000,
       httpOnly: true,
-      secure: isProduction,
+      secure: "auto",
       sameSite: "lax",
     },
   })

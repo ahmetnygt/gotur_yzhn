@@ -769,6 +769,12 @@ body.m-body {
     flex: 0 0 auto;
 }
 
+.m-pax-card-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.35rem;
+}
+
 /* ---------- Varış / cinsiyet seçimi ---------- */
 .m-dest-list {
     display: flex;

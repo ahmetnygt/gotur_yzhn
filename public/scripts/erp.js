@@ -83,6 +83,23 @@ $.ajaxSetup({
         }
     }
 });
+
+const CSRF_RELOAD_CODES = { SESSION_EXPIRED: true, CSRF_FAILED: true };
+const CSRF_RELOAD_GUARD_KEY = "gtrCsrfReloadAt";
+const CSRF_RELOAD_GUARD_MS = 8000;
+
+function reloadForCsrfOrSession(code) {
+    if (!code || !CSRF_RELOAD_CODES[code]) return false;
+    try {
+        const last = Number(sessionStorage.getItem(CSRF_RELOAD_GUARD_KEY) || 0);
+        if (Date.now() - last < CSRF_RELOAD_GUARD_MS) {
+            return false;
+        }
+        sessionStorage.setItem(CSRF_RELOAD_GUARD_KEY, String(Date.now()));
+    } catch (_) { /* sessionStorage kapalı olabilir */ }
+    window.location.reload();
+    return true;
+}
 // --- end CSRF token auto-attach ---
 
 // --- Toast / Notification Utility (accessibility-friendly) ---
@@ -812,6 +829,9 @@ $(document).ajaxSend(showLoading);
 $(document).ajaxComplete(hideLoading);
 $(document).ajaxError((_e, xhr) => {
     hideLoading();
+    if (reloadForCsrfOrSession(xhr?.responseJSON?.code)) {
+        return;
+    }
     if (xhr && xhr.status === 401) {
         const redirectUrl = xhr.responseJSON && xhr.responseJSON.redirect
             ? xhr.responseJSON.redirect

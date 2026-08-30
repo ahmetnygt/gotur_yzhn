@@ -27,6 +27,8 @@ block content
                 input(type="hidden" name="_csrf" value=csrfToken)
                 input#uiPreferenceInput(type="hidden" name="ui" value="d")
                 h2.h4.fw-semibold.mb-4.text-center Hesabınıza Giriş Yapın
+                if loginError
+                    .alert.alert-danger.mb-3(role="alert")= loginError
                 .form-floating.mb-3
                     input#usernameInput.username.form-control(type="text" name="username" placeholder="Kullanıcı Adı" required autocomplete="username")
                     label(for="usernameInput") Kullanıcı Adı
