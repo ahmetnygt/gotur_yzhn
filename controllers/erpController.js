@@ -19,6 +19,7 @@ const generateBusTransactionsReport = require("../utilities/reports/busTransacti
 const countries = require("world-countries");
 const { seferEkle, kullaniciKontrol, seferIptal, seferAktif, seferPlakaDegistir, personelEkle, personelIptal, seferGrupGuncelle, yolcuEkle, seferGrupListesi, seferGrupEkle, yolcuIptalUetdsYolcuRefNoIle, seferDetayCiktisiAl } = require('../utilities/uetdsService');
 const { findSeatSegmentConflict, seatConflictMessage } = require('../utilities/seatSegmentConflict');
+const { notifyTicketSms } = require('../utilities/sendSms');
 const {
     LOG_MODULES,
     LOG_ACTIONS,
@@ -3574,6 +3575,7 @@ exports.postTickets = async (req, res, next) => {
         const takeOnCache = await prepareTakeValueCache(req.models.TakeOn);
         const takeOffCache = await prepareTakeValueCache(req.models.TakeOff);
         const isReservationStatus = status === "reservation";
+        const savedTickets = [];
 
         for (let i = 0; i < tickets.length; i++) {
             const t = tickets[i];
@@ -3752,6 +3754,8 @@ exports.postTickets = async (req, res, next) => {
             // UETDS bloğu grup bulunamadığında `continue` ile iterasyonu
             // atladığı için log, o bloktan ÖNCE yazılıyor; aksi halde bilet
             // oluşmuş olmasına rağmen kaydı düşerdi.
+            savedTickets.push(ticket);
+
             await req.logSystem({
                 module: LOG_MODULES.TICKET,
                 action: isReservationStatus ? LOG_ACTIONS.RESERVE : LOG_ACTIONS.SELL,
@@ -3801,6 +3805,13 @@ exports.postTickets = async (req, res, next) => {
             console.log(`${t.name} Saved - ${pnr || "-"}`);
             res.locals.newRecordId = ticket.id;
         }
+
+        await notifyTicketSms(req, {
+            event: isReservationStatus ? "reservation" : "sale",
+            tickets: savedTickets,
+            trip,
+            stops,
+        });
 
         return res.status(200).json({ message: "Biletler başarıyla kaydedildi." });
     } catch (err) {
@@ -4014,6 +4025,13 @@ exports.postCompleteTickets = async (req, res, next) => {
             });
         }
 
+        await notifyTicketSms(req, {
+            event: "complete",
+            tickets: foundTickets,
+            trip,
+            stops,
+        });
+
         return res.status(200).json({ message: "Biletler başarıyla kaydedildi." });
     } catch (err) {
         console.error("Save error:", err);
@@ -4178,6 +4196,13 @@ exports.postSellOpenTickets = async (req, res, next) => {
             newData: ticketSnapshot(ticket),
             description: `Açık bilet ${isReservation ? "rezervasyonu" : "satışı"} | ${fromStop?.title || ""} - ${toStop?.title || ""} | ${ticket.name || ""} ${ticket.surname || ""}`.trim(),
         })));
+
+        await notifyTicketSms(req, {
+            event: isReservation ? "reservation" : "open_sale",
+            tickets: createdTickets,
+            trip: null,
+            stops: [fromStop, toStop].filter(Boolean),
+        });
 
         res.status(200).json({
             success: true,
@@ -4568,6 +4593,25 @@ exports.postCancelTicket = async (req, res, next) => {
             }
         }
 
+        const canceledTickets = tickets.filter((t) => t.status === "canceled");
+        const refundedTickets = tickets.filter((t) => t.status === "refund");
+        if (canceledTickets.length) {
+            await notifyTicketSms(req, {
+                event: "cancel",
+                tickets: canceledTickets,
+                trip,
+                stops,
+            });
+        }
+        if (refundedTickets.length) {
+            await notifyTicketSms(req, {
+                event: "refund",
+                tickets: refundedTickets,
+                trip,
+                stops,
+            });
+        }
+
         return res.status(200).json({ message: "Biletler başarıyla iptal edildi." });
     } catch (err) {
         console.error("Save error:", err);
@@ -4671,6 +4715,12 @@ exports.postOpenTicket = async (req, res, next) => {
                 });
             }
         }
+
+        await notifyTicketSms(req, {
+            event: "open",
+            tickets,
+            trip,
+        });
 
         res.status(200).json({ message: "Biletler başarıyla açık duruma alındı." });
     } catch (err) {
@@ -5061,6 +5111,12 @@ exports.postMoveTickets = async (req, res, next) => {
         } catch (e) {
             console.error("⚠️ [UETDS] Group price update error:", e.message);
         }
+
+        await notifyTicketSms(req, {
+            event: "transfer",
+            tickets,
+            trip: newTrip,
+        });
 
         res.status(200).json({ message: "Bilet transfer işlemi başarıyla tamamlandı." });
     } catch (err) {
@@ -9401,6 +9457,18 @@ exports.postChangePassword = async (req, res, next) => {
     }
 };
 
+function isGoturSystemUser(req) {
+    const username = req.session?.firmUser?.username;
+    return typeof username === "string" && username.trim().toUpperCase() === "GOTUR";
+}
+
+function trimmedNonEmpty(value) {
+    if (value === undefined || value === null) return null;
+    const trimmed = String(value).trim();
+    if (!trimmed || /^•+$/.test(trimmed)) return null;
+    return trimmed;
+}
+
 function parseRequestBoolean(value, defaultValue = false) {
     if (value === undefined || value === null || value === "") {
         return defaultValue;
@@ -9435,6 +9503,13 @@ exports.getFirmSettings = async (req, res) => {
                 "displayName",
                 "comissionRate",
                 "isReservationAutoCancelActive",
+                "isUetdsActive",
+                "uetdsUsername",
+                "uetdsPassword",
+                "isSmsActive",
+                "smsUsername",
+                "smsPassword",
+                "smsHeader",
             ],
         });
 
@@ -9446,6 +9521,14 @@ exports.getFirmSettings = async (req, res) => {
             displayName: firm.displayName,
             comissionRate: firm.comissionRate,
             isReservationAutoCancelActive: firm.isReservationAutoCancelActive !== false,
+            isUetdsActive: Boolean(firm.isUetdsActive),
+            uetdsUsername: firm.uetdsUsername || "",
+            uetdsPasswordSet: Boolean(firm.uetdsPassword),
+            isSmsActive: Boolean(firm.isSmsActive),
+            smsUsername: firm.smsUsername || "",
+            smsHeader: firm.smsHeader || "",
+            smsPasswordSet: Boolean(firm.smsPassword),
+            canEditIntegrations: isGoturSystemUser(req),
         });
     } catch (err) {
         console.error("getFirmSettings error:", err);
@@ -9471,6 +9554,14 @@ exports.postSaveFirmSettings = async (req, res) => {
             req.body?.isReservationAutoCancelActive,
             true
         );
+        const isUetdsActive = parseRequestBoolean(
+            req.body?.isUetdsActive,
+            Boolean(firm.isUetdsActive)
+        );
+        const isSmsActive = parseRequestBoolean(
+            req.body?.isSmsActive,
+            Boolean(firm.isSmsActive)
+        );
 
         let comissionRate = firm.comissionRate;
         if (
@@ -9487,10 +9578,28 @@ exports.postSaveFirmSettings = async (req, res) => {
             comissionRate = parsed;
         }
 
-        await firm.update({
+        const updates = {
             isReservationAutoCancelActive,
             comissionRate,
-        });
+            isUetdsActive,
+            isSmsActive,
+        };
+
+        if (isGoturSystemUser(req)) {
+            const uetdsUsername = trimmedNonEmpty(req.body?.uetdsUsername);
+            const uetdsPassword = trimmedNonEmpty(req.body?.uetdsPassword);
+            const smsUsername = trimmedNonEmpty(req.body?.smsUsername);
+            const smsPassword = trimmedNonEmpty(req.body?.smsPassword);
+            const smsHeader = trimmedNonEmpty(req.body?.smsHeader);
+
+            if (uetdsUsername) updates.uetdsUsername = uetdsUsername;
+            if (uetdsPassword) updates.uetdsPassword = uetdsPassword;
+            if (smsUsername) updates.smsUsername = smsUsername;
+            if (smsPassword) updates.smsPassword = smsPassword;
+            if (smsHeader) updates.smsHeader = smsHeader;
+        }
+
+        await firm.update(updates);
 
         const refreshed = await req.commonModels.Firm.findOne({
             where: { key: req.tenantKey },
@@ -9503,6 +9612,8 @@ exports.postSaveFirmSettings = async (req, res) => {
             comissionRate: refreshed.comissionRate,
             isReservationAutoCancelActive:
                 refreshed.isReservationAutoCancelActive !== false,
+            isUetdsActive: Boolean(refreshed.isUetdsActive),
+            isSmsActive: Boolean(refreshed.isSmsActive),
         });
     } catch (err) {
         console.error("postSaveFirmSettings error:", err);

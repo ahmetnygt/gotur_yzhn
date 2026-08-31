@@ -2,6 +2,7 @@ const { Op } = require("sequelize");
 const bcrypt = require("bcrypt");
 const branchModel = require("../models/branchModel");
 const { signCustomerToken } = require("../utilities/customerAuthToken");
+const { notifyTicketSms } = require("../utilities/sendSms");
 const {
     LOG_MODULES,
     LOG_ACTIONS,
@@ -842,6 +843,7 @@ exports.paymentComplete = async (req, res) => {
 
         let ticketGroupId;
         let pnrCode;
+        let soldTickets = [];
 
         try {
             const result = await req.db.transaction(async (t) => {
@@ -934,6 +936,7 @@ exports.paymentComplete = async (req, res) => {
 
             ticketGroupId = result.ticketGroupId;
             pnrCode = result.pnrCode;
+            soldTickets = result.soldTickets || [];
 
             // Web satışları da koltuk geçmişinde görünsün diye kaydediliyor.
             await logSystemEvents(req, result.soldTickets.map(ticket => ({
@@ -956,6 +959,22 @@ exports.paymentComplete = async (req, res) => {
                 { where: { id: pay.id, tenantKey: req.tenantKey } }
             );
             throw ticketErr;
+        }
+
+        try {
+            const trip = await req.models.Trip.findByPk(pay.tripId);
+            const stopIds = [pay.fromStopId, pay.toStopId].filter(Boolean);
+            const stops = stopIds.length
+                ? await req.models.Stop.findAll({ where: { id: stopIds } })
+                : [];
+            await notifyTicketSms(req, {
+                event: asReservation ? "web_reservation" : "web_sale",
+                tickets: soldTickets,
+                trip,
+                stops,
+            });
+        } catch (smsErr) {
+            console.error("Web bilet SMS hatasi:", smsErr.message);
         }
 
         res.json({
@@ -1264,6 +1283,19 @@ exports.cancelTicket = async (req, res) => {
             newData: ticketSnapshot(ticket),
             description: `${newStatus === "refund" ? "Web üzerinden iade" : "Web üzerinden iptal"} | yolcu talebi | ${ticket.name || ""} ${ticket.surname || ""}`.trim(),
         });
+
+        try {
+            const trip = ticket.tripId
+                ? await req.models.Trip.findByPk(ticket.tripId)
+                : null;
+            await notifyTicketSms(req, {
+                event: newStatus === "refund" ? "refund" : "cancel",
+                tickets: [ticket],
+                trip,
+            });
+        } catch (smsErr) {
+            console.error("Web iptal SMS hatasi:", smsErr.message);
+        }
 
         res.json({ success: true, message: "İşlem başarılı." });
 

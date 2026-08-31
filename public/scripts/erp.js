@@ -5557,6 +5557,35 @@ $(".firm-settings-nav").on("click", async e => {
             "checked",
             response?.isReservationAutoCancelActive !== false
         );
+        $("#isUetdsActive").prop("checked", Boolean(response?.isUetdsActive));
+        $("#isSmsActive").prop("checked", Boolean(response?.isSmsActive));
+        $("#uetdsUsername").val(response?.uetdsUsername || "");
+        $("#smsUsername").val(response?.smsUsername || "");
+        $("#smsHeader").val(response?.smsHeader || "");
+
+        const canEditIntegrations = Boolean(response?.canEditIntegrations);
+        $(".firm-integration-field")
+            .prop("readonly", !canEditIntegrations)
+            .prop("disabled", !canEditIntegrations);
+        $("#uetdsPassword").val(canEditIntegrations ? "" : (response?.uetdsPasswordSet ? "••••••••" : ""));
+        $("#smsPassword").val(canEditIntegrations ? "" : (response?.smsPasswordSet ? "••••••••" : ""));
+        $("#uetdsPassword").attr(
+            "placeholder",
+            canEditIntegrations && response?.uetdsPasswordSet
+                ? "Kayıtlı — değiştirmek için yeni şifre yazın"
+                : ""
+        );
+        $("#smsPassword").attr(
+            "placeholder",
+            canEditIntegrations && response?.smsPasswordSet
+                ? "Kayıtlı — değiştirmek için yeni şifre yazın"
+                : ""
+        );
+        $(".firm-integration-hint").text(
+            canEditIntegrations
+                ? "Şifreyi değiştirmek istemiyorsanız boş bırakın."
+                : "Kimlik bilgileri yalnızca Götür sistem kullanıcısı tarafından değiştirilebilir."
+        );
         $(".blackout").css("display", "block");
         $(".firm").css("display", "block");
     } catch (xhr) {
@@ -5575,15 +5604,30 @@ $(".firm-close").on("click", e => {
 $(".save-firm-settings").on("click", async e => {
     const comissionRate = $(".firm-commission-rate").val();
     const isReservationAutoCancelActive = $("#isReservationAutoCancelActive").prop("checked");
+    const isUetdsActive = $("#isUetdsActive").prop("checked");
+    const isSmsActive = $("#isSmsActive").prop("checked");
+    const canEditIntegrations = !$("#uetdsUsername").prop("disabled");
+
+    const data = {
+        comissionRate,
+        isReservationAutoCancelActive,
+        isUetdsActive,
+        isSmsActive,
+    };
+
+    if (canEditIntegrations) {
+        data.uetdsUsername = $("#uetdsUsername").val();
+        data.uetdsPassword = $("#uetdsPassword").val();
+        data.smsUsername = $("#smsUsername").val();
+        data.smsHeader = $("#smsHeader").val();
+        data.smsPassword = $("#smsPassword").val();
+    }
 
     try {
         await $.ajax({
             url: "/post-save-firm-settings",
             type: "POST",
-            data: {
-                comissionRate,
-                isReservationAutoCancelActive,
-            },
+            data,
         });
 
         $(".blackout").css("display", "none");
