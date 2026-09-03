@@ -9707,7 +9707,7 @@ exports.getFirmSettings = async (req, res) => {
         return res.json({
             displayName: firm.displayName,
             comissionRate: firm.comissionRate,
-            isReservationAutoCancelActive: firm.isReservationAutoCancelActive !== false,
+            isReservationAutoCancelActive: !!firm.isReservationAutoCancelActive,
             isUetdsActive: Boolean(firm.isUetdsActive),
             uetdsUsername: firm.uetdsUsername || "",
             uetdsPasswordSet: Boolean(firm.uetdsPassword),
@@ -9810,7 +9810,7 @@ exports.postSaveFirmSettings = async (req, res) => {
             displayName: refreshed.displayName,
             comissionRate: refreshed.comissionRate,
             isReservationAutoCancelActive:
-                refreshed.isReservationAutoCancelActive !== false,
+                !!refreshed.isReservationAutoCancelActive,
             isUetdsActive: Boolean(refreshed.isUetdsActive),
             isSmsActive: Boolean(refreshed.isSmsActive),
         });

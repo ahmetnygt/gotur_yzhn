@@ -20,7 +20,7 @@ async function isReservationAutoCancelEnabledForTenant(tenantKey) {
       return true;
     }
 
-    return firm.isReservationAutoCancelActive !== false;
+    return !!firm.isReservationAutoCancelActive;
   } catch (err) {
     console.error(
       `[${tenantKey}] Firma otomatik rezervasyon iptal ayarı okunamadı, varsayılan (açık) kullanılıyor:`,
