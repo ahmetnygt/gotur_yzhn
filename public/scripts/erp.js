@@ -3185,6 +3185,44 @@ async function loadTrip(date, time, tripId) {
             window.open(`/trip-seat-plan?${params.toString()}`, "_blank", "width=900,height=700");
         });
 
+        $(".trip-passengers-excel").off().on("click", async e => {
+            e.preventDefault();
+            if (!currentTripId) return;
+            try {
+                const params = new URLSearchParams({ tripId: currentTripId });
+                if (currentStop !== undefined && currentStop !== null && currentStop !== "") {
+                    params.append("stopId", currentStop);
+                }
+                const response = await fetch(`/trip-passengers-excel?${params.toString()}`, {
+                    headers: { "Accept": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/json" },
+                    credentials: "same-origin",
+                });
+                if (!response.ok) {
+                    let message = "Excel oluşturulamadı.";
+                    try {
+                        const data = await response.json();
+                        if (data && data.message) message = data.message;
+                    } catch (_err) { /* ignore non-json errors */ }
+                    showError(message);
+                    return;
+                }
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                const disposition = response.headers.get("Content-Disposition") || "";
+                const utfMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+                const asciiMatch = disposition.match(/filename="?([^";]+)"?/i);
+                link.download = decodeURIComponent(utfMatch?.[1] || asciiMatch?.[1] || "yolcu-listesi.xlsx");
+                link.href = url;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            } catch (err) {
+                showError(getAjaxErrorMessage(err));
+            }
+        });
+
         // Undo account cut
         $(".account-cut-undo").off().on("click", async () => {
             if ($(".account-cut-undo").data("loading")) return;

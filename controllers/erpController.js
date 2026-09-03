@@ -6,6 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const { generateAccountReceiptFromDb } = require('../utilities/reports/accountCutRecipe');
 const generateTripSeatPlanReport = require('../utilities/reports/tripSeatPlanReport');
+const generateTripPassengersExcel = require('../utilities/reports/tripPassengersExcel');
 const generateSalesRefundReportDetailed = require('../utilities/reports/salesRefundReportDetailed');
 const generateSalesRefundReportSummary = require('../utilities/reports/salesRefundReportSummary');
 const generateWebTicketsReportByBusSummary = require('../utilities/reports/webTicketsByBusSummary');
@@ -1979,6 +1980,114 @@ exports.getTripSeatPlanReport = async (req, res, next) => {
     } catch (err) {
         console.error('getTripSeatPlanReport error:', err);
         res.status(500).json({ message: 'Koltuk planı raporu oluşturulamadı.' });
+    }
+};
+
+exports.getTripPassengersExcel = async (req, res, next) => {
+    try {
+        const tripId = Number(req.query.tripId);
+        const rawStopId = req.query.stopId;
+        const stopId = rawStopId !== undefined && rawStopId !== null && rawStopId !== ""
+            ? Number(rawStopId)
+            : null;
+        const isStopIdValid = Number.isFinite(stopId);
+
+        if (!Number.isFinite(tripId) || tripId <= 0) {
+            return res.status(400).json({ message: "Sefer bilgisi eksik." });
+        }
+
+        const trip = await req.models.Trip.findOne({ where: { id: tripId }, raw: true });
+        if (!trip) {
+            return res.status(404).json({ message: "Sefer bulunamadı." });
+        }
+
+        const [route, bus] = await Promise.all([
+            req.models.Route.findOne({ where: { id: trip.routeId }, raw: true }),
+            trip.busId ? req.models.Bus.findOne({ where: { id: trip.busId }, raw: true }) : null,
+        ]);
+
+        const routeStops = await req.models.RouteStop.findAll({
+            where: { routeId: trip.routeId },
+            order: [["order", "ASC"]],
+            raw: true,
+        });
+
+        const stopIds = [...new Set(routeStops.map(rs => rs.stopId))];
+        const stops = stopIds.length
+            ? await req.models.Stop.findAll({ where: { id: { [Op.in]: stopIds } }, raw: true })
+            : [];
+
+        const toKey = value => (value === null || value === undefined ? null : String(value));
+        const stopTitleMap = new Map(stops.map(stop => [toKey(stop.id), stop.title]));
+        const stopKey = isStopIdValid ? String(stopId) : null;
+
+        const tickets = await req.models.Ticket.findAll({
+            where: {
+                tripId,
+                status: { [Op.in]: ["completed", "web", "gotur", "reservation", "open"] },
+            },
+            order: [["seatNo", "ASC"]],
+            raw: true,
+        });
+
+        const nationalityLabelMap = new Map(
+            NATIONALITY_OPTIONS.map(option => [String(option.value).toLowerCase(), option.label])
+        );
+        const genderLabels = { m: "Erkek", f: "Kadın" };
+
+        const rows = tickets.map(ticket => {
+            const nationalityCode = String(ticket.nationality || "").toLowerCase();
+            const matchesStop = stopKey ? toKey(ticket.fromRouteStopId) === stopKey : true;
+
+            return {
+                seatNo: ticket.seatNo == null ? "" : String(ticket.seatNo),
+                fullName: [ticket.name, ticket.surname].filter(Boolean).join(" ").trim(),
+                gender: genderLabels[ticket.gender] || ticket.gender || "",
+                nationality: nationalityLabelMap.get(nationalityCode) || (ticket.nationality ? String(ticket.nationality).toUpperCase() : ""),
+                from: stopTitleMap.get(toKey(ticket.fromRouteStopId)) || "",
+                to: stopTitleMap.get(toKey(ticket.toRouteStopId)) || "",
+                takeOn: (ticket.takeOnText || "").trim(),
+                takeOff: (ticket.takeOffText || "").trim(),
+                phoneNumber: ticket.phoneNumber || "",
+                idNumber: ticket.idNumber || "",
+                pnr: ticket.pnr || "",
+                isCurrentStop: matchesStop ? "Evet" : "Hayır",
+            };
+        });
+
+        const fromTitle = route?.fromStopId !== undefined ? (stopTitleMap.get(toKey(route.fromStopId)) || "") : "";
+        const toTitle = route?.toStopId !== undefined ? (stopTitleMap.get(toKey(route.toStopId)) || "") : "";
+        const tripDateTime = formatTripDateTime(trip.date, trip.time);
+        const routeLabel = [fromTitle, toTitle].filter(Boolean).join(" - ") || (route?.routeCode || "");
+        const titleParts = [
+            route?.routeCode || "",
+            routeLabel,
+            tripDateTime,
+            bus?.licensePlate || "",
+        ].filter(Boolean);
+        const workbookTitle = `Yolcu Listesi — ${titleParts.join(" | ")}`;
+
+        const buffer = generateTripPassengersExcel({
+            title: workbookTitle,
+            sheets: [
+                { name: "Yolcular", rows },
+            ],
+        });
+
+        const asciiName = `yolcu-listesi-${String(trip.date || "sefer")}.xlsx`;
+        const displayName = `yolcu-listesi-${route?.routeCode || "sefer"}-${trip.date || ""}.xlsx`
+            .replace(/\s+/g, "-");
+
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(displayName)}`
+        );
+        res.setHeader("Content-Length", buffer.length);
+        return res.end(buffer);
+    } catch (err) {
+        console.error("getTripPassengersExcel error:", err);
+        res.status(500).json({ message: "Yolcu listesi Excel dosyası oluşturulamadı." });
     }
 };
 

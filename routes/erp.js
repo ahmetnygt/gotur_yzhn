@@ -67,6 +67,7 @@ router.get('/get-bus-account-cut-record', erpController.getBusAccountCutRecord);
 router.post('/post-delete-bus-account-cut', erpController.postDeleteBusAccountCut);
 router.get('/get-bus-account-cut-receipt', erpController.getBusAccountCutReceipt);
 router.get('/trip-seat-plan', erpController.getTripSeatPlanReport);
+router.get('/trip-passengers-excel', erpController.getTripPassengersExcel);
 
 router.get('/get-ticketops-popup', erpController.getTicketOpsPopUp);
 
