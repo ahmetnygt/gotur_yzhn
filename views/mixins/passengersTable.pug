@@ -29,7 +29,9 @@ ul.nav.nav-pills(style="height: 2rem;overflow: hidden;line-height: 1rem;")
                         data-is-own-branch-ticket=t.isOwnBranchTicket
                         data-is-own-branch-stop=t.isOwnBranchStop
                         data-refund-option=t.tripRefundOptionDate
-                        data-stop-id=t.fromRouteStopId)
+                        data-stop-id=t.fromRouteStopId
+                        data-seat-type=t.seatType || ''
+                        data-ticket-id=t.id)
                         td.text-center #{t.seatNo}
                         td #{t.name} #{t.surname}
                         td #{t.gender}
