@@ -212,6 +212,7 @@ function buildWorksheet(title, rows) {
         `xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
         `<sheetViews><sheetView workbookViewId="0">` +
         `<pane ySplit="2" topLeftCell="A3" activePane="bottomLeft" state="frozen"/>` +
+        `<selection pane="bottomLeft" activeCell="A3" sqref="A3"/>` +
         `</sheetView></sheetViews>` +
         `<cols>${colsXml}</cols>` +
         `<sheetData>` +
@@ -219,8 +220,8 @@ function buildWorksheet(title, rows) {
         `<row r="${headerRow}">${headerCells}</row>` +
         dataRowsXml +
         `</sheetData>` +
-        `<mergeCells count="1"><mergeCell ref="A1:${lastCol}1"/></mergeCells>` +
         `<autoFilter ref="A${headerRow}:${lastCol}${lastDataRow}"/>` +
+        `<mergeCells count="1"><mergeCell ref="A1:${lastCol}1"/></mergeCells>` +
         `</worksheet>`
     );
 }
@@ -228,9 +229,9 @@ function buildWorksheet(title, rows) {
 const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <fonts count="3">
-    <font><sz val="11"/><color theme="1"/><name val="Calibri"/><family val="2"/></font>
+    <font><sz val="11"/><color rgb="FF000000"/><name val="Calibri"/><family val="2"/></font>
     <font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>
-    <font><b/><sz val="12"/><color theme="1"/><name val="Calibri"/><family val="2"/></font>
+    <font><b/><sz val="12"/><color rgb="FF000000"/><name val="Calibri"/><family val="2"/></font>
   </fonts>
   <fills count="3">
     <fill><patternFill patternType="none"/></fill>
