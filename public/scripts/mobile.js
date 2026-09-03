@@ -294,6 +294,10 @@
             showPanel("#mTripPanel");
             syncSelectionBar();
             bindSeats();
+            if (isMoving) {
+                await refreshMovingDestinations();
+                if (token !== loadToken) return;
+            }
         } catch (err) {
             toast(ajaxError(err, "Sefer yüklenemedi."), "error");
         }
@@ -953,6 +957,45 @@
         });
     }
 
+    function movingStopOptionsHtml(stopsArr, selectedId) {
+        return (stopsArr || []).map(rs => {
+            const label = escapeHtml(rs.stopStr || "");
+            if (rs.isRestricted) return `<option value="" disabled>${label}</option>`;
+            const selected = String(rs.stopId) === String(selectedId) ? " selected" : "";
+            return `<option value="${escapeHtml(rs.stopId)}"${selected}>${label}</option>`;
+        }).join("");
+    }
+
+    function pickMovingToId(allowedStops, preferredId) {
+        const allowed = allowedStops || [];
+        if (preferredId && allowed.some(rs => String(rs.stopId) === String(preferredId))) {
+            return preferredId;
+        }
+        if (toId && allowed.some(rs => String(rs.stopId) === String(toId))) {
+            return toId;
+        }
+        return (allowed[0] && allowed[0].stopId) || "";
+    }
+
+    async function refreshMovingDestinations() {
+        if (!isMoving || !currentTripId) return;
+        try {
+            const stops = await $.ajax({
+                url: "/get-route-stops-list-moving",
+                type: "GET",
+                data: { date: currentTripDate, time: currentTripTime, tripId: currentTripId, stopId: currentStop }
+            });
+            const allowedStops = (stops.arr || []).filter(rs => !rs.isRestricted);
+            movingToId = pickMovingToId(allowedStops, movingToId);
+            const $select = $(".m-move-to");
+            if (!$select.length) return;
+            $select.html(movingStopOptionsHtml(stops.arr, movingToId));
+            $select.val(movingToId);
+        } catch (err) {
+            toast(ajaxError(err, "Varış durakları güncellenemedi."), "error");
+        }
+    }
+
     async function startMove(pnr, options = {}) {
         const stayOnTrip = Boolean(options.stayOnTrip);
         movingSeatPNR = pnr;
@@ -968,17 +1011,13 @@
                 data: { date: currentTripDate, time: currentTripTime, tripId: currentTripId, stopId: currentStop }
             });
             const allowedStops = (stops.arr || []).filter(rs => !rs.isRestricted);
-            const optionsHtml = (stops.arr || []).map(rs => {
-                if (rs.isRestricted) return `<option value="" disabled>${rs.stopStr}</option>`;
-                const selected = String(rs.stopId) === String(toId) ? " selected" : "";
-                return `<option value="${rs.stopId}"${selected}>${rs.stopStr}</option>`;
-            }).join("");
+            const optionsHtml = movingStopOptionsHtml(stops.arr, toId);
             movingSelectedSeats = $("<div>").html(typeof html === "string" ? html : "").find(".moving-ticket-button").map((_, el) => String(el.dataset.seatNumber)).get();
             if (!movingSelectedSeats.length) {
                 movingSelectedSeats = selectedTakenSeats.slice();
             }
             movingTargetCount = movingSelectedSeats.length || 1;
-            movingToId = toId || (allowedStops[0] && allowedStops[0].stopId) || "";
+            movingToId = pickMovingToId(allowedStops, toId);
             isMoving = true;
             selectedSeats = [];
             $(".seat").removeClass("selected");
