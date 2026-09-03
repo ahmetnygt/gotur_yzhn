@@ -1292,7 +1292,7 @@ block content
             span FİRMA AYARLARI
         .firm-close
             i.fa-solid.fa-x
-        .d-flex.flex-column.gap-3.p-3
+        .d-flex.flex-column.gap-3.p-3(style="max-height: 70vh; overflow-y: auto;")
             .input-group
                 span.input-group-text Bilet Başına Acenta Komisyonu (%)
                 input.firm-commission-rate.form-control(type="number" min="0" max="100" step="0.01")
@@ -1300,6 +1300,70 @@ block content
                 input#isReservationAutoCancelActive.firm-reservation-auto-cancel.form-check-input(type="checkbox" checked)
                 label.form-check-label(for="isReservationAutoCancelActive") Opsiyon süresi biten rezervasyonları otomatik iptal et
             p.form-text.text-muted.mb-0 Kapalıysa süre dolan rezervasyonlar sistem tarafından iptal edilmez. Geçici koltuk kilitleri (pending) yine temizlenir.
+
+            hr.my-1
+            h6.mb-0 UETDS
+            .form-check
+                input#isUetdsActive.form-check-input(type="checkbox")
+                label.form-check-label(for="isUetdsActive") UETDS aktif
+            .input-group
+                span.input-group-text Kullanıcı adı
+                input#uetdsUsername.firm-integration-field.form-control(type="text" readonly disabled)
+            .input-group
+                span.input-group-text Şifre
+                input#uetdsPassword.firm-integration-field.form-control(type="password" readonly disabled autocomplete="new-password")
+            p.form-text.text-muted.mb-0.firm-integration-hint Kimlik bilgileri yalnızca Götür sistem kullanıcısı tarafından değiştirilebilir.
+
+            hr.my-1
+            h6.mb-0 SMS (NetGSM)
+            .form-check
+                input#isSmsActive.form-check-input(type="checkbox")
+                label.form-check-label(for="isSmsActive") SMS aktif
+            .input-group
+                span.input-group-text Kullanıcı adı
+                input#smsUsername.firm-integration-field.form-control(type="text" readonly disabled)
+            .input-group
+                span.input-group-text Gönderici adı
+                input#smsHeader.firm-integration-field.form-control(type="text" readonly disabled)
+            .input-group
+                span.input-group-text Şifre
+                input#smsPassword.firm-integration-field.form-control(type="password" readonly disabled autocomplete="new-password")
+            p.form-text.text-muted.mb-0.firm-integration-hint Kimlik bilgileri yalnızca Götür sistem kullanıcısı tarafından değiştirilebilir.
+
+            hr.my-1
+            h6.mb-0 SMS mesaj kalıpları
+            p.form-text.text-muted.mb-0 Yer tutucular: {firma} {pnr} {when} {route} {from} {to} {seats} {seatPart}
+            .input-group
+                span.input-group-text Satış
+                textarea#smsTplSale.firm-integration-field.form-control(rows="2" maxlength="500" readonly disabled)
+            .input-group
+                span.input-group-text Rezervasyon
+                textarea#smsTplReservation.firm-integration-field.form-control(rows="2" maxlength="500" readonly disabled)
+            .input-group
+                span.input-group-text Satışa çevirme
+                textarea#smsTplComplete.firm-integration-field.form-control(rows="2" maxlength="500" readonly disabled)
+            .input-group
+                span.input-group-text Açık bilet
+                textarea#smsTplOpenSale.firm-integration-field.form-control(rows="2" maxlength="500" readonly disabled)
+            .input-group
+                span.input-group-text Web satış
+                textarea#smsTplWebSale.firm-integration-field.form-control(rows="2" maxlength="500" readonly disabled)
+            .input-group
+                span.input-group-text Web rezervasyon
+                textarea#smsTplWebReservation.firm-integration-field.form-control(rows="2" maxlength="500" readonly disabled)
+            .input-group
+                span.input-group-text İptal
+                textarea#smsTplCancel.firm-integration-field.form-control(rows="2" maxlength="500" readonly disabled)
+            .input-group
+                span.input-group-text İade
+                textarea#smsTplRefund.firm-integration-field.form-control(rows="2" maxlength="500" readonly disabled)
+            .input-group
+                span.input-group-text Transfer
+                textarea#smsTplTransfer.firm-integration-field.form-control(rows="2" maxlength="500" readonly disabled)
+            .input-group
+                span.input-group-text Açığa alma
+                textarea#smsTplOpen.firm-integration-field.form-control(rows="2" maxlength="500" readonly disabled)
+
             button.save-firm-settings.btn.btn-outline-primary KAYDET
 
     .branch
@@ -1671,7 +1735,7 @@ block content
             span TRANSFER
         .taken-ticket-op(data-action="delete_pending")
             span İPTAL
-        .taken-ticket-op(data-action="")
+        .taken-ticket-op(data-action="seat_history")
             span KOLTUK GEÇMİŞİ
 
     .search-ticket-ops-pop-up
@@ -1691,6 +1755,43 @@ block content
             span TRANSFER
         .taken-ticket-op.searched-ticket-op(data-action="go_trip")
             span SEFERE GİT
+
+    .seat-history-pop-up
+        .gtr-header
+            span KOLTUK GEÇMİŞİ
+        .seat-history-close
+            i.fa-solid.fa-x
+        .seat-history-body
+
+    .system-logs
+        .gtr-header
+            span SİSTEM KAYITLARI
+        .system-logs-close
+            i.fa-solid.fa-x
+        .system-logs-search.p-3.d-flex.gap-2.flex-wrap.align-items-end
+            .input-group
+                span.input-group-text Başlangıç
+                input.form-control.system-logs-start(type="text")
+            .input-group
+                span.input-group-text Bitiş
+                input.form-control.system-logs-end(type="text")
+            .input-group
+                span.input-group-text Modül
+                select.form-select.system-logs-module
+                    option(value="") Tümü
+            .input-group
+                span.input-group-text İşlem
+                select.form-select.system-logs-action
+                    option(value="") Tümü
+            .input-group
+                span.input-group-text Kullanıcı
+                select.form-select.system-logs-user
+                    option(value="") Tümü
+            .input-group
+                span.input-group-text Açıklama
+                input.form-control.system-logs-search-text(type="text" placeholder="Ara")
+            button.btn.btn-outline-primary.system-logs-search-btn(type="button") ARA
+        .system-logs-list.p-3
 
     .customer-blacklist-pop-up.p-3
         textarea.customer-blacklist-description.form-control(placeholder="Sebep")

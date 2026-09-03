@@ -52,14 +52,54 @@ function getCookieValue(name) {
     const match = document.cookie.match(new RegExp("(?:^|; )" + escaped + "=([^;]*)"));
     return match ? decodeURIComponent(match[1]) : null;
 }
+
+function redirectToLogin(url) {
+    const target = typeof url === "string" && url.trim() ? url.trim() : "/login";
+    window.location.href = target;
+}
+
+function looksLikeLoginHtml(html) {
+    if (typeof html !== "string") {
+        return false;
+    }
+    return html.includes("login-form") || html.includes("login-page");
+}
+
+function attachErpRequestHeaders(headers) {
+    headers.set("X-Requested-With", "XMLHttpRequest");
+    const token = getCookieValue("XSRF-TOKEN");
+    if (token) {
+        headers.set("X-CSRF-Token", token);
+    }
+    return headers;
+}
+
 $.ajaxSetup({
     beforeSend: function (xhr) {
+        xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
         const token = getCookieValue("XSRF-TOKEN");
         if (token) {
             xhr.setRequestHeader("X-CSRF-Token", token);
         }
     }
 });
+
+const CSRF_RELOAD_CODES = { SESSION_EXPIRED: true, CSRF_FAILED: true };
+const CSRF_RELOAD_GUARD_KEY = "gtrCsrfReloadAt";
+const CSRF_RELOAD_GUARD_MS = 8000;
+
+function reloadForCsrfOrSession(code) {
+    if (!code || !CSRF_RELOAD_CODES[code]) return false;
+    try {
+        const last = Number(sessionStorage.getItem(CSRF_RELOAD_GUARD_KEY) || 0);
+        if (Date.now() - last < CSRF_RELOAD_GUARD_MS) {
+            return false;
+        }
+        sessionStorage.setItem(CSRF_RELOAD_GUARD_KEY, String(Date.now()));
+    } catch (_) { /* sessionStorage kapalı olabilir */ }
+    window.location.reload();
+    return true;
+}
 // --- end CSRF token auto-attach ---
 
 // --- Toast / Notification Utility (accessibility-friendly) ---
@@ -205,6 +245,65 @@ function setSelectedTakenTicketContextFromRow($row) {
         tripDate: $row.data("trip-date") ?? currentTripDate ?? null,
         tripTime: $row.data("trip-time") ?? currentTripTime ?? null,
         stopId: $row.data("stop-id") ?? selectedTicketStopId ?? currentStop ?? null,
+        seatTypes,
+        pnrs,
+        pendingTicketIds,
+        ticketIds,
+    };
+}
+
+function setSelectedTakenTicketContextFromRows($rows, $clickedRow) {
+    if (!$rows || !$rows.length) {
+        clearSelectedTakenTicketContext();
+        return;
+    }
+
+    const seatNumbers = [];
+    const ticketIds = [];
+    const pnrs = [];
+    const pendingTicketIds = [];
+    const seatTypes = [];
+
+    $rows.each(function () {
+        const $r = $(this);
+        const normalized = normalizeSeatNumberList([$r.data("seat-number")]);
+        if (normalized.length) {
+            seatNumbers.push(normalized[0]);
+        }
+
+        const ticketId = $r.data("ticket-id");
+        if (ticketId !== undefined && ticketId !== null && String(ticketId).trim() !== "") {
+            ticketIds.push(String(ticketId).trim());
+        }
+
+        const pnr = $r.data("pnr");
+        if (pnr !== undefined && pnr !== null && String(pnr).trim() !== "") {
+            pnrs.push(String(pnr).trim());
+        }
+
+        const pendingTicketId = $r.data("pending-ticket-id");
+        if (pendingTicketId !== undefined && pendingTicketId !== null && String(pendingTicketId).trim() !== "") {
+            pendingTicketIds.push(String(pendingTicketId).trim());
+        }
+
+        let seatType = $r.data("seat-type");
+        if (seatType === undefined || seatType === null || String(seatType).trim() === "") {
+            const seatNum = normalized[0];
+            seatType = seatNum
+                ? ($(`.seat[data-seat-number='${seatNum}']`).data("seat-type") ?? "")
+                : "";
+        }
+        seatTypes.push(seatType ?? "");
+    });
+
+    const $source = ($clickedRow && $clickedRow.length) ? $clickedRow : $rows.first();
+
+    selectedTakenTicketContext = {
+        seatNumbers,
+        tripId: $source.data("trip-id") ?? currentTripId ?? null,
+        tripDate: $source.data("trip-date") ?? currentTripDate ?? null,
+        tripTime: $source.data("trip-time") ?? currentTripTime ?? null,
+        stopId: $source.data("stop-id") ?? selectedTicketStopId ?? currentStop ?? null,
         seatTypes,
         pnrs,
         pendingTicketIds,
@@ -588,7 +687,9 @@ const ESC_CLOSE_BUTTON_SELECTORS = [
     ".report-close",
     ".reports-close",
     ".route-close",
+    ".seat-history-close",
     ".staff-close",
+    ".system-logs-close",
     ".stops-close",
     ".ticket-close",
     ".ticket-search-close",
@@ -734,16 +835,31 @@ const getAjaxErrorMessage = err =>
 
 const originalFetch = window.fetch;
 window.fetch = async (...args) => {
-    let [input, init] = args;
+    let [input, init = {}] = args;
     if (typeof input === "string") {
         input = normalizeErpUrl(input);
     } else if (typeof Request !== "undefined" && input instanceof Request) {
         input = new Request(normalizeErpUrl(input.url), input);
     }
 
+    const headers = new Headers(init.headers || undefined);
+    attachErpRequestHeaders(headers);
+    init = Object.assign({}, init, { headers });
+
     showLoading();
     try {
         const res = await originalFetch(input, init);
+        if (res.status === 401) {
+            let redirectUrl = "/login";
+            try {
+                const data = await res.clone().json();
+                if (data && data.redirect) {
+                    redirectUrl = data.redirect;
+                }
+            } catch (_) { /* login HTML veya boş gövde */ }
+            redirectToLogin(redirectUrl);
+            return res;
+        }
         if (!res.ok) {
             try {
                 const clone = res.clone();
@@ -770,7 +886,18 @@ window.fetch = async (...args) => {
 
 $(document).ajaxSend(showLoading);
 $(document).ajaxComplete(hideLoading);
-$(document).ajaxError((_e, _xhr, _settings, _err) => hideLoading())
+$(document).ajaxError((_e, xhr) => {
+    hideLoading();
+    if (reloadForCsrfOrSession(xhr?.responseJSON?.code)) {
+        return;
+    }
+    if (xhr && xhr.status === 401) {
+        const redirectUrl = xhr.responseJSON && xhr.responseJSON.redirect
+            ? xhr.responseJSON.redirect
+            : "/login";
+        redirectToLogin(redirectUrl);
+    }
+})
 
 $.ajaxPrefilter((options, originalOptions) => {
     if (options && typeof options.url === "string") {
@@ -1787,7 +1914,8 @@ async function loadTrip(date, time, tripId) {
 
         // Passenger table and row click
         $(".passenger-table").html(passengersResponse);
-        $(".passenger-table tbody tr").off().on("click", function (e) {
+        $(".passenger-table tbody tr").off("click.passengerOps").on("click.passengerOps", function (e) {
+            e.stopPropagation();
             const $row = $(this);
             if (!$row.closest('#activeTickets').length) return;
 
@@ -1799,26 +1927,45 @@ async function loadTrip(date, time, tripId) {
                 currentPassengerRow = null;
                 selectedTakenSeats = [];
                 clearSelectedTakenTicketContext();
-                $(".passenger-table tbody tr").removeClass("selected");
+                $(".passenger-table tbody tr, .seat").removeClass("selected");
                 return;
             }
 
             currentPassengerRow = $row;
-            $(".seat").removeClass("selected");
-            $(".passenger-table tbody tr").removeClass("selected");
+            $(".seat, .passenger-table tbody tr").removeClass("selected");
+            selectedSeats = [];
+            $(".ticket-ops-pop-up").hide();
 
             currentGroupId = $row.data("group-id");
             selectedTicketStopId = $row.data("stop-id");
 
+            const groupId = currentGroupId;
+            const hasGroupId = groupId !== undefined && groupId !== null && String(groupId).trim() !== "";
+            const $groupRows = hasGroupId
+                ? $(".passenger-table #activeTickets tbody tr").filter(function () {
+                    return String($(this).data("group-id")) === String(groupId);
+                })
+                : $row;
+
+            $groupRows.addClass("selected");
+
             const seatNumbers = [];
-            $(`.passenger-table tbody tr[data-group-id='${currentGroupId}']`).each(function () {
+            $groupRows.each(function () {
                 seatNumbers.push($(this).data("seat-number"));
-                $(this).addClass("selected");
             });
             selectedTakenSeats = seatNumbers;
-            updateSelectedTakenTicketContextFromSeatNumbers(seatNumbers);
+            setSelectedTakenTicketContextFromRows($groupRows, $row);
 
             updateTakenTicketOpsVisibility($row);
+
+            if (hasGroupId) {
+                seatNumbers.forEach(num => {
+                    const $seat = $(`.seat[data-seat-number='${num}']`);
+                    if ($seat.length && String($seat.data("group-id")) === String(groupId)) {
+                        $seat.addClass("selected");
+                    }
+                });
+            }
 
             // Position popup at mouse location
             let left = e.pageX + 10;
@@ -2133,6 +2280,12 @@ async function loadTrip(date, time, tripId) {
         fromStr = $("#fromStr").val();
         toStr = $("#toStr").val();
 
+        // Transfer/açık bilet bağlama kaynak seferde seçilen durakta kalıyordu;
+        // hedef sefer açılınca kalkış, bu seferde açık olan durak olmalı.
+        if (isMovingActive) {
+            selectedTicketStopId = currentStop;
+        }
+
         $("#tickets").remove();
         $("#tripDate").remove();
         $("#tripTime").remove();
@@ -2304,7 +2457,7 @@ async function loadTrip(date, time, tripId) {
 
         // Click outside → close popup
         $(document).off("click.ticketPopups").on("click.ticketPopups", (e) => {
-            if ($(e.target).closest(".ticket-ops-pop-up, .taken-ticket-ops-pop-up, .seat").length) return;
+            if ($(e.target).closest(".ticket-ops-pop-up, .taken-ticket-ops-pop-up, .seat, .passenger-table").length) return;
             $(".ticket-ops-pop-up, .taken-ticket-ops-pop-up").hide();
             currentSeat = null;
         });
@@ -2718,6 +2871,25 @@ async function loadTrip(date, time, tripId) {
         // tetiklenmesine (handler yığılmasına) yol açıyordu.
         $(".ticket-op").off("click").on("click", e => {
             e.stopPropagation();
+
+            // Boş koltuk menüsündeki geçmiş satırının alt menüsü yok;
+            // satış/rezervasyon gibi durak listesi açılmaz.
+            if (e.currentTarget.dataset.action === "seat_history") {
+                const seatNumber = (currentSeat && currentSeat.data("seat-number")) || selectedSeats[0];
+
+                $(".ticket-ops-pop-up").hide();
+                $(".seat").removeClass("selected");
+                selectedSeats = [];
+
+                if (!currentTripId || !seatNumber) {
+                    showError("Koltuk geçmişi için sefer ve koltuk bilgisi bulunamadı.");
+                    return;
+                }
+
+                openSeatHistory(currentTripId, seatNumber);
+                return;
+            }
+
             $(".ticket-op ul").css("display", "none");
             const ul = e.currentTarget.querySelector("ul");
             const isVisible = $(ul).css("display") === "flex";
@@ -2813,12 +2985,15 @@ async function loadTrip(date, time, tripId) {
                                     .addClass("text-danger")
                                     .data("pointorpercent", customer.pointOrPercent)
                                     .data("pointamount", customer.point_amount);
-                                $(row).find(".price").find("input").val(originalPrice);
-                                if (customer.pointOrPercent == "percent") {
-                                    const discount = Number(customer.percent);
-                                    const newPrice = originalPrice - (originalPrice / 100 * discount);
-                                    $(row).find(".price").find("input").val(newPrice);
-                                } else if (!customer.pointOrPercent) {
+                                if (!$(row).find(".price").hasClass("price-locked")) {
+                                    $(row).find(".price").find("input").val(originalPrice);
+                                    if (customer.pointOrPercent == "percent") {
+                                        const discount = Number(customer.percent);
+                                        const newPrice = originalPrice - (originalPrice / 100 * discount);
+                                        $(row).find(".price").find("input").val(newPrice);
+                                    }
+                                }
+                                if (!customer.pointOrPercent) {
                                     $(row).find(".price").find("span.customer-point")
                                         .html("")
                                         .removeClass("text-danger")
@@ -2874,6 +3049,9 @@ async function loadTrip(date, time, tripId) {
                             const $button = $(this);
                             const isUp = $button.hasClass("price-arrow-up");
                             const $priceContainer = $button.closest(".price");
+                            if ($priceContainer.hasClass("price-locked")) {
+                                return;
+                            }
                             const priceLists = getPriceLists($priceContainer);
                             const options = priceLists.activeList;
 
@@ -3096,6 +3274,44 @@ async function loadTrip(date, time, tripId) {
                 params.append("stopId", currentStop);
             }
             window.open(`/trip-seat-plan?${params.toString()}`, "_blank", "width=900,height=700");
+        });
+
+        $(".trip-passengers-excel").off().on("click", async e => {
+            e.preventDefault();
+            if (!currentTripId) return;
+            try {
+                const params = new URLSearchParams({ tripId: currentTripId });
+                if (currentStop !== undefined && currentStop !== null && currentStop !== "") {
+                    params.append("stopId", currentStop);
+                }
+                const response = await fetch(`/trip-passengers-excel?${params.toString()}`, {
+                    headers: { "Accept": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/json" },
+                    credentials: "same-origin",
+                });
+                if (!response.ok) {
+                    let message = "Excel oluşturulamadı.";
+                    try {
+                        const data = await response.json();
+                        if (data && data.message) message = data.message;
+                    } catch (_err) { /* ignore non-json errors */ }
+                    showError(message);
+                    return;
+                }
+                const blob = await response.blob();
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                const disposition = response.headers.get("Content-Disposition") || "";
+                const utfMatch = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+                const asciiMatch = disposition.match(/filename="?([^";]+)"?/i);
+                link.download = decodeURIComponent(utfMatch?.[1] || asciiMatch?.[1] || "yolcu-listesi.xlsx");
+                link.href = url;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1000);
+            } catch (err) {
+                showError(getAjaxErrorMessage(err));
+            }
         });
 
         // Undo account cut
@@ -3409,6 +3625,11 @@ function highlightTripRowByData(date, time, tripId) {
 
 async function renderTripRows(html, options = {}) {
     const { autoSelect = false } = options || {};
+
+    if (looksLikeLoginHtml(html)) {
+        redirectToLogin("/login");
+        return false;
+    }
 
     const $tripRowsContainer = $(".tripRows");
     $tripRowsContainer.html(html);
@@ -4829,9 +5050,49 @@ $(".taken-ticket-op").on("click", async e => {
         });
     }
 
+    else if (action == "seat_history") {
+        // Koltuk geçmişi kendi pop-up'ını karartma ile birlikte açtığı için
+        // aşağıdaki ortak "karartmayı kapat" satırlarına düşmeden dönüyoruz.
+        const seatNumber = seatNumbers[0];
+
+        if (!tripId || !seatNumber) {
+            showError("Koltuk geçmişi için sefer ve koltuk bilgisi bulunamadı.");
+            return;
+        }
+
+        $(".taken-ticket-ops-pop-up").hide();
+        $(".seat").removeClass("selected");
+        selectedTakenSeats = [];
+        clearSelectedTakenTicketContext();
+
+        await openSeatHistory(tripId, seatNumber);
+        return;
+    }
+
     $(".ticket-search-pop-up").css("display", "none")
     $(".blackout").css("display", "none")
 })
+
+async function openSeatHistory(tripId, seatNumber) {
+    await $.ajax({
+        url: "/get-seat-history",
+        type: "GET",
+        data: { tripId, seatNumber },
+        success: function (response) {
+            $(".seat-history-body").html(response);
+            $(".seat-history-pop-up").css("display", "block");
+            $(".blackout").css("display", "block");
+        },
+        error: function (xhr) {
+            showError(getAjaxErrorMessage(xhr));
+        }
+    });
+}
+
+$(".seat-history-close").on("click", () => {
+    $(".seat-history-pop-up").css("display", "none");
+    $(".blackout").css("display", "none");
+});
 
 $(".moving-confirm").on("click", async e => {
     // DÜZELTME: Çift gönderim koruması yoktu; hızlı çift tıklama aynı
@@ -4857,7 +5118,7 @@ $(".moving-confirm").on("click", async e => {
                     pnr: movingSeatPNR,
                     newSeat: selectedSeats[0],
                     tripId: currentTripId,
-                    stopId: selectedTicketStopId,
+                    stopId: currentStop,
                     toId: $(".move-to-trip-place-select").val() ? $(".move-to-trip-place-select").val() : toId,
                 },
                 success: async function () {
@@ -4876,7 +5137,7 @@ $(".moving-confirm").on("click", async e => {
         await $.ajax({
             url: "/post-move-tickets",
             type: "POST",
-            data: { pnr: movingSeatPNR, oldSeats: JSON.stringify(movingSelectedSeats), newSeats: JSON.stringify(selectedSeats), newTrip: currentTripId, fromId: selectedTicketStopId, toId: $(".move-to-trip-place-select").val() ? $(".move-to-trip-place-select").val() : toId },
+            data: { pnr: movingSeatPNR, oldSeats: JSON.stringify(movingSelectedSeats), newSeats: JSON.stringify(selectedSeats), newTrip: currentTripId, fromId: currentStop, toId: $(".move-to-trip-place-select").val() ? $(".move-to-trip-place-select").val() : toId },
             success: async function () {
                 resetMovingWorkflowState();
                 loadTrip(currentTripDate, currentTripTime, currentTripId)
@@ -5425,6 +5686,46 @@ $(".firm-settings-nav").on("click", async e => {
             "checked",
             response?.isReservationAutoCancelActive !== false
         );
+        $("#isUetdsActive").prop("checked", Boolean(response?.isUetdsActive));
+        $("#isSmsActive").prop("checked", Boolean(response?.isSmsActive));
+        $("#uetdsUsername").val(response?.uetdsUsername || "");
+        $("#smsUsername").val(response?.smsUsername || "");
+        $("#smsHeader").val(response?.smsHeader || "");
+        const smsTemplates = response?.smsTemplates || {};
+        $("#smsTplSale").val(smsTemplates.sale || "");
+        $("#smsTplReservation").val(smsTemplates.reservation || "");
+        $("#smsTplComplete").val(smsTemplates.complete || "");
+        $("#smsTplOpenSale").val(smsTemplates.open_sale || "");
+        $("#smsTplWebSale").val(smsTemplates.web_sale || "");
+        $("#smsTplWebReservation").val(smsTemplates.web_reservation || "");
+        $("#smsTplCancel").val(smsTemplates.cancel || "");
+        $("#smsTplRefund").val(smsTemplates.refund || "");
+        $("#smsTplTransfer").val(smsTemplates.transfer || "");
+        $("#smsTplOpen").val(smsTemplates.open || "");
+
+        const canEditIntegrations = Boolean(response?.canEditIntegrations);
+        $(".firm-integration-field")
+            .prop("readonly", !canEditIntegrations)
+            .prop("disabled", !canEditIntegrations);
+        $("#uetdsPassword").val(canEditIntegrations ? "" : (response?.uetdsPasswordSet ? "••••••••" : ""));
+        $("#smsPassword").val(canEditIntegrations ? "" : (response?.smsPasswordSet ? "••••••••" : ""));
+        $("#uetdsPassword").attr(
+            "placeholder",
+            canEditIntegrations && response?.uetdsPasswordSet
+                ? "Kayıtlı — değiştirmek için yeni şifre yazın"
+                : ""
+        );
+        $("#smsPassword").attr(
+            "placeholder",
+            canEditIntegrations && response?.smsPasswordSet
+                ? "Kayıtlı — değiştirmek için yeni şifre yazın"
+                : ""
+        );
+        $(".firm-integration-hint").text(
+            canEditIntegrations
+                ? "Şifreyi değiştirmek istemiyorsanız boş bırakın."
+                : "Kimlik bilgileri yalnızca Götür sistem kullanıcısı tarafından değiştirilebilir."
+        );
         $(".blackout").css("display", "block");
         $(".firm").css("display", "block");
     } catch (xhr) {
@@ -5443,15 +5744,43 @@ $(".firm-close").on("click", e => {
 $(".save-firm-settings").on("click", async e => {
     const comissionRate = $(".firm-commission-rate").val();
     const isReservationAutoCancelActive = $("#isReservationAutoCancelActive").prop("checked");
+    const isUetdsActive = $("#isUetdsActive").prop("checked");
+    const isSmsActive = $("#isSmsActive").prop("checked");
+    const canEditIntegrations = !$("#uetdsUsername").prop("disabled");
+
+    const data = {
+        comissionRate,
+        isReservationAutoCancelActive,
+        isUetdsActive,
+        isSmsActive,
+    };
+
+    if (canEditIntegrations) {
+        data.uetdsUsername = $("#uetdsUsername").val();
+        data.uetdsPassword = $("#uetdsPassword").val();
+        data.smsUsername = $("#smsUsername").val();
+        data.smsHeader = $("#smsHeader").val();
+        data.smsPassword = $("#smsPassword").val();
+        data.smsTemplates = {
+            sale: $("#smsTplSale").val(),
+            reservation: $("#smsTplReservation").val(),
+            complete: $("#smsTplComplete").val(),
+            open_sale: $("#smsTplOpenSale").val(),
+            web_sale: $("#smsTplWebSale").val(),
+            web_reservation: $("#smsTplWebReservation").val(),
+            cancel: $("#smsTplCancel").val(),
+            refund: $("#smsTplRefund").val(),
+            transfer: $("#smsTplTransfer").val(),
+            open: $("#smsTplOpen").val(),
+        };
+    }
 
     try {
         await $.ajax({
             url: "/post-save-firm-settings",
             type: "POST",
-            data: {
-                comissionRate,
-                isReservationAutoCancelActive,
-            },
+            contentType: "application/json",
+            data: JSON.stringify(data),
         });
 
         $(".blackout").css("display", "none");
@@ -9107,8 +9436,8 @@ $(".save-user").on("click", async e => {
             $(".user-info").css("display", "none")
             $(".user-settings").css("display", "none")
         },
-        error: function (xhr, status, error) {
-            console.log(error);
+        error: function (xhr) {
+            showError(getAjaxErrorMessage(xhr));
         }
     })
 })
@@ -10082,3 +10411,113 @@ $(loadAnnouncements);
         getInstances: () => Array.from(instances),
     };
 })();
+
+// --- Sistem kayıtları paneli (Yönetim → Sistem Kayıtları) ---
+
+let systemLogsPage = 1;
+
+const buildSystemLogsQuery = page => ({
+    page,
+    startDate: $(".system-logs-start").val() || "",
+    endDate: $(".system-logs-end").val() || "",
+    module: $(".system-logs-module").val() || "",
+    action: $(".system-logs-action").val() || "",
+    userId: $(".system-logs-user").val() || "",
+    search: $(".system-logs-search-text").val() || "",
+});
+
+async function loadSystemLogs(page = 1) {
+    await $.ajax({
+        url: "/get-system-logs",
+        type: "GET",
+        data: buildSystemLogsQuery(page),
+        success: function (response) {
+            systemLogsPage = page;
+            $(".system-logs-list").html(response);
+        },
+        error: function (xhr) {
+            showError(getAjaxErrorMessage(xhr));
+        }
+    });
+}
+
+async function initSystemLogsFilters() {
+    const $panel = $(".system-logs");
+    if ($panel.data("initialized")) {
+        return;
+    }
+
+    try {
+        const [filters, users] = await Promise.all([
+            fetch("/get-system-log-filters").then(r => r.json()),
+            fetch("/get-users-list?onlyData=true").then(r => r.json()),
+        ]);
+
+        const $moduleSelect = $(".system-logs-module").empty().append('<option value="">Tümü</option>');
+        filters.modules.forEach(item => {
+            $moduleSelect.append(`<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`);
+        });
+
+        const $actionSelect = $(".system-logs-action").empty().append('<option value="">Tümü</option>');
+        filters.actions.forEach(item => {
+            $actionSelect.append(`<option value="${escapeHtml(item.value)}">${escapeHtml(item.label)}</option>`);
+        });
+
+        const $userSelect = $(".system-logs-user").empty().append('<option value="">Tümü</option>');
+        users.forEach(user => {
+            $userSelect.append(`<option value="${user.id}">${escapeHtml(user.name)}</option>`);
+        });
+
+        // Rapor pop-up'larıyla aynı format: sunucu "Y-m-d H:i" bekliyor.
+        const datePickerOptions = {
+            enableTime: true,
+            dateFormat: "Y-m-d H:i",
+            time_24hr: true,
+            altInput: true,
+            altFormat: "d F Y H:i",
+            locale: "tr",
+        };
+
+        const now = new Date();
+        flatpickr($(".system-logs-start")[0], {
+            ...datePickerOptions,
+            defaultDate: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0),
+        });
+        flatpickr($(".system-logs-end")[0], {
+            ...datePickerOptions,
+            defaultDate: new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 0),
+        });
+
+        $panel.data("initialized", true);
+    } catch (err) {
+        console.error("system logs filter init error", err);
+    }
+}
+
+$(".system-logs-nav").on("click", async e => {
+    e.preventDefault();
+
+    await initSystemLogsFilters();
+    await loadSystemLogs(1);
+
+    $(".blackout").css("display", "block");
+    $(".system-logs").css("display", "block");
+});
+
+$(".system-logs-search-btn").on("click", () => loadSystemLogs(1));
+
+// Liste her aramada yeniden basıldığı için sayfalama butonları delege ediliyor.
+$(document).on("click", ".system-logs-prev", () => {
+    if (systemLogsPage > 1) {
+        loadSystemLogs(systemLogsPage - 1);
+    }
+});
+
+$(document).on("click", ".system-logs-next", () => {
+    loadSystemLogs(systemLogsPage + 1);
+});
+
+$(".system-logs-close").on("click", () => {
+    $(".system-logs").css("display", "none");
+    $(".blackout").css("display", "none");
+});

@@ -76,7 +76,13 @@ app.use(logger("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, "public"), {
+  setHeaders(res, filePath) {
+    if (filePath.endsWith(".webmanifest")) {
+      res.setHeader("Content-Type", "application/manifest+json");
+    }
+  },
+}));
 app.use(express.static(path.join(__dirname, "node_modules")));
 
 app.use((req, res, next) => {
@@ -112,15 +118,16 @@ app.use(
     secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
+    rolling: true,
     store: store,
-    // GÜVENLİK: cookie'ler production'da secure (HTTPS-only) ve sameSite=lax
-    // olarak işaretleniyor; CSRF ve HTTP üzerinden çalınma riskini azaltır.
-    // Local/geliştirme ortamı HTTPS kullanmadığından secure orada kapalı
-    // bırakılıyor (aksi halde session hiç kalıcı olmazdı).
+    // GÜVENLİK: cookie'ler HTTPS'te secure, sameSite=lax. `secure: "auto"`
+    // req.secure'a bakar (production'da trust proxy: 1 ile X-Forwarded-Proto).
+    // rolling: her istekte maxAge yenilenir; aksi halde süre giriş anından
+    // işler ve gece PC kapatıp sabah açınca oturum düşer.
     cookie: {
       maxAge: 86400000,
       httpOnly: true,
-      secure: isProduction,
+      secure: "auto",
       sameSite: "lax",
     },
   })
@@ -139,9 +146,19 @@ app.use(function (req, res, next) {
 
 // error handler
 app.use(function (err, req, res, next) {
-  res.locals.message = err.message;
+  const status = err.status || 500;
+  const isNotFound = status === 404;
+
+  res.locals.message = isNotFound
+    ? "Aradığınız sayfa yok veya taşınmış olabilir."
+    : (err.message || "Beklenmeyen bir hata oluştu.");
   res.locals.error = req.app.get("env") === "development" ? err : {};
-  res.status(err.status || 500);
+  res.locals.status = status;
+  res.locals.isNotFound = isNotFound;
+  res.locals.isNoNavbar = true;
+  res.locals.title = isNotFound ? "Sayfa bulunamadı" : "Hata";
+  res.locals.permissions = res.locals.permissions || [];
+  res.status(status);
   res.render("error");
 });
 

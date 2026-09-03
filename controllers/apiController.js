@@ -2,6 +2,14 @@ const { Op } = require("sequelize");
 const bcrypt = require("bcrypt");
 const branchModel = require("../models/branchModel");
 const { signCustomerToken } = require("../utilities/customerAuthToken");
+const { notifyTicketSms } = require("../utilities/sendSms");
+const {
+    LOG_MODULES,
+    LOG_ACTIONS,
+    logSystemEvent,
+    logSystemEvents,
+    ticketSnapshot,
+} = require("../utilities/systemLog");
 
 // erpController'dan kopyalanan orijinal PNR oluşturucu
 async function generatePNR(models, fromId, toId, stops) {
@@ -835,6 +843,7 @@ exports.paymentComplete = async (req, res) => {
 
         let ticketGroupId;
         let pnrCode;
+        let soldTickets = [];
 
         try {
             const result = await req.db.transaction(async (t) => {
@@ -864,6 +873,7 @@ exports.paymentComplete = async (req, res) => {
                 // Array olup olmadığından emin olmak için parse ediyoruz.
                 const seatsArray = typeof pay.seatNumbers === "string" ? JSON.parse(pay.seatNumbers) : (pay.seatNumbers || []);
                 const gendersArray = typeof pay.genders === "string" ? JSON.parse(pay.genders) : (pay.genders || []);
+                const soldTickets = [];
 
                 for (let i = 0; i < seatsArray.length; i++) {
 
@@ -899,9 +909,10 @@ exports.paymentComplete = async (req, res) => {
                     if (existingTicket) {
                         // Pending bileti web kullanıcısına göre güncelle
                         await existingTicket.update(ticketData, { transaction: t });
+                        soldTickets.push(existingTicket);
                     } else {
                         // Fallback (Pending silindiyse)
-                        await Ticket.create({
+                        const createdTicket = await Ticket.create({
                             ...ticketData,
                             tripId: pay.tripId,
                             seatNo: seatsArray[i],
@@ -911,14 +922,34 @@ exports.paymentComplete = async (req, res) => {
                             fromRouteStopId: pay.fromStopId,
                             toRouteStopId: pay.toStopId
                         }, { transaction: t });
+                        soldTickets.push(createdTicket);
                     }
                 }
 
-                return { ticketGroupId: tg.id, pnrCode: generatedPnr };
+                return {
+                    ticketGroupId: tg.id,
+                    pnrCode: generatedPnr,
+                    soldTickets,
+                    webUserId: webUser ? webUser.id : null,
+                };
             });
 
             ticketGroupId = result.ticketGroupId;
             pnrCode = result.pnrCode;
+            soldTickets = result.soldTickets || [];
+
+            // Web satışları da koltuk geçmişinde görünsün diye kaydediliyor.
+            await logSystemEvents(req, result.soldTickets.map(ticket => ({
+                module: LOG_MODULES.TICKET,
+                action: asReservation ? LOG_ACTIONS.WEB_RESERVE : LOG_ACTIONS.WEB_SALE,
+                referenceId: ticket.id,
+                userId: result.webUserId,
+                branchId: null,
+                tripId: ticket.tripId,
+                seatNo: ticket.seatNo,
+                newData: ticketSnapshot(ticket),
+                description: `${asReservation ? "Web rezervasyonu" : "Web satışı"} | ${ticket.seatNo} nolu koltuk | ${ticket.name || ""} ${ticket.surname || ""}`.trim(),
+            })));
         } catch (ticketErr) {
             // Bilet oluşturma başarısız oldu: ödeme kaydını "tamamlanmadı" durumuna
             // geri alan bir telafi (compensating) işlemi ile yeniden denenebilir
@@ -928,6 +959,22 @@ exports.paymentComplete = async (req, res) => {
                 { where: { id: pay.id, tenantKey: req.tenantKey } }
             );
             throw ticketErr;
+        }
+
+        try {
+            const trip = await req.models.Trip.findByPk(pay.tripId);
+            const stopIds = [pay.fromStopId, pay.toStopId].filter(Boolean);
+            const stops = stopIds.length
+                ? await req.models.Stop.findAll({ where: { id: stopIds } })
+                : [];
+            await notifyTicketSms(req, {
+                event: asReservation ? "web_reservation" : "web_sale",
+                tickets: soldTickets,
+                trip,
+                stops,
+            });
+        } catch (smsErr) {
+            console.error("Web bilet SMS hatasi:", smsErr.message);
         }
 
         res.json({
@@ -1220,8 +1267,35 @@ exports.cancelTicket = async (req, res) => {
         const tripDate = new Date(ticket.optionDate + " " + ticket.optionTime);
 
         const newStatus = action === "refund" ? "refund" : "canceled";
+        const beforeSnapshot = ticketSnapshot(ticket);
 
         await ticket.update({ status: newStatus });
+
+        await logSystemEvent(req, {
+            module: LOG_MODULES.TICKET,
+            action: newStatus === "refund" ? LOG_ACTIONS.WEB_REFUND : LOG_ACTIONS.WEB_CANCEL,
+            referenceId: ticket.id,
+            userId: null,
+            branchId: null,
+            tripId: ticket.tripId,
+            seatNo: ticket.seatNo,
+            oldData: beforeSnapshot,
+            newData: ticketSnapshot(ticket),
+            description: `${newStatus === "refund" ? "Web üzerinden iade" : "Web üzerinden iptal"} | yolcu talebi | ${ticket.name || ""} ${ticket.surname || ""}`.trim(),
+        });
+
+        try {
+            const trip = ticket.tripId
+                ? await req.models.Trip.findByPk(ticket.tripId)
+                : null;
+            await notifyTicketSms(req, {
+                event: newStatus === "refund" ? "refund" : "cancel",
+                tickets: [ticket],
+                trip,
+            });
+        } catch (smsErr) {
+            console.error("Web iptal SMS hatasi:", smsErr.message);
+        }
 
         res.json({ success: true, message: "İşlem başarılı." });
 

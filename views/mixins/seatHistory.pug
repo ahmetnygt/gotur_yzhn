@@ -1,0 +1,35 @@
+.seat-history-summary.px-3.pt-3
+    p.mb-0.text-muted #{tripLabel} seferi | #{seatNo} nolu koltuk
+
+if !entries.length
+    .seat-history-empty.p-3
+        p.text-center.text-muted.mb-0 Bu koltuk için kayıt bulunamadı.
+else
+    .seat-history-list.p-3.d-flex.flex-column.gap-2
+        each entry in entries
+            .seat-history-entry(class=`action-${entry.action}`)
+                .d-flex.justify-content-between.align-items-center.gap-2
+                    span.seat-history-action #{entry.actionLabel}
+                    span.seat-history-date.text-muted #{entry.createdAtLabel}
+                .seat-history-meta
+                    span.seat-history-user
+                        i.fa-solid.fa-user.me-1
+                        | #{entry.userLabel}
+                    if entry.branchLabel && entry.branchLabel !== "-"
+                        span.seat-history-branch #{entry.branchLabel}
+                    if entry.passengerName
+                        span.seat-history-passenger #{entry.passengerName}
+                    if entry.pnr
+                        span.seat-history-pnr PNR: #{entry.pnr}
+                    if entry.priceLabel
+                        span.seat-history-price #{entry.priceLabel}
+                if entry.description
+                    p.seat-history-description.mb-0 #{entry.description}
+                if entry.changes.length
+                    ul.seat-history-changes
+                        each change in entry.changes
+                            li
+                                span.seat-history-change-label #{change.label}:
+                                span.seat-history-change-from #{change.from}
+                                i.fa-solid.fa-arrow-right.mx-1
+                                span.seat-history-change-to #{change.to}

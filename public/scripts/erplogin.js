@@ -3,6 +3,21 @@ $(function () {
     const toggleButton = $(".password-toggle");
     const loginForm = $(".login-form");
     const submitButton = $(".login-submit");
+    const uiInput = $("#uiPreferenceInput");
+    const isNarrow = window.matchMedia("(max-width: 900px)").matches;
+    const uiValue = isNarrow ? "m" : "d";
+
+    try {
+        document.cookie = `gtr_ui=${uiValue}; path=/; max-age=31536000; samesite=lax`;
+    } catch (err) { /* ignore */ }
+
+    if (uiInput.length) {
+        uiInput.val(uiValue);
+    }
+
+    if (uiValue === "m" && "serviceWorker" in navigator) {
+        navigator.serviceWorker.register("/sw-m.js").catch(() => {});
+    }
 
     if (toggleButton.length) {
         toggleButton.on("click", function () {

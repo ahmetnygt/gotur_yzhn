@@ -1,20 +1,30 @@
 doctype html
 html
   head
-    meta(name="viewport" content="width=1280, initial-scale=1, user-scalable=no")
+    if isNoNavbar
+      meta(name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover")
+      meta(name="theme-color" content="#2660ff")
+      meta(name="apple-mobile-web-app-capable" content="yes")
+      meta(name="mobile-web-app-capable" content="yes")
+      meta(name="apple-mobile-web-app-status-bar-style" content="default")
+      link(rel="manifest" href="/m.webmanifest")
+    else
+      meta(name="viewport" content="width=1280, initial-scale=1, user-scalable=no")
     title= title
     link(rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png")
     link(rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png")
     link(rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png")
     link(rel="shortcut icon" href="/images/favicon.ico" type="image/x-icon")
-    link(rel='stylesheet' href='/stylesheets/style.css')
+    unless isNoNavbar
+      link(rel='stylesheet' href='/stylesheets/style.css')
     link(rel='stylesheet' href='/stylesheets/erpscreen.css')
     link(rel='stylesheet' href='/flatpickr/dist/flatpickr.min.css')
     link(rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css')
     link(rel='stylesheet' href='https://cdnjs.cloudflare.com/SearchableSelect.js/6.7.2/css/all.min.css')
   body(data-must-change-password=(mustChangePassword ? "true" : "false"))
-    .loading
-      .loader
+    unless isNoNavbar
+      .loading
+        .loader
     .error-popup
       .gtr-header
         span HATA
@@ -114,6 +124,8 @@ html
                       a.dropdown-item.customer-nav(href="#") Müşteriler
                     li
                       a.dropdown-item.announcement-add-nav(href="#") Duyuru Ekle
+                    li
+                      a.dropdown-item.system-logs-nav(href="#") Sistem Kayıtları
               if permissions.includes("REPORTS_MANAGE")
                 li.nav-item
                   a.nav-link.reports-nav(href="#") Raporlar
@@ -138,8 +150,12 @@ html
                       button.dropdown-item.d-flex.align-items-center.gap-2.text-danger(type="submit")
                         i.fa-solid.fa-right-from-bracket
                         span Çıkış
-    div(style="padding:1rem 1rem 0rem 1rem!important;")
-      block content
+    if isNoNavbar
+      .login-wrap
+        block content
+    else
+      div(style="padding:1rem 1rem 0rem 1rem!important;")
+        block content
 
     if firmUser
       .user-profile-popup
@@ -188,5 +204,6 @@ html
     script(src="https://code.jquery.com/jquery-3.7.1.min.js")
     script(src="/flatpickr/dist/flatpickr.min.js")
     script(src="/flatpickr/dist/l10n/tr.js")
-    script(src="/scripts/erp.js")
+    unless isNoNavbar
+      script(src="/scripts/erp.js")
     block scripts

@@ -6,6 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const { generateAccountReceiptFromDb } = require('../utilities/reports/accountCutRecipe');
 const generateTripSeatPlanReport = require('../utilities/reports/tripSeatPlanReport');
+const generateTripPassengersExcel = require('../utilities/reports/tripPassengersExcel');
 const generateSalesRefundReportDetailed = require('../utilities/reports/salesRefundReportDetailed');
 const generateSalesRefundReportSummary = require('../utilities/reports/salesRefundReportSummary');
 const generateWebTicketsReportByBusSummary = require('../utilities/reports/webTicketsByBusSummary');
@@ -19,6 +20,17 @@ const generateBusTransactionsReport = require("../utilities/reports/busTransacti
 const countries = require("world-countries");
 const { seferEkle, kullaniciKontrol, seferIptal, seferAktif, seferPlakaDegistir, personelEkle, personelIptal, seferGrupGuncelle, yolcuEkle, seferGrupListesi, seferGrupEkle, yolcuIptalUetdsYolcuRefNoIle, seferDetayCiktisiAl } = require('../utilities/uetdsService');
 const { findSeatSegmentConflict, seatConflictMessage } = require('../utilities/seatSegmentConflict');
+const { notifyTicketSms, mergeSmsTemplates, sanitizeSmsTemplates } = require('../utilities/sendSms');
+const {
+    LOG_MODULES,
+    LOG_ACTIONS,
+    LOG_MODULE_LABELS,
+    LOG_ACTION_LABELS,
+    moduleLabel,
+    actionLabel,
+    ticketSnapshot,
+    diffSnapshots,
+} = require('../utilities/systemLog');
 
 const TURKISH_COLLATOR = (() => {
     try {
@@ -110,6 +122,69 @@ function emptyLikeToNull(value) {
         return null;
     }
     return value;
+}
+
+function toArrayParam(value) {
+    if (value === undefined || value === null || value === "") {
+        return [];
+    }
+    if (Array.isArray(value)) {
+        return value.filter((item) => item !== undefined && item !== null && item !== "");
+    }
+    if (typeof value === "object") {
+        return Object.values(value).filter((item) => item !== undefined && item !== null && item !== "");
+    }
+    return [value];
+}
+
+function moneyAmount(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+}
+
+const UI_COOKIE_NAME = "gtr_ui";
+const UI_COOKIE_MAX_AGE = 365 * 24 * 60 * 60 * 1000;
+
+function preferredUiFromRequest(req) {
+    const fromBody = req.body && req.body.ui;
+    const fromCookie = req.cookies && req.cookies[UI_COOKIE_NAME];
+    if (fromBody === "m" || fromBody === "d") return fromBody;
+    if (fromCookie === "m" || fromCookie === "d") return fromCookie;
+    return "d";
+}
+
+function setUiCookie(res, ui) {
+    res.cookie(UI_COOKIE_NAME, ui === "m" ? "m" : "d", {
+        maxAge: UI_COOKIE_MAX_AGE,
+        sameSite: "lax",
+        httpOnly: false,
+        path: "/",
+        secure: res.app.get("env") === "production",
+    });
+}
+
+function homePathForUi(ui) {
+    return ui === "m" ? "/m" : "/";
+}
+
+async function refreshSessionPermissions(req) {
+    const userPerms = await req.models.FirmUserPermission.findAll({
+        where: { firmUserId: req.session.firmUser.id, allow: true },
+        attributes: ["permissionId"],
+    });
+
+    const permissionIds = userPerms.map(p => p.permissionId);
+    if (permissionIds.length) {
+        const permissionRows = await req.models.Permission.findAll({
+            where: { id: { [Op.in]: permissionIds } },
+            attributes: ["code"],
+        });
+        req.session.permissions = permissionRows.map(p => p.code);
+    } else {
+        req.session.permissions = [];
+    }
+
+    await req.session.save();
 }
 
 const removeDiacritics = (value) =>
@@ -1330,28 +1405,26 @@ exports.getTrip = async (req, res, next) => {
 
             if (soldStatuses.includes(ticket.status)) {
                 totalSoldCount++
-                totalSoldAmount += ticket.price
+                totalSoldAmount += moneyAmount(ticket.price)
                 if (ticket.fromRouteStopId == stopId) {
                     currentSoldCount++
-                    currentSoldAmount += ticket.price
+                    currentSoldAmount += moneyAmount(ticket.price)
                 }
             } else if (ticket.status === "reservation") {
                 totalReservedCount++
-                totalReservedAmount += ticket.price
+                totalReservedAmount += moneyAmount(ticket.price)
                 if (ticket.fromRouteStopId == stopId) {
                     currentReservedCount++
-                    currentReservedAmount += ticket.price
+                    currentReservedAmount += moneyAmount(ticket.price)
                 }
             }
         }
 
         cargos.forEach(cargoInstance => {
             const cargo = cargoInstance.get({ plain: true });
-            const amount = Number(cargo.price);
+            const amount = moneyAmount(cargo.price);
             cargoCount += 1
-            if (!Number.isNaN(amount)) {
-                cargoAmount += amount
-            }
+            cargoAmount += amount
         })
         const fromStr = stops.find(s => s.id == stopId).title
         const toStr = stops.find(s => s.id == routeStops[routeStops.length - 1].stopId).title
@@ -1910,6 +1983,114 @@ exports.getTripSeatPlanReport = async (req, res, next) => {
     }
 };
 
+exports.getTripPassengersExcel = async (req, res, next) => {
+    try {
+        const tripId = Number(req.query.tripId);
+        const rawStopId = req.query.stopId;
+        const stopId = rawStopId !== undefined && rawStopId !== null && rawStopId !== ""
+            ? Number(rawStopId)
+            : null;
+        const isStopIdValid = Number.isFinite(stopId);
+
+        if (!Number.isFinite(tripId) || tripId <= 0) {
+            return res.status(400).json({ message: "Sefer bilgisi eksik." });
+        }
+
+        const trip = await req.models.Trip.findOne({ where: { id: tripId }, raw: true });
+        if (!trip) {
+            return res.status(404).json({ message: "Sefer bulunamadı." });
+        }
+
+        const [route, bus] = await Promise.all([
+            req.models.Route.findOne({ where: { id: trip.routeId }, raw: true }),
+            trip.busId ? req.models.Bus.findOne({ where: { id: trip.busId }, raw: true }) : null,
+        ]);
+
+        const routeStops = await req.models.RouteStop.findAll({
+            where: { routeId: trip.routeId },
+            order: [["order", "ASC"]],
+            raw: true,
+        });
+
+        const stopIds = [...new Set(routeStops.map(rs => rs.stopId))];
+        const stops = stopIds.length
+            ? await req.models.Stop.findAll({ where: { id: { [Op.in]: stopIds } }, raw: true })
+            : [];
+
+        const toKey = value => (value === null || value === undefined ? null : String(value));
+        const stopTitleMap = new Map(stops.map(stop => [toKey(stop.id), stop.title]));
+        const stopKey = isStopIdValid ? String(stopId) : null;
+
+        const tickets = await req.models.Ticket.findAll({
+            where: {
+                tripId,
+                status: { [Op.in]: ["completed", "web", "gotur", "reservation", "open"] },
+            },
+            order: [["seatNo", "ASC"]],
+            raw: true,
+        });
+
+        const nationalityLabelMap = new Map(
+            NATIONALITY_OPTIONS.map(option => [String(option.value).toLowerCase(), option.label])
+        );
+        const genderLabels = { m: "Erkek", f: "Kadın" };
+
+        const rows = tickets.map(ticket => {
+            const nationalityCode = String(ticket.nationality || "").toLowerCase();
+            const matchesStop = stopKey ? toKey(ticket.fromRouteStopId) === stopKey : true;
+
+            return {
+                seatNo: ticket.seatNo == null ? "" : String(ticket.seatNo),
+                fullName: [ticket.name, ticket.surname].filter(Boolean).join(" ").trim(),
+                gender: genderLabels[ticket.gender] || ticket.gender || "",
+                nationality: nationalityLabelMap.get(nationalityCode) || (ticket.nationality ? String(ticket.nationality).toUpperCase() : ""),
+                from: stopTitleMap.get(toKey(ticket.fromRouteStopId)) || "",
+                to: stopTitleMap.get(toKey(ticket.toRouteStopId)) || "",
+                takeOn: (ticket.takeOnText || "").trim(),
+                takeOff: (ticket.takeOffText || "").trim(),
+                phoneNumber: ticket.phoneNumber || "",
+                idNumber: ticket.idNumber || "",
+                pnr: ticket.pnr || "",
+                isCurrentStop: matchesStop ? "Evet" : "Hayır",
+            };
+        });
+
+        const fromTitle = route?.fromStopId !== undefined ? (stopTitleMap.get(toKey(route.fromStopId)) || "") : "";
+        const toTitle = route?.toStopId !== undefined ? (stopTitleMap.get(toKey(route.toStopId)) || "") : "";
+        const tripDateTime = formatTripDateTime(trip.date, trip.time);
+        const routeLabel = [fromTitle, toTitle].filter(Boolean).join(" - ") || (route?.routeCode || "");
+        const titleParts = [
+            route?.routeCode || "",
+            routeLabel,
+            tripDateTime,
+            bus?.licensePlate || "",
+        ].filter(Boolean);
+        const workbookTitle = `Yolcu Listesi — ${titleParts.join(" | ")}`;
+
+        const buffer = generateTripPassengersExcel({
+            title: workbookTitle,
+            sheets: [
+                { name: "Yolcular", rows },
+            ],
+        });
+
+        const asciiName = `yolcu-listesi-${String(trip.date || "sefer")}.xlsx`;
+        const displayName = `yolcu-listesi-${route?.routeCode || "sefer"}-${trip.date || ""}.xlsx`
+            .replace(/\s+/g, "-");
+
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader(
+            "Content-Disposition",
+            `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(displayName)}`
+        );
+        res.setHeader("Content-Length", buffer.length);
+        return res.end(buffer);
+    } catch (err) {
+        console.error("getTripPassengersExcel error:", err);
+        res.status(500).json({ message: "Yolcu listesi Excel dosyası oluşturulamadı." });
+    }
+};
+
 exports.postEditTripNote = async (req, res, next) => {
     try {
         const noteId = req.body.id;
@@ -2426,9 +2607,13 @@ exports.getTripRevenues = async (req, res, next) => {
         });
 
         const userIds = [...new Set(tickets.map(t => t.userId).filter(id => id))];
-        const users = await req.models.FirmUser.findAll({ where: { id: userIds }, raw: true });
+        const users = userIds.length
+            ? await req.models.FirmUser.findAll({ where: { id: { [Op.in]: userIds } }, raw: true })
+            : [];
         const branchIds = [...new Set(users.map(u => u.branchId).filter(id => id))];
-        const branches = await req.models.Branch.findAll({ where: { id: { [Op.in]: branchIds } }, raw: true });
+        const branches = branchIds.length
+            ? await req.models.Branch.findAll({ where: { id: { [Op.in]: branchIds } }, raw: true })
+            : [];
 
         const userBranch = {};
         users.forEach(u => userBranch[u.id] = u.branchId);
@@ -2451,7 +2636,7 @@ exports.getTripRevenues = async (req, res, next) => {
                 };
             }
 
-            const amount = Number(ticket.price);
+            const amount = moneyAmount(ticket.price);
             branchData[branchId].totalAmount += amount;
             branchData[branchId].totalCount += 1;
 
@@ -2470,7 +2655,54 @@ exports.getTripRevenues = async (req, res, next) => {
             return acc;
         }, { currentAmount: 0, currentCount: 0, totalAmount: 0, totalCount: 0 });
 
-        res.json({ branches: branchesArr, totals });
+        const soldStatuses = ["completed", "web"];
+        const summary = {
+            currentSoldCount: 0,
+            currentSoldAmount: 0,
+            totalSoldCount: 0,
+            totalSoldAmount: 0,
+            currentReservedCount: 0,
+            currentReservedAmount: 0,
+            totalReservedCount: 0,
+            totalReservedAmount: 0,
+            cargoCount: 0,
+            cargoAmount: 0,
+            grandCount: 0,
+            grandAmount: 0,
+        };
+
+        tickets.forEach(ticket => {
+            const amount = moneyAmount(ticket.price);
+            if (soldStatuses.includes(ticket.status)) {
+                summary.totalSoldCount += 1;
+                summary.totalSoldAmount += amount;
+                if (ticket.fromRouteStopId == stopId) {
+                    summary.currentSoldCount += 1;
+                    summary.currentSoldAmount += amount;
+                }
+            } else if (ticket.status === "reservation") {
+                summary.totalReservedCount += 1;
+                summary.totalReservedAmount += amount;
+                if (ticket.fromRouteStopId == stopId) {
+                    summary.currentReservedCount += 1;
+                    summary.currentReservedAmount += amount;
+                }
+            }
+        });
+
+        const cargos = await req.models.Cargo.findAll({
+            where: { tripId, fromStopId: stopId },
+            raw: true,
+        });
+        cargos.forEach(cargo => {
+            summary.cargoCount += 1;
+            summary.cargoAmount += moneyAmount(cargo.price);
+        });
+
+        summary.grandCount = summary.totalSoldCount + summary.totalReservedCount + summary.cargoCount;
+        summary.grandAmount = summary.totalSoldAmount + summary.totalReservedAmount + summary.cargoAmount;
+
+        res.json({ branches: branchesArr, totals, summary });
     } catch (err) {
         console.error("getTripRevenues error:", err);
         res.status(500).json({ message: "Gelir bilgisi alınamadı." });
@@ -2769,6 +3001,12 @@ exports.getTicketOpsPopUp = async (req, res, next) => {
 }
 
 exports.getErp = async (req, res, next) => {
+    res.set("Cache-Control", "no-store, private");
+
+    if (preferredUiFromRequest(req) === "m") {
+        return res.redirect("/m");
+    }
+
     let busModel = await req.models.BusModel.findAll()
     let staff = await req.models.Staff.findAll()
     let branches = await req.models.Branch.findAll()
@@ -2776,23 +3014,7 @@ exports.getErp = async (req, res, next) => {
     let places = await req.commonModels.Place.findAll()
     let stops = await req.models.Stop.findAll()
 
-    const userPerms = await req.models.FirmUserPermission.findAll({
-        where: { firmUserId: req.session.firmUser.id, allow: true },
-        attributes: ["permissionId"],
-    });
-
-    const permissionIds = userPerms.map(p => p.permissionId);
-    if (permissionIds.length) {
-        const permissionRows = await req.models.Permission.findAll({
-            where: { id: { [Op.in]: permissionIds } },
-            attributes: ["code"],
-        });
-        req.session.permissions = permissionRows.map(p => p.code);
-    } else {
-        req.session.permissions = [];
-    }
-
-    await req.session.save()
+    await refreshSessionPermissions(req)
 
     const branchStopId = stops.find(s => s.id == branches.find(b => b.id == req.session.firmUser.branchId)?.stopId)?.id
 
@@ -2843,7 +3065,35 @@ exports.getErp = async (req, res, next) => {
     });
 }
 
+exports.getMobileErp = async (req, res, next) => {
+    res.set("Cache-Control", "no-store, private");
+
+    await refreshSessionPermissions(req);
+    res.locals.permissions = req.session.permissions || [];
+
+    const user = await req.models.FirmUser.findOne({ where: { id: req.session.firmUser.id } });
+    const branches = await req.models.Branch.findAll();
+    const stops = await req.models.Stop.findAll();
+    const branchStopId = stops.find(s => s.id == branches.find(b => b.id == req.session.firmUser.branchId)?.stopId)?.id;
+    const logo = await resolveFirmLoginLogo(req);
+
+    res.render("mobilescreen", {
+        title: req.session?.firm?.displayName || "GötürYZHN",
+        tenantKey: req.tenantKey,
+        user,
+        stops,
+        branchStopId,
+        firmLogo: logo,
+    });
+}
+
 exports.getErpLogin = async (req, res, next) => {
+    res.set("Cache-Control", "no-store, private");
+
+    if (req.session?.isAuthenticated) {
+        return res.redirect(homePathForUi(preferredUiFromRequest(req)));
+    }
+
     const DEFAULT_TITLE = "GötürYZHN";
     let firmRecord = req.session?.firm || null;
 
@@ -2856,13 +3106,18 @@ exports.getErpLogin = async (req, res, next) => {
     }
 
     const title = firmRecord?.displayName || DEFAULT_TITLE;
+    const loginError = req.query.error === "csrf"
+        ? "Güvenlik doğrulaması başarısız oldu. Sayfa yenilendi, tekrar deneyin."
+        : req.query.error === "1"
+            ? "Kullanıcı adı veya şifre hatalı."
+            : null;
 
     try {
         const firmLogo = await resolveFirmLoginLogo(req, firmRecord);
-        res.render("erplogin", { isNoNavbar: true, firmLogo, title });
+        res.render("erplogin", { isNoNavbar: true, firmLogo, title, loginError });
     } catch (error) {
         console.error("Login logo resolution failed:", error);
-        res.render("erplogin", { isNoNavbar: true, firmLogo: DEFAULT_LOGIN_LOGO, title });
+        res.render("erplogin", { isNoNavbar: true, firmLogo: DEFAULT_LOGIN_LOGO, title, loginError });
     }
 }
 
@@ -2870,22 +3125,38 @@ exports.postErpLogin = async (req, res, next) => {
     try {
         const { username, password } = req.body;
 
-        const u = await req.models.FirmUser.findOne({ where: { username } });
+        // Başarısız denemeler de kaydedilir; parola hiçbir durumda loglanmaz.
+        const logFailedLogin = async (reason, user = null) => {
+            await req.logSystem({
+                module: LOG_MODULES.AUTH,
+                action: LOG_ACTIONS.LOGIN_FAILED,
+                referenceId: user?.id ?? null,
+                userId: user?.id ?? null,
+                branchId: user?.branchId ?? null,
+                newData: { username: username ?? null, reason, ip: req.ip ?? null },
+                description: `Başarısız giriş denemesi | kullanıcı: ${username || "-"} | sebep: ${reason}`,
+            });
+        };
+
+        const u = await req.models.FirmUser.findOne({ where: { username, isDeleted: false } });
         if (!u) {
+            await logFailedLogin("kullanıcı bulunamadı");
             return res.redirect("/login?error=1");
         }
 
         // isActive=false olan (pasife alınmış) kullanıcıların şifresi doğru
         // bile olsa giriş yapamamasını sağlar; daha önce bu kontrol hiç
         // yapılmıyordu, yani devre dışı bırakılan kullanıcılar giriş yapabiliyordu.
-        // isDeleted=true (silinmiş) kullanıcılar da aynı şekilde reddedilir;
-        // postDeleteUser kaydı sadece isDeleted=true yapar, satırı silmez.
+        // isDeleted=true satırlar findOne filtresinde zaten elenir; eski
+        // mükerrer kayıtlara karşı isDeleted kontrolü yine durur.
         if (u.isActive === false || u.isDeleted === true) {
+            await logFailedLogin(u.isDeleted ? "kullanıcı silinmiş" : "kullanıcı pasif", u);
             return res.redirect("/login?error=1");
         }
 
         const success = await bcrypt.compare(password, u.password);
         if (!success) {
+            await logFailedLogin("şifre hatalı", u);
             return res.redirect("/login?error=1");
         }
 
@@ -2910,8 +3181,21 @@ exports.postErpLogin = async (req, res, next) => {
             req.session.permissions = [];
         }
 
+        await req.logSystem({
+            module: LOG_MODULES.AUTH,
+            action: LOG_ACTIONS.LOGIN,
+            referenceId: u.id,
+            userId: u.id,
+            branchId: u.branchId,
+            newData: { username: u.username, ip: req.ip ?? null },
+            description: `Giriş yapıldı | kullanıcı: ${u.username}`,
+        });
+
+        const ui = preferredUiFromRequest(req);
+        setUiCookie(res, ui);
+
         req.session.save(() => {
-            res.redirect("/");
+            res.redirect(homePathForUi(ui));
         });
 
 
@@ -2921,44 +3205,71 @@ exports.postErpLogin = async (req, res, next) => {
     }
 };
 
-exports.postErpLogout = (req, res, next) => {
-    if (!req.session) {
-        return res.redirect("/login");
-    }
-
-    const tenantKey = req.tenantKey;
-    if (tenantKey && req.session.tenants && req.session.tenants[tenantKey]) {
-        delete req.session.tenants[tenantKey];
-    }
-
-    const remainingTenants = req.session.tenants && Object.keys(req.session.tenants).length > 0;
-
-    if (!remainingTenants) {
-        return req.session.destroy((err) => {
-            if (err) {
-                console.error("Error during logout:", err);
-                return next(err);
-            }
-
-            res.clearCookie("connect.sid");
+exports.postErpLogout = async (req, res) => {
+    const redirectLogin = () => {
+        if (!res.headersSent) {
             res.redirect("/login");
-        });
-    }
+        }
+    };
 
-    req.session.save((err) => {
-        if (err) {
-            console.error("Error during logout:", err);
-            return next(err);
+    try {
+        if (!req.session) {
+            return redirectLogin();
         }
 
-        res.redirect("/login");
-    });
+        // Oturum temizlenmeden önce yazılıyor; sonrasında aktör bilgisi kalmaz.
+        // Log hatası çıkışı engellemesin; aksi halde tarayıcı /logout'ta kalır.
+        try {
+            const loggedOutUser = req.session.firmUser || null;
+            if (loggedOutUser && typeof req.logSystem === "function") {
+                await req.logSystem({
+                    module: LOG_MODULES.AUTH,
+                    action: LOG_ACTIONS.LOGOUT,
+                    referenceId: loggedOutUser.id,
+                    newData: { username: loggedOutUser.username ?? null },
+                    description: `Çıkış yapıldı | kullanıcı: ${loggedOutUser.username || "-"}`,
+                });
+            }
+        } catch (logErr) {
+            console.error("Error logging logout:", logErr);
+        }
+
+        const tenantKey = req.tenantKey;
+        if (tenantKey && req.session.tenants && req.session.tenants[tenantKey]) {
+            delete req.session.tenants[tenantKey];
+        }
+
+        const remainingTenants = req.session.tenants && Object.keys(req.session.tenants).length > 0;
+
+        if (!remainingTenants) {
+            return req.session.destroy((err) => {
+                if (err) {
+                    console.error("Error during logout:", err);
+                }
+
+                res.clearCookie("connect.sid");
+                redirectLogin();
+            });
+        }
+
+        return req.session.save((err) => {
+            if (err) {
+                console.error("Error during logout:", err);
+            }
+
+            redirectLogin();
+        });
+    } catch (err) {
+        console.error("Error during logout:", err);
+        return redirectLogin();
+    }
 };
 
 exports.getPermissions = (req, res) => res.json(req.session.permissions || []);
 
 exports.getTicketRow = async (req, res, next) => {
     const { isOpen, isTaken, date: tripDate, time: tripTime, tripId, stopId, seatTypes, action } = req.query;
+    const seatTypeList = toArrayParam(seatTypes);
 
     const tripWhere = {};
     if (tripDate) tripWhere.date = tripDate;
@@ -3033,7 +3344,7 @@ exports.getTicketRow = async (req, res, next) => {
             price,
             trip,
             isOwnBranch,
-            seatTypes,
+            seatTypes: seatTypeList,
             action,
             takeOnOptions,
             takeOffOptions,
@@ -3042,10 +3353,19 @@ exports.getTicketRow = async (req, res, next) => {
     }
 
     if (isTaken) {
-        const { seatNumbers } = req.query;
-        const ticket = seatNumbers
-            ? await req.models.Ticket.findAll({ where: { tripId: trip.id, seatNo: { [Op.in]: seatNumbers }, fromRouteStopId: stopId, status: { [Op.notIn]: ["canceled", "refund"] } } })
-            : [];
+        const seatNumberList = toArrayParam(req.query.seatNumbers);
+        if (!seatNumberList.length) {
+            return res.status(400).json({ message: "Lütfen en az bir koltuk seçiniz." });
+        }
+
+        const ticket = await req.models.Ticket.findAll({
+            where: {
+                tripId: trip.id,
+                seatNo: { [Op.in]: seatNumberList },
+                fromRouteStopId: stopId,
+                status: { [Op.notIn]: ["canceled", "refund"] },
+            },
+        });
 
         if (!ticket.length) {
             return res.status(404).json({ message: "Bilet bulunamadı" });
@@ -3098,11 +3418,11 @@ exports.getTicketRow = async (req, res, next) => {
 
         return res.render("mixins/ticketRow", {
             gender,
-            seats: seatNumbers,
+            seats: seatNumberList,
             ticket,
             trip,
             isOwnBranch,
-            seatTypes,
+            seatTypes: seatTypeList,
             action,
             price: pricesForTickets,
             takeOnOptions,
@@ -3228,11 +3548,11 @@ exports.getTicketRow = async (req, res, next) => {
         gender,
         seats: seatArray,
         price,
-        trip,
-        isOwnBranch,
-        seatTypes,
-        action,
-        pendingIds,
+            trip,
+            isOwnBranch,
+            seatTypes: seatTypeList,
+            action,
+            pendingIds,
         fromId,
         toId,
         takeOnOptions,
@@ -3378,6 +3698,7 @@ exports.postTickets = async (req, res, next) => {
         const takeOnCache = await prepareTakeValueCache(req.models.TakeOn);
         const takeOffCache = await prepareTakeValueCache(req.models.TakeOff);
         const isReservationStatus = status === "reservation";
+        const savedTickets = [];
 
         for (let i = 0; i < tickets.length; i++) {
             const t = tickets[i];
@@ -3553,6 +3874,21 @@ exports.postTickets = async (req, res, next) => {
                 return ticket;
             });
 
+            // UETDS bloğu grup bulunamadığında `continue` ile iterasyonu
+            // atladığı için log, o bloktan ÖNCE yazılıyor; aksi halde bilet
+            // oluşmuş olmasına rağmen kaydı düşerdi.
+            savedTickets.push(ticket);
+
+            await req.logSystem({
+                module: LOG_MODULES.TICKET,
+                action: isReservationStatus ? LOG_ACTIONS.RESERVE : LOG_ACTIONS.SELL,
+                referenceId: ticket.id,
+                tripId: trip.id,
+                seatNo: ticket.seatNo,
+                newData: ticketSnapshot(ticket),
+                description: `${isReservationStatus ? "Rezervasyon" : "Satış"} | ${ticket.seatNo} nolu koltuk | ${ticket.name || ""} ${ticket.surname || ""}`.trim(),
+            });
+
             if (status === "completed" && trip.uetdsRefNo) {
                 try {
                     const grup = await seferGrupListesi(req, trip);
@@ -3592,6 +3928,13 @@ exports.postTickets = async (req, res, next) => {
             console.log(`${t.name} Saved - ${pnr || "-"}`);
             res.locals.newRecordId = ticket.id;
         }
+
+        await notifyTicketSms(req, {
+            event: isReservationStatus ? "reservation" : "sale",
+            tickets: savedTickets,
+            trip,
+            stops,
+        });
 
         return res.status(200).json({ message: "Biletler başarıyla kaydedildi." });
     } catch (err) {
@@ -3698,6 +4041,7 @@ exports.postCompleteTickets = async (req, res, next) => {
         for (let i = 0; i < foundTickets.length; i++) {
             const ticket = foundTickets[i];
             const incomingTicket = tickets[i] || {};
+            const beforeSnapshot = ticketSnapshot(ticket);
 
             const normalizedIdNumber =
                 typeof incomingTicket.idNumber === "string"
@@ -3791,7 +4135,25 @@ exports.postCompleteTickets = async (req, res, next) => {
                     }
                 }
             });
+
+            await req.logSystem({
+                module: LOG_MODULES.TICKET,
+                action: LOG_ACTIONS.COMPLETE,
+                referenceId: ticket.id,
+                tripId: trip.id,
+                seatNo: ticket.seatNo,
+                oldData: beforeSnapshot,
+                newData: ticketSnapshot(ticket),
+                description: `Satışa çevrildi | ${ticket.seatNo} nolu koltuk | ${ticket.name || ""} ${ticket.surname || ""}`.trim(),
+            });
         }
+
+        await notifyTicketSms(req, {
+            event: "complete",
+            tickets: foundTickets,
+            trip,
+            stops,
+        });
 
         return res.status(200).json({ message: "Biletler başarıyla kaydedildi." });
     } catch (err) {
@@ -3948,6 +4310,23 @@ exports.postSellOpenTickets = async (req, res, next) => {
             await register.save();
         }
 
+        // Açık biletin seferi/koltuğu yok; tripId ve seatNo boş bırakılıyor,
+        // kayıt yalnızca sistem kayıtları panelinde görünür.
+        await req.logSystemMany(createdTickets.map(ticket => ({
+            module: LOG_MODULES.TICKET,
+            action: LOG_ACTIONS.SELL_OPEN,
+            referenceId: ticket.id,
+            newData: ticketSnapshot(ticket),
+            description: `Açık bilet ${isReservation ? "rezervasyonu" : "satışı"} | ${fromStop?.title || ""} - ${toStop?.title || ""} | ${ticket.name || ""} ${ticket.surname || ""}`.trim(),
+        })));
+
+        await notifyTicketSms(req, {
+            event: isReservation ? "reservation" : "open_sale",
+            tickets: createdTickets,
+            trip: null,
+            stops: [fromStop, toStop].filter(Boolean),
+        });
+
         res.status(200).json({
             success: true,
             groupId: ticketGroupId,
@@ -3995,6 +4374,8 @@ exports.postEditTicket = async (req, res, next) => {
             return Number.isNaN(num) ? null : num;
         };
 
+        const canEnterFreePrice = (req.session.permissions || []).includes("ENTER_FREE_PRICE");
+
         for (let i = 0; i < foundTickets.length; i++) {
             const foundTicket = foundTickets[i];
             const incomingTicket = tickets[i] || {};
@@ -4002,12 +4383,19 @@ exports.postEditTicket = async (req, res, next) => {
             const incomingPrice = normalizePriceValue(incomingTicket.price);
 
             if (existingPrice !== incomingPrice) {
-                return res.status(400).json({ message: "Bilet fiyatı düzenleme sırasında değiştirilemez." });
+                if (foundTicket.status !== "reservation") {
+                    return res.status(400).json({ message: "Bilet fiyatı düzenleme sırasında değiştirilemez." });
+                }
+                if (!canEnterFreePrice) {
+                    return res.status(403).json({ message: "Bilet fiyatını değiştirmek için serbest fiyat yetkisi gerekir." });
+                }
             }
         }
 
         const takeOnCache = await prepareTakeValueCache(req.models.TakeOn);
         const takeOffCache = await prepareTakeValueCache(req.models.TakeOff);
+
+        const beforeSnapshots = foundTickets.map(foundTicket => ticketSnapshot(foundTicket));
 
         await Promise.all(foundTickets.map(async (foundTicket, i) => {
             const incomingTicket = tickets[i] || {};
@@ -4024,8 +4412,34 @@ exports.postEditTicket = async (req, res, next) => {
             foundTicket.takeOnText = takeOnTitle;
             foundTicket.takeOffText = takeOffTitle;
             foundTicket.description = (incomingTicket.description || "").toString().trim() || null;
+            if (foundTicket.status === "reservation") {
+                const incomingPrice = normalizePriceValue(incomingTicket.price);
+                if (incomingPrice !== null) {
+                    foundTicket.price = incomingPrice;
+                }
+            }
             return foundTicket.save();
         }));
+
+        // Düzenlemede tüm alanları değil, gerçekten değişen alanları kaydediyoruz;
+        // hiçbir şey değişmediyse log da yazılmıyor.
+        await req.logSystemMany(foundTickets.map((foundTicket, i) => {
+            const changes = diffSnapshots(beforeSnapshots[i], ticketSnapshot(foundTicket));
+            if (!changes) {
+                return null;
+            }
+
+            return {
+                module: LOG_MODULES.TICKET,
+                action: LOG_ACTIONS.EDIT,
+                referenceId: foundTicket.id,
+                tripId: trip.id,
+                seatNo: foundTicket.seatNo,
+                oldData: changes.oldData,
+                newData: changes.newData,
+                description: `Bilet düzenlendi | ${foundTicket.seatNo} nolu koltuk | değişen alanlar: ${Object.keys(changes.newData).join(", ")}`,
+            };
+        }).filter(Boolean));
 
         res.status(200).json({ message: "Biletler başarıyla kaydedildi." });
     } catch (err) {
@@ -4202,8 +4616,20 @@ exports.postCancelTicket = async (req, res, next) => {
             if (ticket.tripId !== trip.id) continue;
 
             const currentStatus = ticket.status;
+            const beforeSnapshot = ticketSnapshot(ticket);
             ticket.status = currentStatus === "reservation" ? "canceled" : "refund";
             await ticket.save();
+
+            await req.logSystem({
+                module: LOG_MODULES.TICKET,
+                action: ticket.status === "canceled" ? LOG_ACTIONS.CANCEL : LOG_ACTIONS.REFUND,
+                referenceId: ticket.id,
+                tripId: trip.id,
+                seatNo: ticket.seatNo,
+                oldData: beforeSnapshot,
+                newData: ticketSnapshot(ticket),
+                description: `${ticket.status === "canceled" ? "Rezervasyon iptali" : "Bilet iadesi"} | ${ticket.seatNo} nolu koltuk | ${ticket.name || ""} ${ticket.surname || ""}`.trim(),
+            });
 
             if (ticket.status === "refund" && ticket.payment !== "point") {
                 didAnyRefund = true;
@@ -4303,6 +4729,25 @@ exports.postCancelTicket = async (req, res, next) => {
             }
         }
 
+        const canceledTickets = tickets.filter((t) => t.status === "canceled");
+        const refundedTickets = tickets.filter((t) => t.status === "refund");
+        if (canceledTickets.length) {
+            await notifyTicketSms(req, {
+                event: "cancel",
+                tickets: canceledTickets,
+                trip,
+                stops,
+            });
+        }
+        if (refundedTickets.length) {
+            await notifyTicketSms(req, {
+                event: "refund",
+                tickets: refundedTickets,
+                trip,
+                stops,
+            });
+        }
+
         return res.status(200).json({ message: "Biletler başarıyla iptal edildi." });
     } catch (err) {
         console.error("Save error:", err);
@@ -4324,6 +4769,20 @@ exports.postDeletePendingTickets = async (req, res, next) => {
             }
         })
 
+        if (!trip) {
+            return res.status(404).json({ message: "Sefer bulunamadı." });
+        }
+
+        // Satırlar silineceği için anlık görüntüleri önceden alıyoruz; aksi halde
+        // koltuk geçmişinde "kim, hangi bileti sildi" bilgisi kaybolurdu.
+        const ticketsToDelete = await req.models.Ticket.findAll({
+            where: {
+                tripId: trip.id,
+                seatNo: { [Op.in]: seats },
+                id: { [Op.in]: pendingIds }
+            }
+        });
+
         const deleted = await req.models.Ticket.destroy({
             where: {
                 tripId: trip.id,
@@ -4335,6 +4794,17 @@ exports.postDeletePendingTickets = async (req, res, next) => {
         if (deleted === 0) {
             return res.status(404).json({ message: "Silinecek uygun kayıt bulunamadı." });
         }
+
+        await req.logSystemMany(ticketsToDelete.map(ticket => ({
+            module: LOG_MODULES.TICKET,
+            action: LOG_ACTIONS.DELETE_PENDING,
+            referenceId: ticket.id,
+            tripId: trip.id,
+            seatNo: ticket.seatNo,
+            oldData: ticketSnapshot(ticket),
+            newData: { deleted: true },
+            description: `Koltuk kilidi kaldırıldı | ${ticket.seatNo} nolu koltuk`,
+        })));
 
         return res.status(200).json({
             message: "Bekleyen bilet(ler) başarıyla silindi.",
@@ -4358,13 +4828,35 @@ exports.postOpenTicket = async (req, res, next) => {
 
         for (let i = 0; i < tickets.length; i++) {
             if (tickets[i].tripId == trip.id) {
+                const beforeSnapshot = ticketSnapshot(tickets[i]);
+                const releasedSeatNo = tickets[i].seatNo;
+
                 tickets[i].status = "open"
                 tickets[i].tripId = null
                 tickets[i].seatNo = null
 
                 await tickets[i].save()
+
+                // Bilet artık bu sefere bağlı değil; kaydı, koltuğun boşaldığı
+                // yerde görünsün diye eski sefer/koltuk bilgisiyle yazıyoruz.
+                await req.logSystem({
+                    module: LOG_MODULES.TICKET,
+                    action: LOG_ACTIONS.OPEN,
+                    referenceId: tickets[i].id,
+                    tripId: trip.id,
+                    seatNo: releasedSeatNo,
+                    oldData: beforeSnapshot,
+                    newData: ticketSnapshot(tickets[i]),
+                    description: `Açığa alındı | ${releasedSeatNo} nolu koltuk | ${tickets[i].name || ""} ${tickets[i].surname || ""}`.trim(),
+                });
             }
         }
+
+        await notifyTicketSms(req, {
+            event: "open",
+            tickets,
+            trip,
+        });
 
         res.status(200).json({ message: "Biletler başarıyla açık duruma alındı." });
     } catch (err) {
@@ -4527,9 +5019,16 @@ exports.getRouteStopsListMoving = async (req, res, next) => {
         }
 
         const trip = await req.models.Trip.findOne({ where: { date, time, id: tripId } })
+        if (!trip) {
+            return res.json({ arr: [], selected: stopId })
+        }
+
         const routeStops = await req.models.RouteStop.findAll({ where: { routeId: trip.routeId }, order: [["order", "ASC"]] })
         const stops = await req.models.Stop.findAll({ where: { id: { [Op.in]: [...new Set(routeStops.map(rs => rs.stopId))] } } })
         const currentRouteStop = routeStops.find(rs => rs.stopId == stopId)
+        if (!currentRouteStop) {
+            return res.json({ arr: [], selected: stopId })
+        }
         const routeStopOrder = currentRouteStop.order
 
         const restrictions = await req.models.RouteStopRestriction.findAll({ where: { tripId, fromRouteStopId: currentRouteStop.id } })
@@ -4558,8 +5057,8 @@ exports.postMoveTickets = async (req, res, next) => {
         const rawOldSeats = JSON.parse(req.body.oldSeats);
         const newSeats = JSON.parse(req.body.newSeats);
         const newTripId = req.body.newTrip;
-        const fromId = req.body.fromId;
-        const toId = req.body.toId;
+        const fromStopId = Number(req.body.fromId);
+        const toStopId = Number(req.body.toId);
 
         if (
             !Array.isArray(rawOldSeats) ||
@@ -4616,7 +5115,22 @@ exports.postMoveTickets = async (req, res, next) => {
             })
             : [];
 
-        if (fromId && toId && newRouteStops.length && newSeatNumbers.length) {
+        if (!Number.isFinite(fromStopId) || !Number.isFinite(toStopId)) {
+            return res.status(400).json({ message: "Geçersiz kalkış veya varış durağı bilgisi." });
+        }
+
+        if (newRouteStops.length) {
+            const fromRouteStop = newRouteStops.find(rs => String(rs.stopId) === String(fromStopId));
+            const toRouteStop = newRouteStops.find(rs => String(rs.stopId) === String(toStopId));
+            if (!fromRouteStop || !toRouteStop) {
+                return res.status(400).json({ message: "Seçilen duraklar hedef sefer güzergahında bulunamadı." });
+            }
+            if (toRouteStop.order <= fromRouteStop.order) {
+                return res.status(400).json({ message: "Varış durağı kalkış durağından sonra olmalıdır." });
+            }
+        }
+
+        if (newRouteStops.length && newSeatNumbers.length) {
             const moveConflict = await req.db.transaction(async (t) => {
                 await req.models.Trip.findByPk(newTrip.id, { transaction: t, lock: t.LOCK.UPDATE });
 
@@ -4625,8 +5139,8 @@ exports.postMoveTickets = async (req, res, next) => {
                     proposals: tickets.map((ticket, index) => ({
                         seatNumber: newSeats[index],
                         seatLabel: String(newSeats[index]),
-                        fromStopId: fromId,
-                        toStopId: toId,
+                        fromStopId,
+                        toStopId,
                     })),
                     routeStops: newRouteStops,
                     excludeTicketIds: tickets.map((ticket) => ticket.id),
@@ -4651,6 +5165,9 @@ exports.postMoveTickets = async (req, res, next) => {
 
         for (let i = 0; i < tickets.length; i++) {
             const t = tickets[i];
+            const beforeSnapshot = ticketSnapshot(t);
+            const previousTripId = t.tripId;
+            const previousSeatNo = t.seatNo;
 
             if (t.uetdsRefNo && t.tripId) {
                 try {
@@ -4666,13 +5183,43 @@ exports.postMoveTickets = async (req, res, next) => {
 
             t.tripId = newTrip.id;
             t.seatNo = newSeats[i];
-            t.fromRouteStopId = fromId;
-            t.toRouteStopId = toId;
+            t.fromRouteStopId = fromStopId;
+            t.toRouteStopId = toStopId;
             t.optionDate = newTrip.date;
             t.optionTime = `${newTrip.date} ${newTrip.time}`;
             if (t.status === "open") t.status = "completed";
 
             await t.save();
+
+            // Transfer iki koltuğu birden etkilediği için iki kayıt yazılıyor:
+            // biri biletin ayrıldığı koltuğun geçmişine, diğeri geldiği koltuğa.
+            const afterSnapshot = ticketSnapshot(t);
+            const passengerLabel = `${t.name || ""} ${t.surname || ""}`.trim();
+
+            await req.logSystemMany([
+                previousTripId ? {
+                    module: LOG_MODULES.TICKET,
+                    action: LOG_ACTIONS.MOVE_OUT,
+                    referenceId: t.id,
+                    tripId: previousTripId,
+                    seatNo: previousSeatNo,
+                    oldData: beforeSnapshot,
+                    newData: afterSnapshot,
+                    description: `Transfer çıkışı | ${previousSeatNo ?? "-"} nolu koltuktan ${newTrip.date} ${newTrip.time} seferi ${t.seatNo} nolu koltuğa | ${passengerLabel}`,
+                } : null,
+                {
+                    module: LOG_MODULES.TICKET,
+                    action: LOG_ACTIONS.MOVE_IN,
+                    referenceId: t.id,
+                    tripId: newTrip.id,
+                    seatNo: t.seatNo,
+                    oldData: beforeSnapshot,
+                    newData: afterSnapshot,
+                    description: previousTripId
+                        ? `Transfer girişi | ${previousSeatNo ?? "-"} nolu koltuktan geldi | ${passengerLabel}`
+                        : `Transfer girişi | açık biletten bağlandı | ${passengerLabel}`,
+                },
+            ].filter(Boolean));
 
             const group = await seferGrupListesi(req, newTrip);
 
@@ -4722,6 +5269,12 @@ exports.postMoveTickets = async (req, res, next) => {
         } catch (e) {
             console.error("⚠️ [UETDS] Group price update error:", e.message);
         }
+
+        await notifyTicketSms(req, {
+            event: "transfer",
+            tickets,
+            trip: newTrip,
+        });
 
         res.status(200).json({ message: "Bilet transfer işlemi başarıyla tamamlandı." });
     } catch (err) {
@@ -4841,6 +5394,8 @@ exports.postAttachOpenTicket = async (req, res, next) => {
             }
         }
 
+        const beforeSnapshot = ticketSnapshot(ticket);
+
         ticket.seatNo = seatValue;
         ticket.tripId = trip.id;
         ticket.fromRouteStopId = fromStopId;
@@ -4850,6 +5405,17 @@ exports.postAttachOpenTicket = async (req, res, next) => {
         ticket.status = "completed";
 
         await ticket.save();
+
+        await req.logSystem({
+            module: LOG_MODULES.TICKET,
+            action: LOG_ACTIONS.ATTACH_OPEN,
+            referenceId: ticket.id,
+            tripId: trip.id,
+            seatNo: ticket.seatNo,
+            oldData: beforeSnapshot,
+            newData: ticketSnapshot(ticket),
+            description: `Açık bilet sefere bağlandı | ${ticket.seatNo} nolu koltuk | ${ticket.name || ""} ${ticket.surname || ""}`.trim(),
+        });
 
         return res.status(200).json({ message: "Açık bilet sefere başarıyla bağlandı." });
     } catch (error) {
@@ -6392,8 +6958,22 @@ exports.postDeleteBranch = async (req, res, next) => {
 };
 
 exports.getUsersList = async (req, res, next) => {
-    const users = await req.models.FirmUser.findAll({ where: { isDeleted: false, id: { [Op.notIn]: [1, 2, 3] } } })
-    const branches = await req.models.Branch.findAll({ where: { isDeleted: false, id: { [Op.notIn]: [1, 2] } } })
+    const includeDeleted = isGoturSystemUser(req) && !req.query.onlyData;
+    const where = { id: { [Op.notIn]: [1, 2, 3] } };
+    // Silinmiş kullanıcılar yalnızca Götür sistem kullanıcısının HTML listesinde
+    // görünür; onlyData (ödeme/rapor dropdown) silinmişleri karıştırmaz.
+    if (!includeDeleted) {
+        where.isDeleted = false;
+    }
+    const users = await req.models.FirmUser.findAll({
+        where,
+        order: [["isDeleted", "ASC"], ["name", "ASC"]],
+    });
+    const branchWhere = { id: { [Op.notIn]: [1, 2] } };
+    if (!includeDeleted) {
+        branchWhere.isDeleted = false;
+    }
+    const branches = await req.models.Branch.findAll({ where: branchWhere });
 
     for (let i = 0; i < users.length; i++) {
         const u = users[i];
@@ -6846,6 +7426,20 @@ exports.postSaveUser = async (req, res, next) => {
         const data = convertEmptyFieldsToNull(req.body);
         const { id, isActive, name, username, password, phone, branchId } = data;
         const permissions = JSON.parse(data.permissions)
+        const trimmedUsername = typeof username === "string" ? username.trim() : "";
+
+        if (!trimmedUsername) {
+            return res.status(400).json({ message: "Kullanıcı adı zorunludur." });
+        }
+
+        const duplicateWhere = { username: trimmedUsername };
+        if (id) {
+            duplicateWhere.id = { [Op.ne]: id };
+        }
+        const usernameTaken = await req.models.FirmUser.findOne({ where: duplicateWhere });
+        if (usernameTaken) {
+            return res.status(400).json({ message: "Bu kullanıcı adı zaten alınmış." });
+        }
 
         let hashedPassword;
 
@@ -6867,7 +7461,7 @@ exports.postSaveUser = async (req, res, next) => {
                 firmId: req.session.firmUser.firmId,
                 isActive,
                 branchId,
-                username,
+                username: trimmedUsername,
                 phoneNumber: phone,
                 name,
                 password: hashedPassword
@@ -9049,6 +9643,18 @@ exports.postChangePassword = async (req, res, next) => {
     }
 };
 
+function isGoturSystemUser(req) {
+    const username = req.session?.firmUser?.username;
+    return typeof username === "string" && username.trim().toUpperCase() === "GOTUR";
+}
+
+function trimmedNonEmpty(value) {
+    if (value === undefined || value === null) return null;
+    const trimmed = String(value).trim();
+    if (!trimmed || /^•+$/.test(trimmed)) return null;
+    return trimmed;
+}
+
 function parseRequestBoolean(value, defaultValue = false) {
     if (value === undefined || value === null || value === "") {
         return defaultValue;
@@ -9083,6 +9689,14 @@ exports.getFirmSettings = async (req, res) => {
                 "displayName",
                 "comissionRate",
                 "isReservationAutoCancelActive",
+                "isUetdsActive",
+                "uetdsUsername",
+                "uetdsPassword",
+                "isSmsActive",
+                "smsUsername",
+                "smsPassword",
+                "smsHeader",
+                "smsTemplates",
             ],
         });
 
@@ -9094,6 +9708,15 @@ exports.getFirmSettings = async (req, res) => {
             displayName: firm.displayName,
             comissionRate: firm.comissionRate,
             isReservationAutoCancelActive: firm.isReservationAutoCancelActive !== false,
+            isUetdsActive: Boolean(firm.isUetdsActive),
+            uetdsUsername: firm.uetdsUsername || "",
+            uetdsPasswordSet: Boolean(firm.uetdsPassword),
+            isSmsActive: Boolean(firm.isSmsActive),
+            smsUsername: firm.smsUsername || "",
+            smsHeader: firm.smsHeader || "",
+            smsPasswordSet: Boolean(firm.smsPassword),
+            smsTemplates: mergeSmsTemplates(firm.smsTemplates),
+            canEditIntegrations: isGoturSystemUser(req),
         });
     } catch (err) {
         console.error("getFirmSettings error:", err);
@@ -9119,6 +9742,14 @@ exports.postSaveFirmSettings = async (req, res) => {
             req.body?.isReservationAutoCancelActive,
             true
         );
+        const isUetdsActive = parseRequestBoolean(
+            req.body?.isUetdsActive,
+            Boolean(firm.isUetdsActive)
+        );
+        const isSmsActive = parseRequestBoolean(
+            req.body?.isSmsActive,
+            Boolean(firm.isSmsActive)
+        );
 
         let comissionRate = firm.comissionRate;
         if (
@@ -9135,10 +9766,39 @@ exports.postSaveFirmSettings = async (req, res) => {
             comissionRate = parsed;
         }
 
-        await firm.update({
+        const updates = {
             isReservationAutoCancelActive,
             comissionRate,
-        });
+            isUetdsActive,
+            isSmsActive,
+        };
+
+        if (isGoturSystemUser(req)) {
+            const uetdsUsername = trimmedNonEmpty(req.body?.uetdsUsername);
+            const uetdsPassword = trimmedNonEmpty(req.body?.uetdsPassword);
+            const smsUsername = trimmedNonEmpty(req.body?.smsUsername);
+            const smsPassword = trimmedNonEmpty(req.body?.smsPassword);
+            const smsHeader = trimmedNonEmpty(req.body?.smsHeader);
+
+            if (uetdsUsername) updates.uetdsUsername = uetdsUsername;
+            if (uetdsPassword) updates.uetdsPassword = uetdsPassword;
+            if (smsUsername) updates.smsUsername = smsUsername;
+            if (smsPassword) updates.smsPassword = smsPassword;
+            if (smsHeader) updates.smsHeader = smsHeader;
+
+            if (
+                req.body?.smsTemplates &&
+                typeof req.body.smsTemplates === "object" &&
+                !Array.isArray(req.body.smsTemplates)
+            ) {
+                updates.smsTemplates = sanitizeSmsTemplates(
+                    req.body.smsTemplates,
+                    firm.smsTemplates
+                );
+            }
+        }
+
+        await firm.update(updates);
 
         const refreshed = await req.commonModels.Firm.findOne({
             where: { key: req.tenantKey },
@@ -9151,9 +9811,322 @@ exports.postSaveFirmSettings = async (req, res) => {
             comissionRate: refreshed.comissionRate,
             isReservationAutoCancelActive:
                 refreshed.isReservationAutoCancelActive !== false,
+            isUetdsActive: Boolean(refreshed.isUetdsActive),
+            isSmsActive: Boolean(refreshed.isSmsActive),
         });
     } catch (err) {
         console.error("postSaveFirmSettings error:", err);
         return res.status(500).json({ message: "Firma ayarları kaydedilemedi." });
     }
+};
+
+// ---------------------------------------------------------------------------
+// SİSTEM KAYITLARI (systemLogs) — koltuk geçmişi ve yönetim paneli
+// ---------------------------------------------------------------------------
+
+const SYSTEM_LOG_PAGE_SIZE = 50;
+
+// oldData/newData içindeki alanların ekranda gösterilen adları.
+const LOG_FIELD_LABELS = Object.freeze({
+    name: "İsim",
+    surname: "Soyisim",
+    idNumber: "Kimlik No",
+    phoneNumber: "Telefon",
+    gender: "Cinsiyet",
+    nationality: "Uyruk",
+    price: "Fiyat",
+    payment: "Ödeme",
+    status: "Durum",
+    seatNo: "Koltuk",
+    pnr: "PNR",
+    tripId: "Sefer",
+    ticketGroupId: "Bilet grubu",
+    fromRouteStopId: "Kalkış",
+    toRouteStopId: "Varış",
+    optionDate: "Opsiyon tarihi",
+    optionTime: "Opsiyon saati",
+    takeOnText: "Biniş yeri",
+    takeOffText: "İniş yeri",
+    description: "Açıklama",
+    deleted: "Silindi",
+    username: "Kullanıcı adı",
+    reason: "Sebep",
+    ip: "IP adresi",
+});
+
+const LOG_STATUS_LABELS = Object.freeze({
+    completed: "Satış",
+    reservation: "Rezervasyon",
+    canceled: "İptal",
+    cancelled: "İptal",
+    refund: "İade",
+    open: "Açık bilet",
+    pending: "Bekliyor",
+    web: "Web",
+    gotur: "Götür",
+});
+
+const LOG_PAYMENT_LABELS = Object.freeze({
+    cash: "Nakit",
+    card: "Kredi Kartı",
+    point: "Puan",
+});
+
+function formatLogTimestamp(value) {
+    if (!value) {
+        return "-";
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return "-";
+    }
+
+    return date.toLocaleString("tr-TR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+    });
+}
+
+function formatLogFieldValue(field, value, stopTitles) {
+    if (value === undefined || value === null || value === "") {
+        return "—";
+    }
+
+    if (field === "status") {
+        return LOG_STATUS_LABELS[value] || value;
+    }
+
+    if (field === "payment") {
+        return LOG_PAYMENT_LABELS[value] || value;
+    }
+
+    if (field === "gender") {
+        return value === "m" ? "Erkek" : value === "f" ? "Kadın" : value;
+    }
+
+    if (field === "deleted") {
+        return value === true || value === "true" ? "Evet" : "Hayır";
+    }
+
+    if ((field === "fromRouteStopId" || field === "toRouteStopId") && stopTitles) {
+        return stopTitles.get(String(value)) || `#${value}`;
+    }
+
+    if (field === "price") {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? `${numeric}₺` : String(value);
+    }
+
+    return String(value);
+}
+
+// Log satırlarını arayüzün doğrudan basabileceği hale getirir: aktör adı,
+// biçimlenmiş tarih ve (varsa) değişen alan listesi.
+async function decorateSystemLogs(req, logs) {
+    if (!logs.length) {
+        return [];
+    }
+
+    const userIds = [...new Set(logs.map(log => log.userId).filter(Boolean))];
+    const branchIds = [...new Set(logs.map(log => log.branchId).filter(Boolean))];
+
+    const stopIds = new Set();
+    logs.forEach(log => {
+        [log.oldData, log.newData].forEach(payload => {
+            if (!payload || typeof payload !== "object") return;
+            ["fromRouteStopId", "toRouteStopId"].forEach(field => {
+                if (payload[field]) stopIds.add(payload[field]);
+            });
+        });
+    });
+
+    const [users, branches, stops] = await Promise.all([
+        userIds.length
+            ? req.models.FirmUser.findAll({ where: { id: { [Op.in]: userIds } }, attributes: ["id", "name", "username", "branchId"], raw: true })
+            : [],
+        branchIds.length
+            ? req.models.Branch.findAll({ where: { id: { [Op.in]: branchIds } }, attributes: ["id", "title"], raw: true })
+            : [],
+        stopIds.size
+            ? req.models.Stop.findAll({ where: { id: { [Op.in]: [...stopIds] } }, attributes: ["id", "title"], raw: true })
+            : [],
+    ]);
+
+    const userMap = new Map(users.map(user => [String(user.id), user]));
+    const branchMap = new Map(branches.map(branch => [String(branch.id), branch.title]));
+    const stopTitles = new Map(stops.map(stop => [String(stop.id), stop.title]));
+
+    return logs.map(log => {
+        const user = log.userId ? userMap.get(String(log.userId)) : null;
+        const payload = log.newData && typeof log.newData === "object" ? log.newData : {};
+        const previous = log.oldData && typeof log.oldData === "object" ? log.oldData : {};
+
+        // İptal/iade gibi işlemlerde oldData ve newData tam anlık görüntü olduğu
+        // için gerçekten farklı olan alanlarla sınırlıyoruz; aksi halde tüm bilet
+        // alanları "değişmiş" gibi listelenirdi.
+        const changes = Object.keys(payload)
+            .filter(field => Object.prototype.hasOwnProperty.call(previous, field))
+            .filter(field => String(previous[field] ?? "") !== String(payload[field] ?? ""))
+            .map(field => ({
+                label: LOG_FIELD_LABELS[field] || field,
+                from: formatLogFieldValue(field, previous[field], stopTitles),
+                to: formatLogFieldValue(field, payload[field], stopTitles),
+            }));
+
+        const passengerName = [payload.name || previous.name, payload.surname || previous.surname]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+
+        return {
+            id: log.id,
+            module: log.module,
+            moduleLabel: moduleLabel(log.module),
+            action: log.action,
+            actionLabel: actionLabel(log.action),
+            createdAtLabel: formatLogTimestamp(log.createdAt),
+            userLabel: user ? (user.name || user.username) : "Sistem",
+            branchLabel: log.branchId ? (branchMap.get(String(log.branchId)) || "-") : "-",
+            referenceId: log.referenceId,
+            tripId: log.tripId,
+            seatNo: log.seatNo,
+            pnr: payload.pnr || previous.pnr || null,
+            passengerName: passengerName || null,
+            statusLabel: payload.status ? (LOG_STATUS_LABELS[payload.status] || payload.status) : null,
+            priceLabel: payload.price !== undefined && payload.price !== null
+                ? formatLogFieldValue("price", payload.price, stopTitles)
+                : null,
+            description: log.description || "",
+            changes,
+        };
+    });
+}
+
+exports.getSeatHistory = async (req, res, next) => {
+    try {
+        const tripId = toIntegerOrNull(req.query.tripId);
+        const seatNo = toIntegerOrNull(req.query.seatNumber);
+
+        if (!tripId || !seatNo) {
+            return res.status(400).json({ message: "Sefer ve koltuk bilgisi gereklidir." });
+        }
+
+        const trip = await req.models.Trip.findByPk(tripId);
+        if (!trip) {
+            return res.status(404).json({ message: "Sefer bulunamadı." });
+        }
+
+        // Bu sefer+koltuktaki (iptal/iade dahil) biletlerin id'leri: tripId/seatNo
+        // kolonları eklenmeden önce yazılmış kayıtları (örn. scheduler'ın
+        // auto_cancel logları) da yakalayabilmek için referenceId ile eşleştiriyoruz.
+        const seatTickets = await req.models.Ticket.findAll({
+            where: { tripId, seatNo },
+            attributes: ["id"],
+            raw: true,
+        });
+        const seatTicketIds = seatTickets.map(ticket => ticket.id);
+
+        const orConditions = [{ tripId, seatNo }];
+        if (seatTicketIds.length) {
+            orConditions.push({
+                module: LOG_MODULES.TICKET,
+                referenceId: { [Op.in]: seatTicketIds },
+            });
+        }
+
+        const logs = await req.models.SystemLog.findAll({
+            where: { [Op.or]: orConditions },
+            order: [["createdAt", "DESC"], ["id", "DESC"]],
+            limit: 200,
+            raw: true,
+        });
+
+        const entries = await decorateSystemLogs(req, logs);
+
+        return res.render("mixins/seatHistory", {
+            entries,
+            seatNo,
+            tripLabel: `${formatTripDateForDisplay(trip.date)} ${formatTimeWithoutSeconds(trip.time)}`.trim(),
+        });
+    } catch (err) {
+        console.error("getSeatHistory error:", err);
+        return res.status(500).json({ message: "Koltuk geçmişi alınamadı." });
+    }
+};
+
+exports.getSystemLogs = async (req, res, next) => {
+    try {
+        const { module: moduleFilter, action, userId, search } = req.query;
+
+        const where = {};
+
+        if (moduleFilter && LOG_MODULE_LABELS[moduleFilter]) {
+            where.module = moduleFilter;
+        }
+
+        if (action && LOG_ACTION_LABELS[action]) {
+            where.action = action;
+        }
+
+        const filterUserId = toIntegerOrNull(userId);
+        if (filterUserId) {
+            where.userId = filterUserId;
+        }
+
+        const startDate = parseDateTimeInput(req.query.startDate);
+        const endDate = parseDateTimeInput(req.query.endDate);
+        if (startDate || endDate) {
+            where.createdAt = {};
+            if (startDate) where.createdAt[Op.gte] = startDate;
+            if (endDate) {
+                // Bitiş tarihi saat verilmeden geldiğinde o günün tamamı kapsanır.
+                const inclusiveEnd = new Date(endDate);
+                if (inclusiveEnd.getHours() === 0 && inclusiveEnd.getMinutes() === 0) {
+                    inclusiveEnd.setHours(23, 59, 59, 999);
+                }
+                where.createdAt[Op.lte] = inclusiveEnd;
+            }
+        }
+
+        const searchTerm = typeof search === "string" ? search.trim() : "";
+        if (searchTerm) {
+            where.description = { [Op.like]: `%${searchTerm}%` };
+        }
+
+        const page = Math.max(1, toIntegerOrNull(req.query.page) || 1);
+        const offset = (page - 1) * SYSTEM_LOG_PAGE_SIZE;
+
+        const { rows, count } = await req.models.SystemLog.findAndCountAll({
+            where,
+            order: [["createdAt", "DESC"], ["id", "DESC"]],
+            limit: SYSTEM_LOG_PAGE_SIZE,
+            offset,
+            raw: true,
+        });
+
+        const entries = await decorateSystemLogs(req, rows);
+        const totalPages = Math.max(1, Math.ceil(count / SYSTEM_LOG_PAGE_SIZE));
+
+        return res.render("mixins/systemLogsList", {
+            entries,
+            total: count,
+            page,
+            totalPages,
+        });
+    } catch (err) {
+        console.error("getSystemLogs error:", err);
+        return res.status(500).json({ message: "Sistem kayıtları alınamadı." });
+    }
+};
+
+exports.getSystemLogFilters = (req, res) => {
+    res.json({
+        modules: Object.entries(LOG_MODULE_LABELS).map(([value, label]) => ({ value, label })),
+        actions: Object.entries(LOG_ACTION_LABELS).map(([value, label]) => ({ value, label })),
+    });
 };

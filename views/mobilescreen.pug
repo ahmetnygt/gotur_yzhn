@@ -1,0 +1,82 @@
+extends mobilelayout
+
+block content
+  - const displayName = (user && user.name) ? user.name : "Gişe"
+  .m-app
+    header.m-topbar
+      .m-topbar-brand
+        img.m-logo(src="/images/gotur_yzhn_logo.png" alt="Götür")
+        if firmLogo && firmLogo !== "gotur_yzhn_logo.png"
+          img.m-logo(src=`/images/${firmLogo}` alt="")
+      .m-topbar-actions
+        span.m-user-name #{displayName}
+        a.m-link.m-desktop-link(href="/" data-ui="d") Masaüstü
+        form.m-logout(action="/logout" method="post")
+          input(type="hidden" name="_csrf" value=csrfToken)
+          button.m-icon-btn(type="submit" aria-label="Çıkış")
+            i.fa-solid.fa-right-from-bracket
+
+    .m-offline(hidden) Çevrimdışı — gişe için internet gerekir
+
+    .m-toolbar
+      select#currentStop.form-select.form-select-sm
+        each s in stops
+          if s.id == branchStopId
+            option(value=s.id selected) #{s.title}
+          else
+            option(value=s.id) #{s.title}
+      input#calendar.form-control.form-control-sm(type="text" inputmode="none" autocomplete="off")
+
+    main.m-main
+      section#mTripsPanel.m-panel.is-active
+        .m-tripRows
+
+      section#mTripPanel.m-panel
+        .m-trip-chrome
+          button#mBackToTrips.m-icon-btn(type="button" aria-label="Sefer listesi")
+            i.fa-solid.fa-chevron-left
+          .m-trip-chrome-title
+            span#mTripTitle Sefer
+            small#mTripMeta.m-trip-chrome-meta
+          button#mPaxBtn.m-chip-btn.m-chip-btn-ghost(type="button" aria-label="Yolcu listesi")
+            i.fa-solid.fa-users
+          if permissions.includes("TRIP_FINANCIAL_DETAILS_VIEW")
+            button#mRevenueBtn.m-chip-btn(type="button")
+              | ₺ Hasılat
+        .m-busPlan
+        .m-selection-bar(hidden)
+          span#mSelectionLabel
+          .m-selection-actions
+            button#mSellBtn.btn.btn-sm.btn-primary(type="button") Satış
+            button#mReserveBtn.btn.btn-sm.btn-outline-primary(type="button") Rezervasyon
+
+    .m-ticketops(hidden)
+
+    .m-sheet-backdrop(hidden)
+    aside#mSheet.m-sheet(hidden)
+      .m-sheet-handle
+      .m-sheet-head
+        h2#mSheetTitle.m-sheet-title
+        button#mSheetClose.m-icon-btn(type="button" aria-label="Kapat")
+          i.fa-solid.fa-xmark
+      .m-sheet-body#mSheetBody
+      .m-sheet-foot#mSheetFoot
+
+    if mustChangePassword
+      .m-password-lock
+        .m-password-card
+          h2 Şifre değiştir
+          p Devam etmeden önce şifrenizi değiştirmeniz gerekiyor.
+          form#mChangePasswordForm
+            input(type="hidden" name="_csrf" value=csrfToken)
+            .mb-2
+              label.form-label Şimdiki şifre
+              input.form-control(type="password" name="currentPassword" autocomplete="current-password" required)
+            .mb-2
+              label.form-label Yeni şifre
+              input.form-control(type="password" name="newPassword" autocomplete="new-password" required)
+            .mb-3
+              label.form-label Yeni şifre (tekrar)
+              input.form-control(type="password" name="confirmPassword" autocomplete="new-password" required)
+            p#mChangePasswordError.text-danger.small(hidden)
+            button.btn.btn-primary.w-100(type="submit") Güncelle

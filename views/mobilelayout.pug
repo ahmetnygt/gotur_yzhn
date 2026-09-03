@@ -1,0 +1,30 @@
+doctype html
+html(lang="tr")
+  head
+    meta(charset="utf-8")
+    meta(name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover")
+    meta(name="theme-color" content="#2660ff")
+    meta(name="apple-mobile-web-app-capable" content="yes")
+    meta(name="mobile-web-app-capable" content="yes")
+    meta(name="apple-mobile-web-app-status-bar-style" content="default")
+    title= title
+    link(rel="manifest" href="/m.webmanifest")
+    link(rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32.png")
+    link(rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16.png")
+    link(rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon.png")
+    link(rel="shortcut icon" href="/images/favicon.ico" type="image/x-icon")
+    link(rel="stylesheet" href="/flatpickr/dist/flatpickr.min.css")
+    link(rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/css/bootstrap.min.css")
+    link(rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css")
+    link(rel="stylesheet" href="/stylesheets/mobile.css")
+  body.m-body(data-must-change-password=(mustChangePassword ? "true" : "false"))
+    .m-loading
+      .m-loader
+    .m-toast-host
+    block content
+    script(src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js")
+    script(src="https://code.jquery.com/jquery-3.7.1.min.js")
+    script(src="/flatpickr/dist/flatpickr.min.js")
+    script(src="/flatpickr/dist/l10n/tr.js")
+    script(src="/scripts/mobile.js")
+    block scripts

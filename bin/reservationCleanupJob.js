@@ -148,7 +148,9 @@ async function cancelExpiredReservationsForTenant(tenantKey, now, fallbackDatePa
     where: {
       status: { [Op.in]: ['reservation', 'pending'] },
     },
-    attributes: ['id', 'status', 'optionDate', 'optionTime'],
+    // tripId/seatNo, systemLogs kayıtlarının koltuk geçmişinde görünebilmesi
+    // için gerekli (bkz. models/systemLogModel.js).
+    attributes: ['id', 'status', 'optionDate', 'optionTime', 'tripId', 'seatNo'],
     raw: true,
   });
   console.log(`[${tenantKey}] İptal edilesi biletler sorgulandı.`);
@@ -176,14 +178,13 @@ async function cancelExpiredReservationsForTenant(tenantKey, now, fallbackDatePa
     );
   }
 
-  const reservationIds = autoCancelReservations
-    ? expiredTickets
-        .filter((ticket) => ticket.status === 'reservation')
-        .map((ticket) => ticket.id)
+  const expiredReservations = autoCancelReservations
+    ? expiredTickets.filter((ticket) => ticket.status === 'reservation')
     : [];
-  const pendingIds = expiredTickets
-    .filter((ticket) => ticket.status === 'pending')
-    .map((ticket) => ticket.id);
+  const expiredPendings = expiredTickets.filter((ticket) => ticket.status === 'pending');
+
+  const reservationIds = expiredReservations.map((ticket) => ticket.id);
+  const pendingIds = expiredPendings.map((ticket) => ticket.id);
 
   if (reservationIds.length === 0 && pendingIds.length === 0) {
     return;
@@ -199,14 +200,17 @@ async function cancelExpiredReservationsForTenant(tenantKey, now, fallbackDatePa
       );
 
       await SystemLog.bulkCreate(
-        reservationIds.map((id) => ({
+        expiredReservations.map((ticket) => ({
           userId: null,
           branchId: null,
           module: 'ticket',
           action: 'auto_cancel',
-          referenceId: id,
+          referenceId: ticket.id,
+          tripId: ticket.tripId ?? null,
+          seatNo: ticket.seatNo ?? null,
+          oldData: { status: 'reservation' },
           newData: { status: 'canceled' }, // log da aynı
-          description: 'Reservation automatically canceled by scheduler',
+          description: 'Opsiyon süresi dolduğu için otomatik iptal edildi',
         })),
         { transaction: tx }
       );
@@ -220,14 +224,16 @@ async function cancelExpiredReservationsForTenant(tenantKey, now, fallbackDatePa
       });
 
       await SystemLog.bulkCreate(
-        pendingIds.map((id) => ({
+        expiredPendings.map((ticket) => ({
           userId: null,
           branchId: null,
           module: 'ticket',
           action: 'auto_delete',
-          referenceId: id,
+          referenceId: ticket.id,
+          tripId: ticket.tripId ?? null,
+          seatNo: ticket.seatNo ?? null,
           newData: { deleted: true },
-          description: 'Pending ticket automatically deleted by scheduler',
+          description: 'Süresi dolan koltuk kilidi otomatik kaldırıldı',
         })),
         { transaction: tx }
       );

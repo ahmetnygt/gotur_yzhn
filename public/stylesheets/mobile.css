@@ -1,0 +1,1131 @@
+/* Mobil (PWA) arayüz — ERP ile aynı tema: #2660ff vurgu, gri zemin, beyaz kartlar */
+:root {
+    --m-primary: #2660ff;
+    --m-primary-dark: #1f4fd3;
+    --m-primary-darker: #193fa6;
+    --m-male: #216396;
+    --m-female: #920256;
+    --m-page-bg: rgb(217, 218, 219);
+    --m-card-bg: #fff;
+    --m-line: #dee2e6;
+    --m-muted: #6c757d;
+    --m-radius: 5px;
+    --m-shadow: 0 0.5rem 1rem rgb(0 0 0 / 20%);
+    --m-seat-width: clamp(3.5rem, calc((100vw - 2.75rem) / 5), 4.6rem);
+}
+
+html,
+body.m-body {
+    height: 100%;
+    min-width: 0;
+    overflow: hidden;
+    background-color: var(--m-page-bg);
+}
+
+*::-webkit-scrollbar {
+    height: 7px;
+    width: 7px;
+}
+
+*::-webkit-scrollbar-track {
+    background-color: #ffffff00;
+}
+
+*::-webkit-scrollbar-thumb {
+    border-radius: 3px;
+    background-color: #2986cc4d;
+}
+
+.m-app {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    padding-top: env(safe-area-inset-top);
+}
+
+/* ---------- Üst bar / araç çubuğu ---------- */
+.m-topbar,
+.m-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid var(--m-line);
+}
+
+.m-topbar {
+    justify-content: space-between;
+    padding-left: calc(0.75rem + env(safe-area-inset-left));
+    padding-right: calc(0.75rem + env(safe-area-inset-right));
+}
+
+.m-topbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.m-logo {
+    height: 25px;
+    width: 100px;
+    object-fit: contain;
+}
+
+.m-topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.m-user-name {
+    max-width: 6.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.m-link {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--m-primary);
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.m-logout {
+    margin: 0;
+}
+
+.m-icon-btn {
+    border: 1px solid var(--m-line);
+    background-color: var(--m-card-bg);
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: var(--m-radius);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #212529;
+}
+
+.m-icon-btn:active {
+    transform: scale(0.94);
+}
+
+.m-toolbar {
+    padding-left: calc(0.75rem + env(safe-area-inset-left));
+    padding-right: calc(0.75rem + env(safe-area-inset-right));
+}
+
+.m-toolbar .form-select,
+.m-toolbar .form-control {
+    flex: 1;
+    min-width: 0;
+}
+
+.m-offline {
+    background-color: #b45309;
+    color: #fff;
+    text-align: center;
+    font-size: 0.8rem;
+    padding: 0.35rem 0.75rem;
+}
+
+/* ---------- Paneller ---------- */
+.m-main {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+}
+
+.m-panel {
+    display: none;
+    height: 100%;
+    overflow: hidden;
+}
+
+.m-panel.is-active {
+    display: flex;
+    flex-direction: column;
+}
+
+/* ---------- Sefer listesi ---------- */
+.m-tripRows {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0.75rem calc(0.75rem + env(safe-area-inset-right)) calc(1rem + env(safe-area-inset-bottom)) calc(0.75rem + env(safe-area-inset-left));
+}
+
+.m-app .tripRow {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    column-gap: 0.5rem;
+    row-gap: 0.1rem;
+    align-items: center;
+    background-color: var(--m-card-bg);
+    border: 2px solid transparent;
+    border-radius: var(--m-radius);
+    padding: 0.5rem 0.6rem;
+    margin-bottom: 0.5rem;
+    box-shadow: var(--m-shadow);
+    box-sizing: border-box;
+    cursor: pointer;
+}
+
+.m-app .tripRow>div {
+    border: none;
+    min-width: 0;
+    width: auto !important;
+}
+
+.m-app .tripRow>div:nth-child(1) {
+    grid-area: 1 / 1;
+}
+
+.m-app .tripRow>div:nth-child(2) {
+    grid-area: 1 / 2;
+    font-weight: 700;
+}
+
+.m-app .tripRow>div:nth-child(3) {
+    grid-area: 2 / 1 / 3 / 4;
+}
+
+.m-app .tripRow>div:nth-child(4) {
+    grid-area: 1 / 3;
+    text-align: right;
+}
+
+.m-app .tripRow p {
+    margin: 0;
+    font-size: 0.85rem;
+    white-space: normal;
+    user-select: none;
+}
+
+.m-app .tripRow.expired {
+    background-color: gray;
+    color: lightgray;
+}
+
+.m-app .tripRow.disabled,
+.m-app .tripRow.disabled.expired {
+    background-color: #000;
+    color: darkgray;
+}
+
+.m-app .tripRow.selected {
+    background-color: var(--m-primary);
+    border-color: var(--m-primary);
+    color: #fff;
+}
+
+.m-app .tripRow:active {
+    transform: scale(0.99);
+}
+
+/* ---------- Sefer detayı / koltuk planı ---------- */
+.m-trip-chrome {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.75rem;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid var(--m-line);
+}
+
+.m-trip-chrome-title {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    line-height: 1.15;
+}
+
+#mTripTitle {
+    font-weight: 700;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.m-trip-chrome-meta {
+    font-size: 0.7rem;
+    color: var(--m-muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.m-chip-btn {
+    border: 1px solid var(--m-primary);
+    background-color: var(--m-primary);
+    color: #fff;
+    border-radius: var(--m-radius);
+    padding: 0.25rem 0.6rem;
+    font-size: 0.8rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.m-chip-btn.m-chip-btn-ghost {
+    background-color: var(--m-card-bg);
+    color: var(--m-primary);
+}
+
+.m-chip-btn:active {
+    transform: scale(0.95);
+}
+
+.m-busPlan {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0.6rem 0.5rem 1rem;
+}
+
+.m-app .busPlan {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
+.m-app .trip-info-settings {
+    position: relative;
+    background-color: var(--m-card-bg);
+    border-radius: var(--m-radius);
+    box-shadow: var(--m-shadow);
+    padding: 0.5rem 0.6rem;
+    width: 100%;
+    font-size: 0.85rem;
+}
+
+.m-app .inactiveTripText {
+    color: #dc3545;
+    font-weight: 700;
+    text-align: center;
+    margin: 0;
+}
+
+.m-app .captain-info {
+    font-size: 0.75rem;
+    color: var(--m-muted);
+    margin-bottom: 0 !important;
+}
+
+/* Masaüstüne özel sefer araçları mobilde gizli */
+.m-app .trip-helper-buttons,
+.m-app .trip-cargo,
+.m-app .trip-options,
+.m-app .trip-documents,
+.m-app .account-cut,
+.m-app .account-cut-undo,
+.m-app .trip-bus-license-plate,
+.m-app .trip-bus-plan,
+.m-app .captain-info+.d-flex {
+    display: none !important;
+}
+
+.m-app .seats {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 0.6rem 0;
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.m-app .seat-row {
+    display: flex;
+    gap: 0.3rem;
+    justify-content: center;
+}
+
+.m-app .seat {
+    background-color: var(--m-card-bg);
+    box-shadow: var(--m-shadow);
+    width: var(--m-seat-width);
+    height: 3.1rem;
+    border-radius: var(--m-radius);
+    padding: 0.1rem 0.2rem;
+    position: relative;
+    cursor: pointer;
+    box-sizing: border-box;
+    border: 2px solid rgb(0 0 0 / 0%);
+    flex: 0 0 auto;
+    overflow: hidden;
+}
+
+.m-app .seat.selected {
+    border-color: green !important;
+}
+
+.m-app .seat .seat-number {
+    font-weight: bold;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    margin: 0;
+    font-size: 1.35rem;
+    opacity: 15%;
+    user-select: none;
+}
+
+.m-app .seat[data-only-gender="m"] .seat-number {
+    color: var(--m-male);
+    opacity: 1;
+}
+
+.m-app .seat[data-only-gender="m"] .seat-number::after,
+.m-app .seat[data-only-gender="m"] .seat-number::before {
+    color: var(--m-male);
+    content: "-";
+}
+
+.m-app .seat[data-only-gender="f"] .seat-number {
+    color: var(--m-female);
+    opacity: 1;
+}
+
+.m-app .seat[data-only-gender="f"] .seat-number::after,
+.m-app .seat[data-only-gender="f"] .seat-number::before {
+    color: var(--m-female);
+    content: "-";
+}
+
+.m-app .seat .seat-content {
+    display: flex;
+    justify-content: space-between;
+    height: 33.3%;
+}
+
+.m-app .seat p.to,
+.m-app .seat p.from {
+    height: 33.3%;
+}
+
+.m-app .seat p.to,
+.m-app .seat p.from,
+.m-app .seat p.web,
+.m-app .seat .price {
+    user-select: none;
+    font-size: 0.55rem;
+    line-height: 1;
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.m-app .seat.pending {
+    background-color: rgb(200 0 0) !important;
+    border-color: rgb(150 0 0);
+    color: rgb(100 0 0) !important;
+}
+
+.m-app .seat.m {
+    background-color: rgb(41, 134, 204);
+    border-color: var(--m-male);
+    color: #fff !important;
+}
+
+.m-app .seat.m.reservation {
+    background-color: rgb(41 134 204 / 30%);
+    border-color: #2164974d;
+    color: var(--m-male) !important;
+}
+
+.m-app .seat.f {
+    background-color: rgb(201, 0, 118);
+    border-color: var(--m-female);
+    color: #fff !important;
+}
+
+.m-app .seat.f.reservation {
+    background-color: rgb(201 0 118 / 30%);
+    border-color: #9202564d;
+    color: var(--m-female) !important;
+}
+
+.m-app .seat.before {
+    filter: grayscale(1);
+}
+
+.m-app .seat.m.ahead {
+    background-color: transparent;
+    color: var(--m-male) !important;
+}
+
+.m-app .seat.f.ahead {
+    background-color: transparent;
+    color: var(--m-female) !important;
+}
+
+.m-app .seat.web {
+    border-color: #4CAF50;
+    border-width: 0.2rem;
+}
+
+.m-app .seat.hidden {
+    visibility: hidden;
+}
+
+.m-app .seat.none {
+    display: none;
+}
+
+/* ---------- Seçim çubuğu ---------- */
+.m-selection-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem calc(0.5rem + env(safe-area-inset-bottom));
+    background-color: #f8f9fa;
+    border-top: 1px solid var(--m-line);
+}
+
+#mSelectionLabel {
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.m-selection-actions {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.m-move-banner {
+    background-color: var(--m-primary);
+    color: #fff;
+    padding: 0.65rem 0.75rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    box-shadow: 0 0.35rem 0.75rem rgb(13 110 253 / 28%);
+}
+
+/* ---------- Alt sayfa (sheet) ---------- */
+.m-sheet-backdrop {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(2px);
+    z-index: 40;
+}
+
+.m-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    max-height: 90dvh;
+    background-color: var(--m-card-bg);
+    border-radius: 0.6rem 0.6rem 0 0;
+    box-shadow: var(--m-shadow);
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.m-sheet-handle {
+    width: 3rem;
+    height: 0.25rem;
+    background-color: #ced4da;
+    border-radius: 999px;
+    margin: 0.4rem auto;
+}
+
+/* ERP .gtr-header ile aynı görünüm */
+.m-sheet-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background-color: var(--m-primary);
+    color: #fff;
+    padding: 0.5rem;
+}
+
+.m-sheet-title {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.9rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    text-align: center;
+    margin: 0;
+}
+
+.m-sheet-head .m-icon-btn {
+    background-color: transparent;
+    border-color: rgb(255 255 255 / 45%);
+    color: #fff;
+    width: 1.85rem;
+    height: 1.85rem;
+    flex: 0 0 auto;
+}
+
+.m-sheet-body {
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 0.75rem;
+    flex: 1;
+}
+
+.m-sheet-foot {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.65rem 0.75rem calc(0.65rem + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--m-line);
+    background-color: #f8f9fa;
+}
+
+.m-sheet-foot:empty {
+    display: none;
+}
+
+/* ---------- Yolcu bilgi kartı ---------- */
+.m-pax-grid {
+    display: grid;
+    grid-template-columns: 7rem 1fr;
+    gap: 0.35rem 0.75rem;
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.m-pax-grid dt {
+    color: var(--m-muted);
+    font-weight: 400;
+    margin: 0;
+}
+
+.m-pax-grid dd {
+    margin: 0;
+    font-weight: 600;
+}
+
+.m-action-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0.45rem;
+    margin-top: 1rem;
+}
+
+/* ---------- Yolcu listesi ---------- */
+.m-pax-summary {
+    font-size: 0.8rem;
+    color: var(--m-muted);
+    margin: 0 0 0.6rem;
+}
+
+.m-pax-group {
+    margin-bottom: 0.9rem;
+}
+
+.m-pax-group-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    background-color: #2660ff14;
+    border-left: 3px solid var(--m-primary);
+    color: var(--m-primary);
+    font-size: 0.8rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    padding: 0.35rem 0.5rem;
+    margin: 0 0 0.45rem;
+}
+
+.m-pax-group-head.is-current {
+    background-color: var(--m-primary);
+    border-left-color: var(--m-primary-darker);
+    color: #fff;
+}
+
+.m-pax-group-count {
+    font-size: 0.75rem;
+    font-weight: 700;
+    background-color: #fff;
+    color: var(--m-primary);
+    border-radius: var(--m-radius);
+    padding: 0 0.35rem;
+}
+
+.m-pax-card {
+    background-color: var(--m-card-bg);
+    border: 1px solid var(--m-line);
+    border-radius: var(--m-radius);
+    box-shadow: 0 0 5px rgb(0 0 0 / 10%);
+    padding: 0.5rem 0.6rem;
+    margin-bottom: 0.4rem;
+    font-size: 0.8rem;
+}
+
+.m-pax-card.m {
+    background-color: #21639618;
+    border-color: #21639650;
+}
+
+.m-pax-card.f {
+    background-color: #92025618;
+    border-color: #92025650;
+}
+
+.m-pax-card.ahead {
+    border-style: dashed;
+}
+
+.m-pax-card-top {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.3rem;
+}
+
+.m-pax-seat {
+    flex: 0 0 auto;
+    min-width: 1.8rem;
+    text-align: center;
+    background-color: var(--m-primary);
+    color: #fff;
+    border-radius: var(--m-radius);
+    font-weight: 700;
+    padding: 0.05rem 0.3rem;
+}
+
+.m-pax-card.m .m-pax-seat {
+    background-color: var(--m-male);
+}
+
+.m-pax-card.f .m-pax-seat {
+    background-color: var(--m-female);
+}
+
+.m-pax-name {
+    flex: 1;
+    min-width: 0;
+    font-weight: 700;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.m-pax-status {
+    flex: 0 0 auto;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--m-muted);
+    border: 1px solid var(--m-line);
+    background-color: #fff;
+    border-radius: var(--m-radius);
+    padding: 0 0.3rem;
+}
+
+.m-pax-card-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.m-pax-card-row>span:first-child {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.m-pax-price {
+    flex: 0 0 auto;
+    font-weight: 700;
+}
+
+.m-pax-phone {
+    color: var(--m-primary);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.m-pax-muted {
+    color: var(--m-muted);
+    flex: 0 0 auto;
+}
+
+.m-pax-card-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.35rem;
+}
+
+/* ---------- Varış / cinsiyet seçimi ---------- */
+.m-dest-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+}
+
+.m-dest-btn {
+    width: 100%;
+    text-align: left;
+    border: 1px solid var(--m-line);
+    background-color: var(--m-card-bg);
+    border-radius: var(--m-radius);
+    padding: 0.65rem 0.75rem;
+    font-weight: 600;
+}
+
+.m-dest-btn:active {
+    background-color: #e7eeff;
+    border-color: var(--m-primary);
+}
+
+.m-gender-row {
+    display: flex;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
+}
+
+.m-gender-row .btn {
+    flex: 1;
+}
+
+/* ---------- ERP bilet formu (mobil düzen) ---------- */
+.m-app .ticket-info {
+    padding: 0;
+}
+
+.m-app .ticket-row,
+.m-app .ticket-info .up-row,
+.m-app .ticket-info .row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin: 0 0 0.75rem;
+}
+
+.m-app .ticket-row {
+    border-radius: var(--m-radius);
+    border: 1px solid var(--m-line);
+    padding: 0.6rem;
+}
+
+.m-app .ticket-row.m {
+    background-color: #21639618;
+    border-color: #21639650;
+}
+
+.m-app .ticket-row.f {
+    background-color: #92025618;
+    border-color: #92025650;
+}
+
+.m-app .ticket-row .seat-number {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 700;
+}
+
+.m-app .ticket-row .seat-number p::before {
+    content: "Koltuk ";
+    font-weight: 400;
+    color: var(--m-muted);
+}
+
+.m-app .ticket-row .gender {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+}
+
+.m-app .ticket-row .gender input {
+    display: none;
+}
+
+.m-app .gender-input-label {
+    flex: 1;
+    text-align: center;
+    color: #000;
+    border: 1px solid;
+    padding: 0.35rem;
+    border-radius: var(--m-radius);
+    font-size: 0.8rem;
+    font-weight: 600;
+}
+
+.m-app .gender input[type="radio"]:checked+label.male {
+    background-color: #21639650;
+    border-color: var(--m-male);
+    color: var(--m-male);
+}
+
+.m-app .gender input[type="radio"]:checked+label.female {
+    background-color: #92025650;
+    border-color: var(--m-female);
+    color: var(--m-female);
+}
+
+.m-app .form-label {
+    font-size: 0.75rem;
+    color: var(--m-muted);
+    margin-bottom: 0.15rem;
+}
+
+.m-app .price-input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.m-app .price-arrows {
+    flex: 0 0 auto;
+}
+
+/* ---------- İptal / iade kartları (ERP renkleri) ---------- */
+.m-app .tickets_,
+.m-app .tickets {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.m-app .ticket-cancel-box {
+    border: 1px solid #ccc;
+    padding: 0.6rem;
+    box-shadow: 0 0 5px rgba(0, 0, 0, 0.2);
+    border-radius: var(--m-radius);
+    font-size: 13px;
+    position: relative;
+    cursor: pointer;
+}
+
+.m-app .ticket-cancel-box.m {
+    background-color: var(--m-male);
+}
+
+.m-app .ticket-cancel-box.f {
+    background-color: var(--m-female);
+}
+
+.m-app .ticket-cancel-box p {
+    margin-bottom: 0.4rem;
+    color: #fff;
+}
+
+.m-app .ticket-cancel-box.m.selected {
+    background-color: #1a5079;
+    transform: scale(0.97);
+}
+
+.m-app .ticket-cancel-box.f.selected {
+    background-color: #6b023f;
+    transform: scale(0.97);
+}
+
+.m-app .ticket-cancel-check {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    display: none;
+    font-size: 1.35rem;
+    color: #fff;
+}
+
+.m-app .ticket-cancel-box.selected .ticket-cancel-check {
+    display: inline;
+}
+
+.m-app .moving-ticket-button {
+    margin: 0 0.25rem 0.25rem 0;
+}
+
+.m-app .moving-trip-info,
+.m-app .move-to {
+    display: none;
+}
+
+/* ---------- Hasılat ---------- */
+.m-revenue-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.m-revenue-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 0.75rem;
+    align-items: center;
+    background-color: #f8f9fa;
+    border: 1px solid var(--m-line);
+    border-radius: var(--m-radius);
+    padding: 0.5rem 0.7rem;
+    font-size: 0.85rem;
+}
+
+.m-revenue-row span:first-child {
+    font-weight: 600;
+}
+
+.m-revenue-table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.m-revenue-table {
+    font-size: 0.75rem;
+    min-width: 28rem;
+}
+
+.m-revenue-card {
+    background-color: #f8f9fa;
+    border: 1px solid var(--m-line);
+    border-radius: var(--m-radius);
+    padding: 0.6rem 0.7rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.m-revenue-card h3 {
+    font-size: 0.85rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--m-primary);
+    margin: 0 0 0.3rem;
+}
+
+/* ---------- Yükleniyor (ERP loader) ---------- */
+.m-loading {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background-color: #00000048;
+    backdrop-filter: blur(5px);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+}
+
+.m-loading.is-on {
+    display: flex;
+}
+
+.m-loader {
+    height: 30px;
+    aspect-ratio: 2.5;
+    --_g: no-repeat radial-gradient(farthest-side, #2660ff 90%, #0000);
+    background: var(--_g), var(--_g), var(--_g), var(--_g);
+    background-size: 20% 50%;
+    animation: m-l43 1s infinite linear;
+}
+
+@keyframes m-l43 {
+    0% {
+        background-position: calc(0*100%/3) 50%, calc(1*100%/3) 50%, calc(2*100%/3) 50%, calc(3*100%/3) 50%
+    }
+
+    16.67% {
+        background-position: calc(0*100%/3) 0, calc(1*100%/3) 50%, calc(2*100%/3) 50%, calc(3*100%/3) 50%
+    }
+
+    33.33% {
+        background-position: calc(0*100%/3) 100%, calc(1*100%/3) 0, calc(2*100%/3) 50%, calc(3*100%/3) 50%
+    }
+
+    50% {
+        background-position: calc(0*100%/3) 50%, calc(1*100%/3) 100%, calc(2*100%/3) 0, calc(3*100%/3) 50%
+    }
+
+    66.67% {
+        background-position: calc(0*100%/3) 50%, calc(1*100%/3) 50%, calc(2*100%/3) 100%, calc(3*100%/3) 0
+    }
+
+    83.33% {
+        background-position: calc(0*100%/3) 50%, calc(1*100%/3) 50%, calc(2*100%/3) 50%, calc(3*100%/3) 100%
+    }
+
+    100% {
+        background-position: calc(0*100%/3) 50%, calc(1*100%/3) 50%, calc(2*100%/3) 50%, calc(3*100%/3) 50%
+    }
+}
+
+/* ---------- Bildirimler ---------- */
+.m-toast-host {
+    position: fixed;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: calc(0.75rem + env(safe-area-inset-bottom));
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    pointer-events: none;
+}
+
+.m-toast {
+    background-color: #212529;
+    color: #fff;
+    padding: 0.6rem 0.75rem;
+    border-radius: var(--m-radius);
+    box-shadow: var(--m-shadow);
+    font-size: 0.85rem;
+}
+
+.m-toast.error {
+    background-color: #dc3545;
+}
+
+.m-toast.success {
+    background-color: #198754;
+}
+
+/* ---------- Zorunlu şifre değişimi ---------- */
+.m-password-lock {
+    position: fixed;
+    inset: 0;
+    background-color: #00000090;
+    backdrop-filter: blur(5px);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.m-password-card {
+    background-color: var(--m-card-bg);
+    border-radius: var(--m-radius);
+    box-shadow: var(--m-shadow);
+    padding: 1rem;
+    width: min(26rem, 100%);
+}
+
+.m-password-card h2 {
+    font-size: 1rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    color: var(--m-primary);
+}
+
+.m-password-card p {
+    font-size: 0.85rem;
+    color: var(--m-muted);
+}

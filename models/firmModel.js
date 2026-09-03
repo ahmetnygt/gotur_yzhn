@@ -97,6 +97,29 @@ module.exports = (sequelize) => {
         defaultValue: false,
       },
 
+      // 🔹 NetGSM SMS
+      isSmsActive: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
+      smsUsername: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      smsPassword: {
+        type: DataTypes.STRING,
+        allowNull: true,
+      },
+      smsHeader: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+      },
+      smsTemplates: {
+        type: DataTypes.JSON,
+        allowNull: true,
+      },
+
       // 🔹 Komisyon
       comissionRate: {
         type: DataTypes.DECIMAL(5, 2),

@@ -7,8 +7,9 @@ const requirePermission = require("../middlewares/permissionMiddleware")
 const { ensureCsrfToken, verifyCsrfToken } = require("../middlewares/csrf")
 const erpController = require("../controllers/erpController")
 
-// Tüm POST/PUT/DELETE işlemleri için global middleware
-// router.use(autoLogMiddleware);
+// Her isteğe req.logSystem / req.logSystemMany yardımcılarını bağlar
+// (bkz. middlewares/autoLogMiddleware.js).
+router.use(autoLogMiddleware);
 
 // GÜVENLİK: CSRF koruması login dahil TÜM rotalara uygulanıyor. ensureCsrfToken
 // her istekte (login sayfası dahil) token'ı oturuma/cookie'ye yazıyor;
@@ -27,6 +28,11 @@ router.post('/login', (req, res, next) => {
     return next();
 }, erpController.postErpLogin);
 
+// Çıkış, oturum düşmüş olsa bile tamamlanabilmeli. GET de kabul edilir:
+// tarayıcı bazen /logout'a GET ile düşüyor; rota yokken 404'te kalınıyordu.
+router.get('/logout', erpController.postErpLogout);
+router.post('/logout', erpController.postErpLogout);
+
 // Bundan sonraki TÜM rotalar için oturum açmış olmak zorunludur.
 // Önceden her rota kendi başına "auth" middleware'ini opt-in olarak
 // ekliyordu; bu da çoğu ERP verisinin (sefer, bilet, müşteri, kullanıcı vb.)
@@ -34,8 +40,7 @@ router.post('/login', (req, res, next) => {
 router.use(auth);
 
 router.get('/', erpController.getErp);
-
-router.post('/logout', erpController.postErpLogout);
+router.get('/m', erpController.getMobileErp);
 router.post('/post-update-profile', erpController.postUpdateProfile);
 router.post('/post-change-password', erpController.postChangePassword);
 
@@ -65,8 +70,11 @@ router.get('/get-bus-account-cut-record', erpController.getBusAccountCutRecord);
 router.post('/post-delete-bus-account-cut', erpController.postDeleteBusAccountCut);
 router.get('/get-bus-account-cut-receipt', erpController.getBusAccountCutReceipt);
 router.get('/trip-seat-plan', erpController.getTripSeatPlanReport);
+router.get('/trip-passengers-excel', erpController.getTripPassengersExcel);
 
 router.get('/get-ticketops-popup', erpController.getTicketOpsPopUp);
+
+router.get('/get-seat-history', erpController.getSeatHistory);
 
 router.get('/get-ticket-row', erpController.getTicketRow);
 
@@ -138,6 +146,9 @@ router.get('/get-branches-list', erpController.getBranchesList);
 router.get('/get-branch', erpController.getBranch);
 router.post('/post-save-branch', erpController.postSaveBranch);
 router.post('/post-delete-branch', erpController.postDeleteBranch);
+
+router.get('/get-system-logs', requirePermission("ADMIN_PANEL_MANAGE"), erpController.getSystemLogs);
+router.get('/get-system-log-filters', requirePermission("ADMIN_PANEL_MANAGE"), erpController.getSystemLogFilters);
 
 router.get('/get-firm-settings', requirePermission("ADMIN_PANEL_MANAGE"), erpController.getFirmSettings);
 router.post('/post-save-firm-settings', requirePermission("ADMIN_PANEL_MANAGE"), erpController.postSaveFirmSettings);

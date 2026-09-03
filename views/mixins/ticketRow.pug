@@ -131,11 +131,14 @@
                 ? ticketPriceRaw
                 : (activePriceList.length ? activePriceList[0] : "")
 
-            const showPriceArrows = activePriceList.length > 1
-            const shouldLockPriceInput = (action === "edit") && hasTicketPriceValue
+            const rowTicketStatus = ticket && ticket[i] ? ticket[i].status : ""
+            const isReservationEdit = action === "edit" && rowTicketStatus === "reservation"
             const canEnterFreePrice = permissions && permissions.includes('ENTER_FREE_PRICE')
-            const inputIsReadonly = !canEnterFreePrice || shouldLockPriceInput
+            const shouldLockPriceInput = action === "edit" && hasTicketPriceValue && (!isReservationEdit || !canEnterFreePrice)
+            const inputIsReadonly = shouldLockPriceInput || !canEnterFreePrice
+            const showPriceArrows = activePriceList.length > 1 && !shouldLockPriceInput
         .price(
+            class=shouldLockPriceInput ? "price-locked" : undefined
             data-seat-type=seatType
             data-regular-prices=JSON.stringify(regularPriceValues)
             data-single-prices=JSON.stringify(singleSeatPriceValues)
