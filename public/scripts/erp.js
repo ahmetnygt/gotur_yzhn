@@ -9321,8 +9321,8 @@ $(".save-user").on("click", async e => {
             $(".user-info").css("display", "none")
             $(".user-settings").css("display", "none")
         },
-        error: function (xhr, status, error) {
-            console.log(error);
+        error: function (xhr) {
+            showError(getAjaxErrorMessage(xhr));
         }
     })
 })

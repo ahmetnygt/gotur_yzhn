@@ -7426,7 +7426,7 @@ exports.postSaveUser = async (req, res, next) => {
                 firmId: req.session.firmUser.firmId,
                 isActive,
                 branchId,
-                username,
+                username: trimmedUsername,
                 phoneNumber: phone,
                 name,
                 password: hashedPassword
