@@ -521,6 +521,7 @@
             $("#mSheetBody .phone input").val(customer.phoneNumber);
         }
         const $price = $row.find(".price input");
+        const priceLocked = $row.find(".price").hasClass("price-locked");
         if ($price.length && $price.data("originalPrice") == null && $price.val() !== "") {
             $price.data("originalPrice", Number($price.val()));
         }
@@ -530,12 +531,12 @@
             $point.html(`${customer.point_amount || 0} p`).addClass("text-danger")
                 .data("pointorpercent", "point")
                 .data("pointamount", customer.point_amount);
-            if (!Number.isNaN(originalPrice)) $price.val(originalPrice);
+            if (!priceLocked && !Number.isNaN(originalPrice)) $price.val(originalPrice);
         } else if (customer.pointOrPercent === "percent") {
             $point.html(`${customer.percent || 0}%`).addClass("text-danger")
                 .data("pointorpercent", "percent")
                 .data("pointamount", customer.point_amount);
-            if (!Number.isNaN(originalPrice)) {
+            if (!priceLocked && !Number.isNaN(originalPrice)) {
                 const discount = Number(customer.percent) || 0;
                 $price.val(originalPrice - (originalPrice / 100 * discount));
             }
@@ -543,7 +544,7 @@
             $point.html("").removeClass("text-danger")
                 .data("pointorpercent", "")
                 .data("pointamount", "");
-            if (!Number.isNaN(originalPrice)) $price.val(originalPrice);
+            if (!priceLocked && !Number.isNaN(originalPrice)) $price.val(originalPrice);
         }
     }
 
@@ -559,6 +560,50 @@
                 });
                 if (customer) fillTicketRowFromCustomer($(this).closest(".ticket-row"), customer);
             } catch (err) { /* kayıt yok */ }
+        });
+    }
+
+    function parsePriceList(value) {
+        if (value == null || value === "") return [];
+        try {
+            const parsed = JSON.parse(value);
+            if (!Array.isArray(parsed)) return [];
+            return parsed.map(Number).filter((n) => !Number.isNaN(n));
+        } catch (err) {
+            return [];
+        }
+    }
+
+    function bindPriceArrows() {
+        $("#mSheetBody .price-arrow").off("click.priceArrow").on("click.priceArrow", function (e) {
+            e.preventDefault();
+            const $button = $(this);
+            const $priceContainer = $button.closest(".price");
+            if ($priceContainer.hasClass("price-locked")) return;
+
+            const seatType = $priceContainer.attr("data-seat-type") === "single" ? "single" : "standard";
+            const regularPrices = parsePriceList($priceContainer.attr("data-regular-prices"));
+            const singlePrices = parsePriceList($priceContainer.attr("data-single-prices"));
+            const options = seatType === "single"
+                ? (singlePrices.length ? singlePrices : regularPrices)
+                : (regularPrices.length ? regularPrices : singlePrices);
+            if (!options.length) return;
+
+            const $input = $priceContainer.find("input").first();
+            const currentValue = Number($input.val());
+            let currentIndex = options.findIndex((p) => Number(p) === currentValue);
+            const isUp = $button.hasClass("price-arrow-up");
+            let nextIndex;
+            if (currentIndex === -1) {
+                nextIndex = isUp ? 0 : options.length - 1;
+            } else if (isUp) {
+                nextIndex = (currentIndex + 1) % options.length;
+            } else {
+                nextIndex = (currentIndex - 1 + options.length) % options.length;
+            }
+            const nextPrice = Number(options[nextIndex]);
+            if (Number.isNaN(nextPrice)) return;
+            $input.val(nextPrice);
         });
     }
 
@@ -648,6 +693,7 @@
             else pendingAbortPayload = null;
             $("#mSheetBody select[data-searchable-select]").removeAttr("data-searchable-select");
             bindCustomerLookup();
+            bindPriceArrows();
         } catch (err) {
             toast(ajaxError(err, "Bilet formu alınamadı."), "error");
         }

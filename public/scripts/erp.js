@@ -2985,12 +2985,15 @@ async function loadTrip(date, time, tripId) {
                                     .addClass("text-danger")
                                     .data("pointorpercent", customer.pointOrPercent)
                                     .data("pointamount", customer.point_amount);
-                                $(row).find(".price").find("input").val(originalPrice);
-                                if (customer.pointOrPercent == "percent") {
-                                    const discount = Number(customer.percent);
-                                    const newPrice = originalPrice - (originalPrice / 100 * discount);
-                                    $(row).find(".price").find("input").val(newPrice);
-                                } else if (!customer.pointOrPercent) {
+                                if (!$(row).find(".price").hasClass("price-locked")) {
+                                    $(row).find(".price").find("input").val(originalPrice);
+                                    if (customer.pointOrPercent == "percent") {
+                                        const discount = Number(customer.percent);
+                                        const newPrice = originalPrice - (originalPrice / 100 * discount);
+                                        $(row).find(".price").find("input").val(newPrice);
+                                    }
+                                }
+                                if (!customer.pointOrPercent) {
                                     $(row).find(".price").find("span.customer-point")
                                         .html("")
                                         .removeClass("text-danger")
@@ -3046,6 +3049,9 @@ async function loadTrip(date, time, tripId) {
                             const $button = $(this);
                             const isUp = $button.hasClass("price-arrow-up");
                             const $priceContainer = $button.closest(".price");
+                            if ($priceContainer.hasClass("price-locked")) {
+                                return;
+                            }
                             const priceLists = getPriceLists($priceContainer);
                             const options = priceLists.activeList;
 

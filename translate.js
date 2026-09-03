@@ -67,6 +67,7 @@ const translations = {
     '"No ticket information provided."': '"Bilet bilgisi sağlanmadı."',
     '"Invalid ticket information provided."': '"Geçersiz bilet bilgisi sağlandı."',
     '"Ticket price cannot be changed during editing."': '"Bilet fiyatı düzenleme sırasında değiştirilemez."',
+    '"Free price permission is required to change the ticket price."': '"Bilet fiyatını değiştirmek için serbest fiyat yetkisi gerekir."',
     '"Tickets successfully canceled."': '"Biletler başarıyla iptal edildi."',
     '"No eligible records found to delete."': '"Silinecek uygun kayıt bulunamadı."',
     '"Pending ticket(s) successfully deleted."': '"Bekleyen bilet(ler) başarıyla silindi."',

@@ -4374,6 +4374,8 @@ exports.postEditTicket = async (req, res, next) => {
             return Number.isNaN(num) ? null : num;
         };
 
+        const canEnterFreePrice = (req.session.permissions || []).includes("ENTER_FREE_PRICE");
+
         for (let i = 0; i < foundTickets.length; i++) {
             const foundTicket = foundTickets[i];
             const incomingTicket = tickets[i] || {};
@@ -4381,7 +4383,12 @@ exports.postEditTicket = async (req, res, next) => {
             const incomingPrice = normalizePriceValue(incomingTicket.price);
 
             if (existingPrice !== incomingPrice) {
-                return res.status(400).json({ message: "Bilet fiyatı düzenleme sırasında değiştirilemez." });
+                if (foundTicket.status !== "reservation") {
+                    return res.status(400).json({ message: "Bilet fiyatı düzenleme sırasında değiştirilemez." });
+                }
+                if (!canEnterFreePrice) {
+                    return res.status(403).json({ message: "Bilet fiyatını değiştirmek için serbest fiyat yetkisi gerekir." });
+                }
             }
         }
 
@@ -4405,6 +4412,12 @@ exports.postEditTicket = async (req, res, next) => {
             foundTicket.takeOnText = takeOnTitle;
             foundTicket.takeOffText = takeOffTitle;
             foundTicket.description = (incomingTicket.description || "").toString().trim() || null;
+            if (foundTicket.status === "reservation") {
+                const incomingPrice = normalizePriceValue(incomingTicket.price);
+                if (incomingPrice !== null) {
+                    foundTicket.price = incomingPrice;
+                }
+            }
             return foundTicket.save();
         }));
 
