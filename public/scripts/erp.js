@@ -2201,6 +2201,12 @@ async function loadTrip(date, time, tripId) {
         fromStr = $("#fromStr").val();
         toStr = $("#toStr").val();
 
+        // Transfer/açık bilet bağlama kaynak seferde seçilen durakta kalıyordu;
+        // hedef sefer açılınca kalkış, bu seferde açık olan durak olmalı.
+        if (isMovingActive) {
+            selectedTicketStopId = currentStop;
+        }
+
         $("#tickets").remove();
         $("#tripDate").remove();
         $("#tripTime").remove();
@@ -5027,7 +5033,7 @@ $(".moving-confirm").on("click", async e => {
                     pnr: movingSeatPNR,
                     newSeat: selectedSeats[0],
                     tripId: currentTripId,
-                    stopId: selectedTicketStopId,
+                    stopId: currentStop,
                     toId: $(".move-to-trip-place-select").val() ? $(".move-to-trip-place-select").val() : toId,
                 },
                 success: async function () {
@@ -5046,7 +5052,7 @@ $(".moving-confirm").on("click", async e => {
         await $.ajax({
             url: "/post-move-tickets",
             type: "POST",
-            data: { pnr: movingSeatPNR, oldSeats: JSON.stringify(movingSelectedSeats), newSeats: JSON.stringify(selectedSeats), newTrip: currentTripId, fromId: selectedTicketStopId, toId: $(".move-to-trip-place-select").val() ? $(".move-to-trip-place-select").val() : toId },
+            data: { pnr: movingSeatPNR, oldSeats: JSON.stringify(movingSelectedSeats), newSeats: JSON.stringify(selectedSeats), newTrip: currentTripId, fromId: currentStop, toId: $(".move-to-trip-place-select").val() ? $(".move-to-trip-place-select").val() : toId },
             success: async function () {
                 resetMovingWorkflowState();
                 loadTrip(currentTripDate, currentTripTime, currentTripId)
