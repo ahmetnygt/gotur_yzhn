@@ -115,6 +115,10 @@ module.exports = (sequelize) => {
         type: DataTypes.STRING(20),
         allowNull: true,
       },
+      smsTemplates: {
+        type: DataTypes.JSON,
+        allowNull: true,
+      },
 
       // 🔹 Komisyon
       comissionRate: {

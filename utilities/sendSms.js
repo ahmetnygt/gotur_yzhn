@@ -1,6 +1,20 @@
 const axios = require("axios");
 
 const NETGSM_SEND_URL = "https://api.netgsm.com.tr/sms/rest/v2/send";
+const SMS_TEMPLATE_MAX_LEN = 500;
+
+const DEFAULT_SMS_TEMPLATES = Object.freeze({
+    reservation: "{firma} rezervasyonunuz alindi. PNR:{pnr} {when} {route}{seatPart}",
+    complete: "{firma} rezervasyonunuz satisa cevrildi. PNR:{pnr} {when} {route}{seatPart}",
+    web_sale: "{firma} web biletiniz olusturuldu. PNR:{pnr} {when} {route}{seatPart}",
+    web_reservation: "{firma} web rezervasyonunuz alindi. PNR:{pnr} {when} {route}{seatPart}",
+    open_sale: "{firma} acik biletiniz olusturuldu. PNR:{pnr} {route}",
+    cancel: "{firma} PNR {pnr} biletiniz iptal edildi.",
+    refund: "{firma} PNR {pnr} biletiniz iade edildi.",
+    transfer: "{firma} PNR {pnr} yeni sefer: {when}{seatPart}",
+    open: "{firma} PNR {pnr} biletiniz aciga alindi.",
+    sale: "{firma} biletiniz olusturuldu. PNR:{pnr} {when} {route}{seatPart}",
+});
 
 function normalizeTrPhone(raw) {
     if (raw == null) return null;
@@ -14,17 +28,6 @@ function normalizeTrPhone(raw) {
     return null;
 }
 
-function foldTr(str) {
-    if (!str) return "";
-    return String(str)
-        .replace(/[Çç]/g, "C")
-        .replace(/[Ğğ]/g, "G")
-        .replace(/[İIıi]/g, "I")
-        .replace(/[Öö]/g, "O")
-        .replace(/[Şş]/g, "S")
-        .replace(/[Üü]/g, "U");
-}
-
 function stopTitle(stops, id) {
     if (id == null || !Array.isArray(stops)) return "";
     const found = stops.find((s) => s && String(s.id) === String(id));
@@ -36,42 +39,62 @@ function formatTripWhen(trip) {
     return `${trip.date || ""} ${trip.time || ""}`.trim();
 }
 
+function fillTemplate(template, vars) {
+    return String(template || "")
+        .replace(/\{(\w+)\}/g, (_, key) => (vars[key] != null ? String(vars[key]) : ""))
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function mergeSmsTemplates(stored) {
+    const result = { ...DEFAULT_SMS_TEMPLATES };
+    const src = stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+    for (const key of Object.keys(DEFAULT_SMS_TEMPLATES)) {
+        if (typeof src[key] === "string" && src[key].trim()) {
+            result[key] = src[key];
+        }
+    }
+    return result;
+}
+
+function sanitizeSmsTemplates(incoming, existing) {
+    const prev = existing && typeof existing === "object" && !Array.isArray(existing) ? existing : {};
+    const next = {};
+    for (const key of Object.keys(DEFAULT_SMS_TEMPLATES)) {
+        if (incoming && typeof incoming === "object" && typeof incoming[key] === "string") {
+            next[key] = incoming[key].trim().slice(0, SMS_TEMPLATE_MAX_LEN);
+        } else if (typeof prev[key] === "string") {
+            next[key] = prev[key];
+        }
+    }
+    return next;
+}
+
 function buildMessage(event, firm, trip, group, stops) {
-    const firma = foldTr(firm.displayName || firm.key || "GOTUR");
+    const firma = firm?.displayName || firm?.key || "GOTUR";
     const pnr = group[0]?.pnr || "-";
     const seats = group
         .map((t) => t.seatNo)
         .filter((s) => s !== null && s !== undefined && s !== "" && Number(s) !== 0)
         .join(",");
-    const from = foldTr(stopTitle(stops, group[0]?.fromRouteStopId));
-    const to = foldTr(stopTitle(stops, group[0]?.toRouteStopId));
+    const from = stopTitle(stops, group[0]?.fromRouteStopId);
+    const to = stopTitle(stops, group[0]?.toRouteStopId);
     const when = formatTripWhen(trip);
     const route = from && to ? `${from}-${to}` : "";
     const seatPart = seats ? ` Koltuk:${seats}` : "";
 
-    switch (event) {
-        case "reservation":
-            return `${firma} rezervasyonunuz alindi. PNR:${pnr} ${when} ${route}${seatPart}`.replace(/\s+/g, " ").trim();
-        case "complete":
-            return `${firma} rezervasyonunuz satisa cevrildi. PNR:${pnr} ${when} ${route}${seatPart}`.replace(/\s+/g, " ").trim();
-        case "web_sale":
-            return `${firma} web biletiniz olusturuldu. PNR:${pnr} ${when} ${route}${seatPart}`.replace(/\s+/g, " ").trim();
-        case "web_reservation":
-            return `${firma} web rezervasyonunuz alindi. PNR:${pnr} ${when} ${route}${seatPart}`.replace(/\s+/g, " ").trim();
-        case "open_sale":
-            return `${firma} acik biletiniz olusturuldu. PNR:${pnr} ${route}`.replace(/\s+/g, " ").trim();
-        case "cancel":
-            return `${firma} PNR ${pnr} biletiniz iptal edildi.`;
-        case "refund":
-            return `${firma} PNR ${pnr} biletiniz iade edildi.`;
-        case "transfer":
-            return `${firma} PNR ${pnr} yeni sefer: ${when}${seatPart}`.replace(/\s+/g, " ").trim();
-        case "open":
-            return `${firma} PNR ${pnr} biletiniz aciga alindi.`;
-        case "sale":
-        default:
-            return `${firma} biletiniz olusturuldu. PNR:${pnr} ${when} ${route}${seatPart}`.replace(/\s+/g, " ").trim();
-    }
+    const templates = mergeSmsTemplates(firm?.smsTemplates);
+    const key = DEFAULT_SMS_TEMPLATES[event] ? event : "sale";
+    return fillTemplate(templates[key], {
+        firma,
+        pnr,
+        when,
+        from,
+        to,
+        route,
+        seats,
+        seatPart,
+    });
 }
 
 async function sendSms(firm, phone, message) {
@@ -166,7 +189,12 @@ function notifyTicketSms(req, { event, tickets, trip, stops }) {
 }
 
 module.exports = {
+    DEFAULT_SMS_TEMPLATES,
+    SMS_TEMPLATE_MAX_LEN,
     normalizeTrPhone,
+    fillTemplate,
+    mergeSmsTemplates,
+    sanitizeSmsTemplates,
     sendSms,
     notifyTicketSms,
 };

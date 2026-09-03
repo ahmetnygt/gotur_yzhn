@@ -20,7 +20,7 @@ const generateBusTransactionsReport = require("../utilities/reports/busTransacti
 const countries = require("world-countries");
 const { seferEkle, kullaniciKontrol, seferIptal, seferAktif, seferPlakaDegistir, personelEkle, personelIptal, seferGrupGuncelle, yolcuEkle, seferGrupListesi, seferGrupEkle, yolcuIptalUetdsYolcuRefNoIle, seferDetayCiktisiAl } = require('../utilities/uetdsService');
 const { findSeatSegmentConflict, seatConflictMessage } = require('../utilities/seatSegmentConflict');
-const { notifyTicketSms } = require('../utilities/sendSms');
+const { notifyTicketSms, mergeSmsTemplates, sanitizeSmsTemplates } = require('../utilities/sendSms');
 const {
     LOG_MODULES,
     LOG_ACTIONS,
@@ -9683,6 +9683,7 @@ exports.getFirmSettings = async (req, res) => {
                 "smsUsername",
                 "smsPassword",
                 "smsHeader",
+                "smsTemplates",
             ],
         });
 
@@ -9701,6 +9702,7 @@ exports.getFirmSettings = async (req, res) => {
             smsUsername: firm.smsUsername || "",
             smsHeader: firm.smsHeader || "",
             smsPasswordSet: Boolean(firm.smsPassword),
+            smsTemplates: mergeSmsTemplates(firm.smsTemplates),
             canEditIntegrations: isGoturSystemUser(req),
         });
     } catch (err) {
@@ -9770,6 +9772,17 @@ exports.postSaveFirmSettings = async (req, res) => {
             if (smsUsername) updates.smsUsername = smsUsername;
             if (smsPassword) updates.smsPassword = smsPassword;
             if (smsHeader) updates.smsHeader = smsHeader;
+
+            if (
+                req.body?.smsTemplates &&
+                typeof req.body.smsTemplates === "object" &&
+                !Array.isArray(req.body.smsTemplates)
+            ) {
+                updates.smsTemplates = sanitizeSmsTemplates(
+                    req.body.smsTemplates,
+                    firm.smsTemplates
+                );
+            }
         }
 
         await firm.update(updates);

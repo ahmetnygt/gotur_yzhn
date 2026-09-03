@@ -5685,6 +5685,17 @@ $(".firm-settings-nav").on("click", async e => {
         $("#uetdsUsername").val(response?.uetdsUsername || "");
         $("#smsUsername").val(response?.smsUsername || "");
         $("#smsHeader").val(response?.smsHeader || "");
+        const smsTemplates = response?.smsTemplates || {};
+        $("#smsTplSale").val(smsTemplates.sale || "");
+        $("#smsTplReservation").val(smsTemplates.reservation || "");
+        $("#smsTplComplete").val(smsTemplates.complete || "");
+        $("#smsTplOpenSale").val(smsTemplates.open_sale || "");
+        $("#smsTplWebSale").val(smsTemplates.web_sale || "");
+        $("#smsTplWebReservation").val(smsTemplates.web_reservation || "");
+        $("#smsTplCancel").val(smsTemplates.cancel || "");
+        $("#smsTplRefund").val(smsTemplates.refund || "");
+        $("#smsTplTransfer").val(smsTemplates.transfer || "");
+        $("#smsTplOpen").val(smsTemplates.open || "");
 
         const canEditIntegrations = Boolean(response?.canEditIntegrations);
         $(".firm-integration-field")
@@ -5744,13 +5755,26 @@ $(".save-firm-settings").on("click", async e => {
         data.smsUsername = $("#smsUsername").val();
         data.smsHeader = $("#smsHeader").val();
         data.smsPassword = $("#smsPassword").val();
+        data.smsTemplates = {
+            sale: $("#smsTplSale").val(),
+            reservation: $("#smsTplReservation").val(),
+            complete: $("#smsTplComplete").val(),
+            open_sale: $("#smsTplOpenSale").val(),
+            web_sale: $("#smsTplWebSale").val(),
+            web_reservation: $("#smsTplWebReservation").val(),
+            cancel: $("#smsTplCancel").val(),
+            refund: $("#smsTplRefund").val(),
+            transfer: $("#smsTplTransfer").val(),
+            open: $("#smsTplOpen").val(),
+        };
     }
 
     try {
         await $.ajax({
             url: "/post-save-firm-settings",
             type: "POST",
-            data,
+            contentType: "application/json",
+            data: JSON.stringify(data),
         });
 
         $(".blackout").css("display", "none");
