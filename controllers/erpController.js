@@ -5006,9 +5006,16 @@ exports.getRouteStopsListMoving = async (req, res, next) => {
         }
 
         const trip = await req.models.Trip.findOne({ where: { date, time, id: tripId } })
+        if (!trip) {
+            return res.json({ arr: [], selected: stopId })
+        }
+
         const routeStops = await req.models.RouteStop.findAll({ where: { routeId: trip.routeId }, order: [["order", "ASC"]] })
         const stops = await req.models.Stop.findAll({ where: { id: { [Op.in]: [...new Set(routeStops.map(rs => rs.stopId))] } } })
         const currentRouteStop = routeStops.find(rs => rs.stopId == stopId)
+        if (!currentRouteStop) {
+            return res.json({ arr: [], selected: stopId })
+        }
         const routeStopOrder = currentRouteStop.order
 
         const restrictions = await req.models.RouteStopRestriction.findAll({ where: { tripId, fromRouteStopId: currentRouteStop.id } })
@@ -5037,8 +5044,8 @@ exports.postMoveTickets = async (req, res, next) => {
         const rawOldSeats = JSON.parse(req.body.oldSeats);
         const newSeats = JSON.parse(req.body.newSeats);
         const newTripId = req.body.newTrip;
-        const fromId = req.body.fromId;
-        const toId = req.body.toId;
+        const fromStopId = Number(req.body.fromId);
+        const toStopId = Number(req.body.toId);
 
         if (
             !Array.isArray(rawOldSeats) ||
@@ -5095,7 +5102,22 @@ exports.postMoveTickets = async (req, res, next) => {
             })
             : [];
 
-        if (fromId && toId && newRouteStops.length && newSeatNumbers.length) {
+        if (!Number.isFinite(fromStopId) || !Number.isFinite(toStopId)) {
+            return res.status(400).json({ message: "Geçersiz kalkış veya varış durağı bilgisi." });
+        }
+
+        if (newRouteStops.length) {
+            const fromRouteStop = newRouteStops.find(rs => String(rs.stopId) === String(fromStopId));
+            const toRouteStop = newRouteStops.find(rs => String(rs.stopId) === String(toStopId));
+            if (!fromRouteStop || !toRouteStop) {
+                return res.status(400).json({ message: "Seçilen duraklar hedef sefer güzergahında bulunamadı." });
+            }
+            if (toRouteStop.order <= fromRouteStop.order) {
+                return res.status(400).json({ message: "Varış durağı kalkış durağından sonra olmalıdır." });
+            }
+        }
+
+        if (newRouteStops.length && newSeatNumbers.length) {
             const moveConflict = await req.db.transaction(async (t) => {
                 await req.models.Trip.findByPk(newTrip.id, { transaction: t, lock: t.LOCK.UPDATE });
 
@@ -5104,8 +5126,8 @@ exports.postMoveTickets = async (req, res, next) => {
                     proposals: tickets.map((ticket, index) => ({
                         seatNumber: newSeats[index],
                         seatLabel: String(newSeats[index]),
-                        fromStopId: fromId,
-                        toStopId: toId,
+                        fromStopId,
+                        toStopId,
                     })),
                     routeStops: newRouteStops,
                     excludeTicketIds: tickets.map((ticket) => ticket.id),
@@ -5148,8 +5170,8 @@ exports.postMoveTickets = async (req, res, next) => {
 
             t.tripId = newTrip.id;
             t.seatNo = newSeats[i];
-            t.fromRouteStopId = fromId;
-            t.toRouteStopId = toId;
+            t.fromRouteStopId = fromStopId;
+            t.toRouteStopId = toStopId;
             t.optionDate = newTrip.date;
             t.optionTime = `${newTrip.date} ${newTrip.time}`;
             if (t.status === "open") t.status = "completed";
