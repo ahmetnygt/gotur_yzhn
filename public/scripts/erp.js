@@ -252,6 +252,65 @@ function setSelectedTakenTicketContextFromRow($row) {
     };
 }
 
+function setSelectedTakenTicketContextFromRows($rows, $clickedRow) {
+    if (!$rows || !$rows.length) {
+        clearSelectedTakenTicketContext();
+        return;
+    }
+
+    const seatNumbers = [];
+    const ticketIds = [];
+    const pnrs = [];
+    const pendingTicketIds = [];
+    const seatTypes = [];
+
+    $rows.each(function () {
+        const $r = $(this);
+        const normalized = normalizeSeatNumberList([$r.data("seat-number")]);
+        if (normalized.length) {
+            seatNumbers.push(normalized[0]);
+        }
+
+        const ticketId = $r.data("ticket-id");
+        if (ticketId !== undefined && ticketId !== null && String(ticketId).trim() !== "") {
+            ticketIds.push(String(ticketId).trim());
+        }
+
+        const pnr = $r.data("pnr");
+        if (pnr !== undefined && pnr !== null && String(pnr).trim() !== "") {
+            pnrs.push(String(pnr).trim());
+        }
+
+        const pendingTicketId = $r.data("pending-ticket-id");
+        if (pendingTicketId !== undefined && pendingTicketId !== null && String(pendingTicketId).trim() !== "") {
+            pendingTicketIds.push(String(pendingTicketId).trim());
+        }
+
+        let seatType = $r.data("seat-type");
+        if (seatType === undefined || seatType === null || String(seatType).trim() === "") {
+            const seatNum = normalized[0];
+            seatType = seatNum
+                ? ($(`.seat[data-seat-number='${seatNum}']`).data("seat-type") ?? "")
+                : "";
+        }
+        seatTypes.push(seatType ?? "");
+    });
+
+    const $source = ($clickedRow && $clickedRow.length) ? $clickedRow : $rows.first();
+
+    selectedTakenTicketContext = {
+        seatNumbers,
+        tripId: $source.data("trip-id") ?? currentTripId ?? null,
+        tripDate: $source.data("trip-date") ?? currentTripDate ?? null,
+        tripTime: $source.data("trip-time") ?? currentTripTime ?? null,
+        stopId: $source.data("stop-id") ?? selectedTicketStopId ?? currentStop ?? null,
+        seatTypes,
+        pnrs,
+        pendingTicketIds,
+        ticketIds,
+    };
+}
+
 function ensureSelectedTakenTicketContext() {
     if (selectedTakenTicketContext) {
         const seatNumbers = Array.isArray(selectedTakenTicketContext.seatNumbers)
@@ -1855,7 +1914,8 @@ async function loadTrip(date, time, tripId) {
 
         // Passenger table and row click
         $(".passenger-table").html(passengersResponse);
-        $(".passenger-table tbody tr").off().on("click", function (e) {
+        $(".passenger-table tbody tr").off("click.passengerOps").on("click.passengerOps", function (e) {
+            e.stopPropagation();
             const $row = $(this);
             if (!$row.closest('#activeTickets').length) return;
 
@@ -1867,26 +1927,45 @@ async function loadTrip(date, time, tripId) {
                 currentPassengerRow = null;
                 selectedTakenSeats = [];
                 clearSelectedTakenTicketContext();
-                $(".passenger-table tbody tr").removeClass("selected");
+                $(".passenger-table tbody tr, .seat").removeClass("selected");
                 return;
             }
 
             currentPassengerRow = $row;
-            $(".seat").removeClass("selected");
-            $(".passenger-table tbody tr").removeClass("selected");
+            $(".seat, .passenger-table tbody tr").removeClass("selected");
+            selectedSeats = [];
+            $(".ticket-ops-pop-up").hide();
 
             currentGroupId = $row.data("group-id");
             selectedTicketStopId = $row.data("stop-id");
 
+            const groupId = currentGroupId;
+            const hasGroupId = groupId !== undefined && groupId !== null && String(groupId).trim() !== "";
+            const $groupRows = hasGroupId
+                ? $(".passenger-table #activeTickets tbody tr").filter(function () {
+                    return String($(this).data("group-id")) === String(groupId);
+                })
+                : $row;
+
+            $groupRows.addClass("selected");
+
             const seatNumbers = [];
-            $(`.passenger-table tbody tr[data-group-id='${currentGroupId}']`).each(function () {
+            $groupRows.each(function () {
                 seatNumbers.push($(this).data("seat-number"));
-                $(this).addClass("selected");
             });
             selectedTakenSeats = seatNumbers;
-            updateSelectedTakenTicketContextFromSeatNumbers(seatNumbers);
+            setSelectedTakenTicketContextFromRows($groupRows, $row);
 
             updateTakenTicketOpsVisibility($row);
+
+            if (hasGroupId) {
+                seatNumbers.forEach(num => {
+                    const $seat = $(`.seat[data-seat-number='${num}']`);
+                    if ($seat.length && String($seat.data("group-id")) === String(groupId)) {
+                        $seat.addClass("selected");
+                    }
+                });
+            }
 
             // Position popup at mouse location
             let left = e.pageX + 10;
@@ -2378,7 +2457,7 @@ async function loadTrip(date, time, tripId) {
 
         // Click outside → close popup
         $(document).off("click.ticketPopups").on("click.ticketPopups", (e) => {
-            if ($(e.target).closest(".ticket-ops-pop-up, .taken-ticket-ops-pop-up, .seat").length) return;
+            if ($(e.target).closest(".ticket-ops-pop-up, .taken-ticket-ops-pop-up, .seat, .passenger-table").length) return;
             $(".ticket-ops-pop-up, .taken-ticket-ops-pop-up").hide();
             currentSeat = null;
         });
