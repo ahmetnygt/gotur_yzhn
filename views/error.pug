@@ -1,6 +1,14 @@
-extends layout
+extends erplayout
 
 block content
-  h1= message
-  h2= error.status
-  pre #{error.stack}
+  .login-page.position-relative
+    .login-accent.login-accent-top
+    .login-accent.login-accent-bottom
+    .login-card.shadow-lg.text-center
+      img.login-logo.mb-4(src="/images/gotur_yzhn_logo.png" alt="Götür")
+      p.text-muted.mb-1= status || 500
+      h1.h4.fw-semibold.mb-3= isNotFound ? "Sayfa bulunamadı" : "Bir hata oluştu"
+      p.text-muted.mb-4= message
+      a.btn.btn-primary.login-submit(href="/") Ana sayfaya dön
+      if error && error.stack
+        pre.error-stack.text-start.mt-4.small #{error.stack}

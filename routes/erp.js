@@ -28,6 +28,11 @@ router.post('/login', (req, res, next) => {
     return next();
 }, erpController.postErpLogin);
 
+// Çıkış, oturum düşmüş olsa bile tamamlanabilmeli. GET de kabul edilir:
+// tarayıcı bazen /logout'a GET ile düşüyor; rota yokken 404'te kalınıyordu.
+router.get('/logout', erpController.postErpLogout);
+router.post('/logout', erpController.postErpLogout);
+
 // Bundan sonraki TÜM rotalar için oturum açmış olmak zorunludur.
 // Önceden her rota kendi başına "auth" middleware'ini opt-in olarak
 // ekliyordu; bu da çoğu ERP verisinin (sefer, bilet, müşteri, kullanıcı vb.)
@@ -36,8 +41,6 @@ router.use(auth);
 
 router.get('/', erpController.getErp);
 router.get('/m', erpController.getMobileErp);
-
-router.post('/logout', erpController.postErpLogout);
 router.post('/post-update-profile', erpController.postUpdateProfile);
 router.post('/post-change-password', erpController.postChangePassword);
 

@@ -33,7 +33,11 @@ module.exports = (req, res, next) => {
             });
         }
 
-        req.session.redirectTo = req.originalUrl;
+        // /logout gibi çıkış adresini dönüş yolu olarak saklama; girişten
+        // sonra tekrar /logout'a düşüp 404'te kalınmasına yol açıyordu.
+        if (req.method === "GET" && req.path !== "/logout") {
+            req.session.redirectTo = req.originalUrl;
+        }
         req.session.errorMessage = "You must log in to access this page.";
         return req.session.save(err => {
             if (err) return next(err);

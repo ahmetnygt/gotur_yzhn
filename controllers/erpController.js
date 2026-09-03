@@ -3138,7 +3138,7 @@ exports.postErpLogin = async (req, res, next) => {
             });
         };
 
-        const u = await req.models.FirmUser.findOne({ where: { username } });
+        const u = await req.models.FirmUser.findOne({ where: { username, isDeleted: false } });
         if (!u) {
             await logFailedLogin("kullanıcı bulunamadı");
             return res.redirect("/login?error=1");
@@ -3147,8 +3147,8 @@ exports.postErpLogin = async (req, res, next) => {
         // isActive=false olan (pasife alınmış) kullanıcıların şifresi doğru
         // bile olsa giriş yapamamasını sağlar; daha önce bu kontrol hiç
         // yapılmıyordu, yani devre dışı bırakılan kullanıcılar giriş yapabiliyordu.
-        // isDeleted=true (silinmiş) kullanıcılar da aynı şekilde reddedilir;
-        // postDeleteUser kaydı sadece isDeleted=true yapar, satırı silmez.
+        // isDeleted=true satırlar findOne filtresinde zaten elenir; eski
+        // mükerrer kayıtlara karşı isDeleted kontrolü yine durur.
         if (u.isActive === false || u.isDeleted === true) {
             await logFailedLogin(u.isDeleted ? "kullanıcı silinmiş" : "kullanıcı pasif", u);
             return res.redirect("/login?error=1");
@@ -3205,50 +3205,64 @@ exports.postErpLogin = async (req, res, next) => {
     }
 };
 
-exports.postErpLogout = async (req, res, next) => {
-    if (!req.session) {
-        return res.redirect("/login");
-    }
-
-    // Oturum temizlenmeden önce yazılıyor; sonrasında aktör bilgisi kalmaz.
-    const loggedOutUser = req.session.firmUser || null;
-    if (loggedOutUser) {
-        await req.logSystem({
-            module: LOG_MODULES.AUTH,
-            action: LOG_ACTIONS.LOGOUT,
-            referenceId: loggedOutUser.id,
-            newData: { username: loggedOutUser.username ?? null },
-            description: `Çıkış yapıldı | kullanıcı: ${loggedOutUser.username || "-"}`,
-        });
-    }
-
-    const tenantKey = req.tenantKey;
-    if (tenantKey && req.session.tenants && req.session.tenants[tenantKey]) {
-        delete req.session.tenants[tenantKey];
-    }
-
-    const remainingTenants = req.session.tenants && Object.keys(req.session.tenants).length > 0;
-
-    if (!remainingTenants) {
-        return req.session.destroy((err) => {
-            if (err) {
-                console.error("Error during logout:", err);
-                return next(err);
-            }
-
-            res.clearCookie("connect.sid");
+exports.postErpLogout = async (req, res) => {
+    const redirectLogin = () => {
+        if (!res.headersSent) {
             res.redirect("/login");
-        });
-    }
+        }
+    };
 
-    req.session.save((err) => {
-        if (err) {
-            console.error("Error during logout:", err);
-            return next(err);
+    try {
+        if (!req.session) {
+            return redirectLogin();
         }
 
-        res.redirect("/login");
-    });
+        // Oturum temizlenmeden önce yazılıyor; sonrasında aktör bilgisi kalmaz.
+        // Log hatası çıkışı engellemesin; aksi halde tarayıcı /logout'ta kalır.
+        try {
+            const loggedOutUser = req.session.firmUser || null;
+            if (loggedOutUser && typeof req.logSystem === "function") {
+                await req.logSystem({
+                    module: LOG_MODULES.AUTH,
+                    action: LOG_ACTIONS.LOGOUT,
+                    referenceId: loggedOutUser.id,
+                    newData: { username: loggedOutUser.username ?? null },
+                    description: `Çıkış yapıldı | kullanıcı: ${loggedOutUser.username || "-"}`,
+                });
+            }
+        } catch (logErr) {
+            console.error("Error logging logout:", logErr);
+        }
+
+        const tenantKey = req.tenantKey;
+        if (tenantKey && req.session.tenants && req.session.tenants[tenantKey]) {
+            delete req.session.tenants[tenantKey];
+        }
+
+        const remainingTenants = req.session.tenants && Object.keys(req.session.tenants).length > 0;
+
+        if (!remainingTenants) {
+            return req.session.destroy((err) => {
+                if (err) {
+                    console.error("Error during logout:", err);
+                }
+
+                res.clearCookie("connect.sid");
+                redirectLogin();
+            });
+        }
+
+        return req.session.save((err) => {
+            if (err) {
+                console.error("Error during logout:", err);
+            }
+
+            redirectLogin();
+        });
+    } catch (err) {
+        console.error("Error during logout:", err);
+        return redirectLogin();
+    }
 };
 
 exports.getPermissions = (req, res) => res.json(req.session.permissions || []);
@@ -6909,8 +6923,22 @@ exports.postDeleteBranch = async (req, res, next) => {
 };
 
 exports.getUsersList = async (req, res, next) => {
-    const users = await req.models.FirmUser.findAll({ where: { isDeleted: false, id: { [Op.notIn]: [1, 2, 3] } } })
-    const branches = await req.models.Branch.findAll({ where: { isDeleted: false, id: { [Op.notIn]: [1, 2] } } })
+    const includeDeleted = isGoturSystemUser(req) && !req.query.onlyData;
+    const where = { id: { [Op.notIn]: [1, 2, 3] } };
+    // Silinmiş kullanıcılar yalnızca Götür sistem kullanıcısının HTML listesinde
+    // görünür; onlyData (ödeme/rapor dropdown) silinmişleri karıştırmaz.
+    if (!includeDeleted) {
+        where.isDeleted = false;
+    }
+    const users = await req.models.FirmUser.findAll({
+        where,
+        order: [["isDeleted", "ASC"], ["name", "ASC"]],
+    });
+    const branchWhere = { id: { [Op.notIn]: [1, 2] } };
+    if (!includeDeleted) {
+        branchWhere.isDeleted = false;
+    }
+    const branches = await req.models.Branch.findAll({ where: branchWhere });
 
     for (let i = 0; i < users.length; i++) {
         const u = users[i];
@@ -7363,6 +7391,20 @@ exports.postSaveUser = async (req, res, next) => {
         const data = convertEmptyFieldsToNull(req.body);
         const { id, isActive, name, username, password, phone, branchId } = data;
         const permissions = JSON.parse(data.permissions)
+        const trimmedUsername = typeof username === "string" ? username.trim() : "";
+
+        if (!trimmedUsername) {
+            return res.status(400).json({ message: "Kullanıcı adı zorunludur." });
+        }
+
+        const duplicateWhere = { username: trimmedUsername };
+        if (id) {
+            duplicateWhere.id = { [Op.ne]: id };
+        }
+        const usernameTaken = await req.models.FirmUser.findOne({ where: duplicateWhere });
+        if (usernameTaken) {
+            return res.status(400).json({ message: "Bu kullanıcı adı zaten alınmış." });
+        }
 
         let hashedPassword;
 

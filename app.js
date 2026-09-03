@@ -146,9 +146,19 @@ app.use(function (req, res, next) {
 
 // error handler
 app.use(function (err, req, res, next) {
-  res.locals.message = err.message;
+  const status = err.status || 500;
+  const isNotFound = status === 404;
+
+  res.locals.message = isNotFound
+    ? "Aradığınız sayfa yok veya taşınmış olabilir."
+    : (err.message || "Beklenmeyen bir hata oluştu.");
   res.locals.error = req.app.get("env") === "development" ? err : {};
-  res.status(err.status || 500);
+  res.locals.status = status;
+  res.locals.isNotFound = isNotFound;
+  res.locals.isNoNavbar = true;
+  res.locals.title = isNotFound ? "Sayfa bulunamadı" : "Hata";
+  res.locals.permissions = res.locals.permissions || [];
+  res.status(status);
   res.render("error");
 });
 
