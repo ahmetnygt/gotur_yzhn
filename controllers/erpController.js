@@ -2046,6 +2046,9 @@ exports.getTripPassengersExcel = async (req, res, next) => {
                 nationality: nationalityLabelMap.get(nationalityCode) || (ticket.nationality ? String(ticket.nationality).toUpperCase() : ""),
                 from: stopTitleMap.get(toKey(ticket.fromRouteStopId)) || "",
                 to: stopTitleMap.get(toKey(ticket.toRouteStopId)) || "",
+                price: (ticket.price === null || ticket.price === undefined || ticket.price === "")
+                    ? ""
+                    : Number(ticket.price),
                 takeOn: (ticket.takeOnText || "").trim(),
                 takeOff: (ticket.takeOffText || "").trim(),
                 phoneNumber: ticket.phoneNumber || "",

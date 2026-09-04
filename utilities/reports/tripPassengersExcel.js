@@ -5,6 +5,7 @@ const BASE_COLUMNS = [
     { key: "nationality", header: "Uyruk", width: 18, type: "string" },
     { key: "from", header: "Nereden", width: 18, type: "string" },
     { key: "to", header: "Nereye", width: 18, type: "string" },
+    { key: "price", header: "Fiyat", width: 12, type: "number" },
     { key: "phoneNumber", header: "Telefon", width: 16, type: "string" },
     { key: "idNumber", header: "Kimlik No", width: 16, type: "string" },
     { key: "pnr", header: "PNR", width: 14, type: "string" },
@@ -162,6 +163,9 @@ function sanitizeSheetName(name) {
 
 function cellXml(ref, value, type, styleId) {
     if (type === "number") {
+        if (value === null || value === undefined || value === "") {
+            return `<c r="${ref}" s="${styleId}" t="inlineStr"><is><t></t></is></c>`;
+        }
         const amount = Number(value);
         if (!Number.isFinite(amount)) {
             return `<c r="${ref}" s="${styleId}" t="inlineStr"><is><t></t></is></c>`;
