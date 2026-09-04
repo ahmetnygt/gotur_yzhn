@@ -1,6 +1,10 @@
-const { getTenantConnection } = require("../utilities/database");
+const { getTenantConnection, TenantNotFoundError } = require("../utilities/database");
 const { initGoturModels } = require("../utilities/goturDb");
 const { resolveTenantKey } = require("../utilities/tenantConfig");
+
+const PUBLIC_SITE_URL = "https://goturyzhn.com";
+const UNKNOWN_TENANT_MESSAGE =
+    "Bu adreste kayıtlı bir Götür firması yok. Panel adresiniz firmaniz.goturyzhn.com formatındadır.";
 
 let cachedCommonModels;
 function getCommonModels() {
@@ -8,15 +12,54 @@ function getCommonModels() {
     return cachedCommonModels;
 }
 
+function isApiRequest(req) {
+    return (
+        req.originalUrl.startsWith("/api/") ||
+        req.path.startsWith("/api/")
+    );
+}
+
+function respondUnknownTenant(req, res, err) {
+    console.warn("Bilinmeyen tenant:", err?.message || err, req.ip);
+
+    if (isApiRequest(req)) {
+        return res.status(404).json({ error: "Unknown tenant." });
+    }
+
+    return res.status(404).render("error", {
+        status: 404,
+        isNotFound: true,
+        isUnknownTenant: true,
+        isNoNavbar: true,
+        title: "Firma bulunamadı",
+        message: UNKNOWN_TENANT_MESSAGE,
+        homeUrl: PUBLIC_SITE_URL,
+        permissions: [],
+        error: {},
+    });
+}
+
+function respondTenantFailure(req, res) {
+    if (isApiRequest(req)) {
+        return res.status(500).json({ error: "Tenant resolution error" });
+    }
+
+    return res.status(500).render("error", {
+        status: 500,
+        isNotFound: false,
+        isNoNavbar: true,
+        title: "Hata",
+        message: "Beklenmeyen bir hata oluştu.",
+        permissions: [],
+        error: {},
+    });
+}
+
 module.exports = async (req, res, next) => {
     try {
         let tenantKey;
 
-        const isApiRequest =
-            req.originalUrl.startsWith("/api/") ||
-            req.path.startsWith("/api/");
-
-        if (isApiRequest) {
+        if (isApiRequest(req)) {
             // API İsteklerinde tenantKey artık doğrudan apiKeyAuth'dan (güvenli kaynaktan) gelecek.
             // Header'a güvenmek yerine, DB'den onaylanmış token'ın yetkili olduğu tenantı kullanıyoruz.
             if (!req.apiClient || !req.apiClient.tenantKey) {
@@ -30,8 +73,11 @@ module.exports = async (req, res, next) => {
             tenantKey = resolveTenantKey(req.hostname);
 
             if (!tenantKey) {
-                console.error("❌ Tenant/subdomain could not be resolved.");
-                return res.status(400).send("Tenant could not be determined.");
+                return respondUnknownTenant(
+                    req,
+                    res,
+                    new TenantNotFoundError("Geçersiz veya tanımsız tenant anahtarı.")
+                );
             }
         }
 
@@ -46,7 +92,11 @@ module.exports = async (req, res, next) => {
         return next();
 
     } catch (err) {
-        console.error("❌ Tenant Middleware Crash:", err);
-        return res.status(500).json({ error: "Tenant resolution error", detail: err.message });
+        if (err instanceof TenantNotFoundError) {
+            return respondUnknownTenant(req, res, err);
+        }
+
+        console.error("Tenant middleware:", err);
+        return respondTenantFailure(req, res);
     }
 };

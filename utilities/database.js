@@ -4,6 +4,14 @@ const bcrypt = require("bcrypt");
 const crypto = require("crypto");
 const { isValidTenantKey } = require("./tenantConfig");
 
+class TenantNotFoundError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = "TenantNotFoundError";
+    this.code = "TENANT_NOT_FOUND";
+  }
+}
+
 // Bellek ve Bağlantı Yönetimi Objeleri
 const connections = {};
 const connectionPromises = {}; // Race Condition (Çoklu İstek) Engelleyici
@@ -37,11 +45,11 @@ async function resolveFirmForTenant(tenantKey) {
   const firm = await Firm.findOne({ where: { key: tenantKey } });
 
   if (!firm) {
-    throw new Error(`Tanımsız tenant: '${tenantKey}'`);
+    throw new TenantNotFoundError(`Tanımsız tenant: '${tenantKey}'`);
   }
 
   if (firm.status !== "active") {
-    throw new Error(`Tenant aktif değil: '${tenantKey}'`);
+    throw new TenantNotFoundError(`Tenant aktif değil: '${tenantKey}'`);
   }
 
   if (!isValidTenantKey(firm.dbName)) {
@@ -101,7 +109,7 @@ async function getTenantConnection(subdomain) {
   const tenantKey = typeof subdomain === "string" ? subdomain.trim().toLowerCase() : "";
 
   if (!tenantKey || !isValidTenantKey(tenantKey)) {
-    throw new Error("Geçersiz veya tanımsız tenant anahtarı.");
+    throw new TenantNotFoundError("Geçersiz veya tanımsız tenant anahtarı.");
   }
 
   // 1. ADIM: Bağlantı zaten kurulu ve aktifse, son kullanım zamanını GÜNCELLE ve döndür
@@ -352,4 +360,4 @@ function getActiveTenantKeys() {
   return Object.keys(connections);
 }
 
-module.exports = { getTenantConnection, getActiveTenantKeys };
+module.exports = { getTenantConnection, getActiveTenantKeys, TenantNotFoundError };

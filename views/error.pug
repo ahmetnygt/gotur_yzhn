@@ -7,8 +7,11 @@ block content
     .login-card.shadow-lg.text-center
       img.login-logo.mb-4(src="/images/gotur_yzhn_logo.png" alt="Götür")
       p.text-muted.mb-1= status || 500
-      h1.h4.fw-semibold.mb-3= isNotFound ? "Sayfa bulunamadı" : "Bir hata oluştu"
+      h1.h4.fw-semibold.mb-3= isUnknownTenant ? "Firma bulunamadı" : (isNotFound ? "Sayfa bulunamadı" : "Bir hata oluştu")
       p.text-muted.mb-4= message
-      a.btn.btn-primary.login-submit(href="/") Ana sayfaya dön
+      if isUnknownTenant
+        a.btn.btn-primary.login-submit(href=homeUrl) goturyzhn.com'a git
+      else
+        a.btn.btn-primary.login-submit(href="/") Ana sayfaya dön
       if error && error.stack
         pre.error-stack.text-start.mt-4.small #{error.stack}
