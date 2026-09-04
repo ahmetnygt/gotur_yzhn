@@ -34,9 +34,40 @@ function stopTitle(stops, id) {
     return found?.title || "";
 }
 
+function pad2(n) {
+    return String(n).padStart(2, "0");
+}
+
+function formatSmsDate(raw) {
+    if (raw == null || raw === "") return "";
+    if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+        return `${pad2(raw.getDate())}.${pad2(raw.getMonth() + 1)}.${raw.getFullYear()}`;
+    }
+    const s = String(raw).trim();
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[3]}.${iso[2]}.${iso[1]}`;
+    const dmy = s.match(/^(\d{2})[./-](\d{2})[./-](\d{4})/);
+    if (dmy) return `${dmy[1]}.${dmy[2]}.${dmy[3]}`;
+    return s;
+}
+
+function formatSmsTime(raw) {
+    if (raw == null || raw === "") return "";
+    if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+        return `${pad2(raw.getUTCHours())}:${pad2(raw.getUTCMinutes())}`;
+    }
+    const s = String(raw).split(".")[0].trim();
+    const timePart = s.includes("T")
+        ? s.split("T")[1]
+        : (s.includes(" ") ? s.split(" ").pop() : s);
+    const [h, m] = timePart.split(":");
+    if (h == null || m == null || h === "") return "";
+    return `${pad2(Number(h))}:${pad2(Number(m))}`;
+}
+
 function formatTripWhen(trip) {
     if (!trip) return "";
-    return `${trip.date || ""} ${trip.time || ""}`.trim();
+    return `${formatSmsDate(trip.date)} ${formatSmsTime(trip.time)}`.trim();
 }
 
 function fillTemplate(template, vars) {
@@ -192,6 +223,7 @@ module.exports = {
     DEFAULT_SMS_TEMPLATES,
     SMS_TEMPLATE_MAX_LEN,
     normalizeTrPhone,
+    formatTripWhen,
     fillTemplate,
     mergeSmsTemplates,
     sanitizeSmsTemplates,
