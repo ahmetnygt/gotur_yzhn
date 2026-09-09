@@ -31,6 +31,30 @@
         return match ? decodeURIComponent(match[1]) : null;
     }
 
+    function getCsrfToken() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        const fromMeta = meta && meta.getAttribute("content");
+        if (fromMeta) return fromMeta;
+        return getCookieValue("XSRF-TOKEN");
+    }
+
+    const CSRF_RELOAD_CODES = { SESSION_EXPIRED: true, CSRF_FAILED: true };
+    const CSRF_RELOAD_GUARD_KEY = "gtrCsrfReloadAt";
+    const CSRF_RELOAD_GUARD_MS = 8000;
+
+    function reloadForCsrfOrSession(code) {
+        if (!code || !CSRF_RELOAD_CODES[code]) return false;
+        try {
+            const last = Number(sessionStorage.getItem(CSRF_RELOAD_GUARD_KEY) || 0);
+            if (Date.now() - last < CSRF_RELOAD_GUARD_MS) {
+                return false;
+            }
+            sessionStorage.setItem(CSRF_RELOAD_GUARD_KEY, String(Date.now()));
+        } catch (_) { /* sessionStorage kapalı olabilir */ }
+        window.location.reload();
+        return true;
+    }
+
     function setUiCookie(value) {
         document.cookie = `${UI_COOKIE}=${value}; path=/; max-age=31536000; samesite=lax`;
     }
@@ -38,14 +62,13 @@
     $.ajaxSetup({
         beforeSend: function (xhr) {
             xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
-            const token = getCookieValue("XSRF-TOKEN");
+            const token = getCsrfToken();
             if (token) xhr.setRequestHeader("X-CSRF-Token", token);
         },
         statusCode: {
             401: function (xhr) {
                 const code = xhr && xhr.responseJSON && xhr.responseJSON.code;
-                if (code === "SESSION_EXPIRED" || code === "CSRF_FAILED") {
-                    window.location.reload();
+                if (reloadForCsrfOrSession(code)) {
                     return;
                 }
                 let redirectUrl = "/login";
@@ -58,9 +81,7 @@
             },
             403: function (xhr) {
                 const code = xhr && xhr.responseJSON && xhr.responseJSON.code;
-                if (code === "CSRF_FAILED" || code === "SESSION_EXPIRED") {
-                    window.location.reload();
-                }
+                reloadForCsrfOrSession(code);
             }
         }
     });
@@ -78,12 +99,18 @@
     }
 
     function toast(message, type) {
+        if (!message) return;
         const el = $("<div>").addClass("m-toast").addClass(type || "").text(message || "");
         $(".m-toast-host").append(el);
         setTimeout(() => el.remove(), 3500);
     }
 
     function ajaxError(xhr, fallback) {
+        const code = xhr && xhr.responseJSON && xhr.responseJSON.code;
+        if (code === "CSRF_FAILED" || code === "SESSION_EXPIRED") {
+            reloadForCsrfOrSession(code);
+            return "";
+        }
         return (xhr && xhr.responseJSON && (xhr.responseJSON.message || xhr.responseJSON.error))
             || (xhr && xhr.responseText)
             || fallback

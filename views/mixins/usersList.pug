@@ -4,7 +4,7 @@ each u in users
     .btn-group.w-100
         button.user-button.d-flex.btn.col-11(type="button" class=btnClass data-id=u.id data-username=u.username data-name=u.name data-deleted=isDeleted)
             .col-4
-                p.text-center.m-0 #{u.name}#{isDeleted ? ' (Silinmiş)' : ''}
+                p.text-center.m-0 #{u.name}#{isDeleted ? ` (Silinmiş) · ${u.username}` : ''}
             .col-4
                 p.text-center.m-0 #{u.branchStr}
             .col-4

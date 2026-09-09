@@ -41,16 +41,20 @@ function escapeHtml(value) {
 }
 // --- end HTML escape helper ---
 
-// --- CSRF token auto-attach (double submit cookie) ---
-// Sunucu her istekte "XSRF-TOKEN" adında (httpOnly=false) bir cookie
-// yazıyor (bkz. middlewares/csrf.js). Bu değeri okuyup her AJAX isteğine
-// header olarak ekleyerek, tüm mevcut $.ajax/$.post çağrılarını tek
-// merkezden CSRF korumasına dahil ediyoruz; her çağrıyı ayrı ayrı
-// değiştirmeye gerek kalmıyor.
+// --- CSRF token auto-attach ---
+// Önce sayfadaki meta (Safari/PWA document.cookie'yi vermeyebilir), yoksa
+// XSRF-TOKEN cookie. Cookie tek başına CSRF kanıtı olarak kullanılmaz.
 function getCookieValue(name) {
     const escaped = name.replace(/([.$?*|{}()[\]\\/+^])/g, "\\$1");
     const match = document.cookie.match(new RegExp("(?:^|; )" + escaped + "=([^;]*)"));
     return match ? decodeURIComponent(match[1]) : null;
+}
+
+function getCsrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    const fromMeta = meta && meta.getAttribute("content");
+    if (fromMeta) return fromMeta;
+    return getCookieValue("XSRF-TOKEN");
 }
 
 function redirectToLogin(url) {
@@ -67,7 +71,7 @@ function looksLikeLoginHtml(html) {
 
 function attachErpRequestHeaders(headers) {
     headers.set("X-Requested-With", "XMLHttpRequest");
-    const token = getCookieValue("XSRF-TOKEN");
+    const token = getCsrfToken();
     if (token) {
         headers.set("X-CSRF-Token", token);
     }
@@ -77,7 +81,7 @@ function attachErpRequestHeaders(headers) {
 $.ajaxSetup({
     beforeSend: function (xhr) {
         xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest");
-        const token = getCookieValue("XSRF-TOKEN");
+        const token = getCsrfToken();
         if (token) {
             xhr.setRequestHeader("X-CSRF-Token", token);
         }
@@ -8515,12 +8519,11 @@ $(".user-settings-nav").on("click", async e => {
 
             $(".user-button").on("click", async e => {
                 const id = e.currentTarget.dataset.id
-                const username = e.currentTarget.dataset.username
                 editingUserId = id
                 await $.ajax({
                     url: "/get-user",
                     type: "GET",
-                    data: { id: id, username: username },
+                    data: { id: id },
                     success: function (response) {
                         $("#isUserActive").prop("checked", response.isActive)
                         $(".users").css("width", "90vw")

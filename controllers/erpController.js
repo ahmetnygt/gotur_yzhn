@@ -31,6 +31,7 @@ const {
     ticketSnapshot,
     diffSnapshots,
 } = require('../utilities/systemLog');
+const { clearAuthCookies } = require("../middlewares/csrf");
 
 const TURKISH_COLLATOR = (() => {
     try {
@@ -3094,6 +3095,30 @@ exports.getErpLogin = async (req, res, next) => {
     res.set("Cache-Control", "no-store, private");
 
     if (req.session?.isAuthenticated) {
+        // Eşzamanlı AJAX rolling save çıkıştan sonra oturumu geri yazabilir.
+        // loggedout=1 ile kalan oturumu silip temiz /login'e geç; CSRF token
+        // bir sonraki GET'te ensureCsrfToken ile yeniden üretilir.
+        if (req.query.loggedout === "1") {
+            const redirectCleanLogin = () => {
+                if (!res.headersSent) {
+                    res.redirect("/login");
+                }
+            };
+
+            if (typeof req.session.destroy !== "function") {
+                clearAuthCookies(req, res);
+                return redirectCleanLogin();
+            }
+
+            return req.session.destroy((err) => {
+                if (err) {
+                    console.error("Error destroying leftover session after logout:", err);
+                }
+                clearAuthCookies(req, res);
+                redirectCleanLogin();
+            });
+        }
+
         return res.redirect(homePathForUi(preferredUiFromRequest(req)));
     }
 
@@ -3211,12 +3236,13 @@ exports.postErpLogin = async (req, res, next) => {
 exports.postErpLogout = async (req, res) => {
     const redirectLogin = () => {
         if (!res.headersSent) {
-            res.redirect("/login");
+            res.redirect("/login?loggedout=1");
         }
     };
 
     try {
         if (!req.session) {
+            clearAuthCookies(req, res);
             return redirectLogin();
         }
 
@@ -3250,7 +3276,7 @@ exports.postErpLogout = async (req, res) => {
                     console.error("Error during logout:", err);
                 }
 
-                res.clearCookie("connect.sid");
+                clearAuthCookies(req, res);
                 redirectLogin();
             });
         }
@@ -3264,6 +3290,7 @@ exports.postErpLogout = async (req, res) => {
         });
     } catch (err) {
         console.error("Error during logout:", err);
+        clearAuthCookies(req, res);
         return redirectLogin();
     }
 };
@@ -7378,13 +7405,10 @@ exports.postCustomerBlacklist = async (req, res, next) => {
 
 exports.getUser = async (req, res, next) => {
     const id = req.query.id;
-    const username = req.query.username;
 
     let user = null;
     if (id) {
         user = await req.models.FirmUser.findByPk(id);
-    } else if (username) {
-        user = await req.models.FirmUser.findOne({ where: { username } });
     }
 
     const permissions = await req.models.Permission.findAll({ attributes: ['id', 'description', 'module'] });
@@ -7444,33 +7468,42 @@ exports.postSaveUser = async (req, res, next) => {
             return res.status(400).json({ message: "Bu kullanıcı adı zaten alınmış." });
         }
 
-        let hashedPassword;
+        let user = null;
+        if (id) {
+            user = await req.models.FirmUser.findByPk(id);
+            if (!user) {
+                return res.status(404).json({ message: "Kullanıcı bulunamadı." });
+            }
+        }
 
+        let hashedPassword;
         if (password) {
             if (String(password).trim().length < 6) {
                 return res.status(400).json({ message: "Şifre en az 6 karakter olmalıdır." });
             }
             hashedPassword = await bcrypt.hash(password, 12);
-        } else if (id) {
-            const existingUser = await req.models.FirmUser.findByPk(id);
-            hashedPassword = existingUser ? existingUser.password : null;
+        } else if (user) {
+            hashedPassword = user.password;
         } else {
             return res.status(400).json({ message: "Yeni kullanıcılar için şifre zorunludur." });
         }
 
-        const [user, created] = await req.models.FirmUser.upsert(
-            {
-                id,
-                firmId: req.session.firmUser.firmId,
-                isActive,
-                branchId,
-                username: trimmedUsername,
-                phoneNumber: phone,
-                name,
-                password: hashedPassword
-            },
-            { returning: true }
-        );
+        const payload = {
+            isActive,
+            branchId,
+            username: trimmedUsername,
+            phoneNumber: phone,
+            name,
+            password: hashedPassword
+        };
+
+        let created = false;
+        if (user) {
+            await user.update(payload);
+        } else {
+            user = await req.models.FirmUser.create(payload);
+            created = true;
+        }
 
         const permIds = permissions ? (Array.isArray(permissions) ? permissions : [permissions]).map(Number) : [];
 
@@ -9518,9 +9551,10 @@ exports.postAnnouncementSeen = async (req, res, next) => {
 };
 
 function destroySessionAndRespond(req, res) {
-    const successPayload = { success: true, redirect: "/login" };
+    const successPayload = { success: true, redirect: "/login?loggedout=1" };
 
     if (!req.session) {
+        clearAuthCookies(req, res);
         res.json(successPayload);
         return;
     }
@@ -9531,7 +9565,7 @@ function destroySessionAndRespond(req, res) {
             res.status(500).json({ message: "Oturum sonlandırılırken bir hata oluştu." });
             return;
         }
-        res.clearCookie("connect.sid");
+        clearAuthCookies(req, res);
         res.json(successPayload);
     });
 }

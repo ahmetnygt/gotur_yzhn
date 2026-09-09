@@ -42,3 +42,33 @@ $(function () {
         });
     }
 });
+
+function getLoginCsrfToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    const fromMeta = meta && meta.getAttribute("content");
+    if (fromMeta) return fromMeta;
+    const hidden = document.querySelector(".login-form input[name='_csrf']");
+    return hidden && hidden.value ? hidden.value : "";
+}
+
+// iOS AutoFill gizli _csrf alanını düşürebilir; submit capture ile token'ı geri yazar.
+document.addEventListener("submit", function (event) {
+    const form = event.target;
+    if (!(form instanceof HTMLFormElement)) return;
+
+    const action = (form.getAttribute("action") || "").split("?")[0];
+    const isLoginForm = form.classList.contains("login-form") || action === "/login";
+    if (!isLoginForm || String(form.method || "get").toLowerCase() !== "post") return;
+
+    const token = getLoginCsrfToken();
+    if (!token) return;
+
+    let input = form.querySelector('input[name="_csrf"]');
+    if (!input) {
+        input = document.createElement("input");
+        input.type = "hidden";
+        input.name = "_csrf";
+        form.appendChild(input);
+    }
+    input.value = token;
+}, true);

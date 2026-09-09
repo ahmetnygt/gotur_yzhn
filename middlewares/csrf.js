@@ -63,8 +63,37 @@ function ensureCsrfToken(req, res, next) {
     next();
 }
 
+function sessionCookieClearOptions(req) {
+    return {
+        path: "/",
+        httpOnly: true,
+        sameSite: "lax",
+        secure: Boolean(req.secure),
+    };
+}
+
+function csrfCookieClearOptions(req) {
+    return {
+        path: "/",
+        httpOnly: false,
+        sameSite: "lax",
+        secure: Boolean(req.secure),
+    };
+}
+
+function clearAuthCookies(req, res) {
+    res.clearCookie("connect.sid", sessionCookieClearOptions(req));
+    res.clearCookie(CSRF_COOKIE_NAME, csrfCookieClearOptions(req));
+}
+
 function verifyCsrfToken(req, res, next) {
     if (!MUTATING_METHODS.has(req.method)) {
+        return next();
+    }
+
+    // Çıkış CSRF yüzünden yarıda kalırsa oturum durur, login "zaten girişli"
+    // deyip panele atar. GET /logout zaten bu kontrolden muaf; POST da öyle.
+    if (req.path === "/logout") {
         return next();
     }
 
@@ -95,4 +124,4 @@ function verifyCsrfToken(req, res, next) {
     next();
 }
 
-module.exports = { ensureCsrfToken, verifyCsrfToken, CSRF_COOKIE_NAME };
+module.exports = { ensureCsrfToken, verifyCsrfToken, CSRF_COOKIE_NAME, clearAuthCookies };
