@@ -5684,7 +5684,7 @@ $(".firm-settings-nav").on("click", async e => {
         );
         $("#isReservationAutoCancelActive").prop(
             "checked",
-            response?.isReservationAutoCancelActive !== false
+            !!response?.isReservationAutoCancelActive
         );
         $("#isUetdsActive").prop("checked", Boolean(response?.isUetdsActive));
         $("#isSmsActive").prop("checked", Boolean(response?.isSmsActive));

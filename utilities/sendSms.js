@@ -1,4 +1,5 @@
 const axios = require("axios");
+const { boardingDateTime, loadRouteStopSchedule } = require("./routeStopTimes");
 
 const NETGSM_SEND_URL = "https://api.netgsm.com.tr/sms/rest/v2/send";
 const SMS_TEMPLATE_MAX_LEN = 500;
@@ -34,9 +35,48 @@ function stopTitle(stops, id) {
     return found?.title || "";
 }
 
+function pad2(n) {
+    return String(n).padStart(2, "0");
+}
+
+function formatSmsDate(raw) {
+    if (raw == null || raw === "") return "";
+    if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+        return `${pad2(raw.getDate())}.${pad2(raw.getMonth() + 1)}.${raw.getFullYear()}`;
+    }
+    const s = String(raw).trim();
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) return `${iso[3]}.${iso[2]}.${iso[1]}`;
+    const dmy = s.match(/^(\d{2})[./-](\d{2})[./-](\d{4})/);
+    if (dmy) return `${dmy[1]}.${dmy[2]}.${dmy[3]}`;
+    return s;
+}
+
+function formatSmsTime(raw) {
+    if (raw == null || raw === "") return "";
+    if (raw instanceof Date && !Number.isNaN(raw.getTime())) {
+        return `${pad2(raw.getUTCHours())}:${pad2(raw.getUTCMinutes())}`;
+    }
+    const s = String(raw).split(".")[0].trim();
+    const timePart = s.includes("T")
+        ? s.split("T")[1]
+        : (s.includes(" ") ? s.split(" ").pop() : s);
+    const [h, m] = timePart.split(":");
+    if (h == null || m == null || h === "") return "";
+    return `${pad2(Number(h))}:${pad2(Number(m))}`;
+}
+
 function formatTripWhen(trip) {
     if (!trip) return "";
-    return `${trip.date || ""} ${trip.time || ""}`.trim();
+    return `${formatSmsDate(trip.date)} ${formatSmsTime(trip.time)}`.trim();
+}
+
+function tripWhenFromBoardingDate(boarded) {
+    if (!(boarded instanceof Date) || Number.isNaN(boarded.getTime())) return null;
+    return {
+        date: `${boarded.getFullYear()}-${pad2(boarded.getMonth() + 1)}-${pad2(boarded.getDate())}`,
+        time: `${pad2(boarded.getHours())}:${pad2(boarded.getMinutes())}`,
+    };
 }
 
 function fillTemplate(template, vars) {
@@ -140,12 +180,21 @@ async function sendSms(firm, phone, message) {
     }
 }
 
-async function sendQueuedTicketSms({ event, tickets, trip, stops, tenantKey, commonModels }) {
+async function sendQueuedTicketSms({ event, tickets, trip, stops, tenantKey, commonModels, models }) {
     const list = tickets || [];
     if (!list.length) return;
 
     const firm = await commonModels?.Firm?.findOne({ where: { key: tenantKey } });
     if (!firm?.isSmsActive) return;
+
+    let schedule = null;
+    if (trip?.routeId) {
+        try {
+            schedule = await loadRouteStopSchedule(models, trip);
+        } catch (err) {
+            console.error("SMS durak saati:", err.message);
+        }
+    }
 
     const byPhone = new Map();
     for (const t of list) {
@@ -156,7 +205,11 @@ async function sendQueuedTicketSms({ event, tickets, trip, stops, tenantKey, com
     }
 
     for (const [phone, group] of byPhone) {
-        const message = buildMessage(event, firm, trip, group, stops);
+        const boarded = schedule
+            ? boardingDateTime(trip, schedule.routeStops, schedule.offsetMap, group[0]?.fromRouteStopId)
+            : null;
+        const whenTrip = tripWhenFromBoardingDate(boarded) || trip;
+        const message = buildMessage(event, firm, whenTrip, group, stops);
         await sendSms(firm, phone, message);
     }
 }
@@ -167,6 +220,7 @@ function notifyTicketSms(req, { event, tickets, trip, stops }) {
         event,
         tenantKey: req.tenantKey,
         commonModels: req.commonModels,
+        models: req.models,
         tickets: (tickets || []).filter(Boolean).map((t) => ({
             phoneNumber: t.phoneNumber,
             pnr: t.pnr,
@@ -174,7 +228,9 @@ function notifyTicketSms(req, { event, tickets, trip, stops }) {
             fromRouteStopId: t.fromRouteStopId,
             toRouteStopId: t.toRouteStopId,
         })),
-        trip: trip ? { date: trip.date, time: trip.time } : null,
+        trip: trip
+            ? { id: trip.id, routeId: trip.routeId, date: trip.date, time: trip.time }
+            : null,
         stops: (stops || []).filter(Boolean).map((s) => ({
             id: s.id,
             title: s.title,
@@ -192,6 +248,7 @@ module.exports = {
     DEFAULT_SMS_TEMPLATES,
     SMS_TEMPLATE_MAX_LEN,
     normalizeTrPhone,
+    formatTripWhen,
     fillTemplate,
     mergeSmsTemplates,
     sanitizeSmsTemplates,
