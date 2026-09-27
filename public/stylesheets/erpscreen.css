@@ -1613,12 +1613,22 @@ div.ticket-cancel-refund-open-close {
     background-color: white;
     border-radius: .6rem;
     box-shadow: 0 0.5rem 1rem rgb(0 0 0 / 20%);
-    overflow: hidden;
+    overflow: auto;
     display: none;
 }
 
 .trip-time-adjust-pop-up .form-check {
     margin-bottom: 0;
+}
+
+.trip-time-adjust-range {
+    display: flex;
+    flex-direction: column;
+    gap: .75rem;
+}
+
+.trip-time-adjust-range.d-none {
+    display: none !important;
 }
 
 .ticket-row {

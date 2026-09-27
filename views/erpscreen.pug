@@ -1091,6 +1091,16 @@ block content
             .input-group
                 span.input-group-text Süre
                 input.trip-time-adjust-amount.form-control.form-control-sm(type="text" placeholder="00:15")
+            .form-check
+                input.form-check-input.trip-time-adjust-range-toggle(type="checkbox" id="trip-time-adjust-range")
+                label.form-check-label(for="trip-time-adjust-range") Tarih aralığındaki aynı saatli seferlere uygula
+            .trip-time-adjust-range.d-none
+                .input-group
+                    span.input-group-text Başlangıç
+                    input.trip-time-adjust-start.form-control.form-control-sm(type="text" autocomplete="off")
+                .input-group
+                    span.input-group-text Bitiş
+                    input.trip-time-adjust-end.form-control.form-control-sm(type="text" autocomplete="off")
         .p-3.d-flex.justify-content-end.gap-2
             button.btn.btn-outline-primary.trip-time-adjust-confirm(type="button") GÜNCELLE
             button.btn.btn-outline-secondary.trip-time-adjust-cancel(type="button") IPTAL

@@ -627,6 +627,8 @@ let tripStopRestrictionDirty = false;
 let tripCargoStops = [];
 let tripTimeAdjustStops = [];
 let tripTimeAdjustPicker;
+let tripTimeAdjustStartPicker;
+let tripTimeAdjustEndPicker;
 const tripCargoListLoadingHtml = '<p class="text-center text-muted m-0 trip-cargo-list-placeholder">Kargolar yükleniyor...</p>';
 
 function updateClock() {
@@ -1155,6 +1157,15 @@ function populateTripTimeAdjustStops(stops) {
     }
 }
 
+function setTripTimeAdjustRangeDate(picker, dateValue) {
+    if (!picker) return;
+    if (dateValue) {
+        picker.setDate(dateValue, false);
+    } else {
+        picker.clear();
+    }
+}
+
 function resetTripTimeAdjustForm() {
     const $select = $(".trip-time-adjust-stop");
     if ($select.length) {
@@ -1169,6 +1180,11 @@ function resetTripTimeAdjustForm() {
     } else {
         $(".trip-time-adjust-amount").val("");
     }
+
+    $(".trip-time-adjust-range-toggle").prop("checked", false);
+    $(".trip-time-adjust-range").addClass("d-none");
+    setTripTimeAdjustRangeDate(tripTimeAdjustStartPicker, currentTripDate);
+    setTripTimeAdjustRangeDate(tripTimeAdjustEndPicker, currentTripDate);
 }
 
 function closeTripCargoPopup() {
@@ -2840,6 +2856,22 @@ async function loadTrip(date, time, tripId) {
                 return;
             }
 
+            const applyRange = $(".trip-time-adjust-range-toggle").is(":checked");
+            let startDate = "";
+            let endDate = "";
+            if (applyRange) {
+                startDate = $(".trip-time-adjust-start").val();
+                endDate = $(".trip-time-adjust-end").val();
+                if (!startDate || !endDate) {
+                    showError("Lütfen başlangıç ve bitiş tarihi seçiniz.");
+                    return;
+                }
+                if (startDate > endDate) {
+                    showError("Başlangıç tarihi bitiş tarihinden sonra olamaz.");
+                    return;
+                }
+            }
+
             const $button = $(this);
             if ($button.prop("disabled")) {
                 return;
@@ -2848,12 +2880,22 @@ async function loadTrip(date, time, tripId) {
             $button.prop("disabled", true);
 
             try {
-                await $.post("/post-trip-time-adjustment", {
+                const payload = {
                     tripId: currentTripId,
                     routeStopId,
                     direction,
                     amount
-                });
+                };
+                if (applyRange) {
+                    payload.applyRange = true;
+                    payload.startDate = startDate;
+                    payload.endDate = endDate;
+                }
+
+                const response = await $.post("/post-trip-time-adjustment", payload);
+                if (response?.message && window.GTR && typeof window.GTR.toast === "function") {
+                    window.GTR.toast(response.message, "success");
+                }
                 closeTripTimeAdjustPopup();
                 loadTrip(currentTripDate, currentTripTime, currentTripId);
                 if (calendar && typeof calendar.val === "function") {
@@ -3911,6 +3953,21 @@ if (tripTimeAdjustInput) {
         defaultDate: "00:15",
         minuteIncrement: 1
     })
+}
+
+const tripTimeAdjustRangeOptions = {
+    locale: "tr",
+    altInput: true,
+    altFormat: "d F Y",
+    dateFormat: "Y-m-d",
+}
+const tripTimeAdjustStartInput = document.querySelector(".trip-time-adjust-start")
+if (tripTimeAdjustStartInput) {
+    tripTimeAdjustStartPicker = flatpickr(tripTimeAdjustStartInput, tripTimeAdjustRangeOptions)
+}
+const tripTimeAdjustEndInput = document.querySelector(".trip-time-adjust-end")
+if (tripTimeAdjustEndInput) {
+    tripTimeAdjustEndPicker = flatpickr(tripTimeAdjustEndInput, tripTimeAdjustRangeOptions)
 }
 
 let currentSeat = null;
@@ -5194,6 +5251,10 @@ $(".trip-time-adjust-close").off("click").on("click", () => {
 
 $(".trip-time-adjust-cancel").off("click").on("click", () => {
     closeTripTimeAdjustPopup();
+});
+
+$(".trip-time-adjust-range-toggle").off("change").on("change", function () {
+    $(".trip-time-adjust-range").toggleClass("d-none", !this.checked);
 });
 
 $(".trip-staff-save").on("click", async e => {

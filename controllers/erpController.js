@@ -2476,9 +2476,95 @@ exports.postTripStopRestrictionAll = async (req, res, next) => {
     }
 };
 
+function isApplyRangeRequested(value) {
+    return value === true || value === "true" || value === "1" || value === 1;
+}
+
+async function applyTripStopTimeAdjustment(req, trip, routeStopId, delta, routeStops) {
+    const numericTripId = Number(trip.id);
+    const numericRouteStopId = Number(routeStopId);
+
+    const [record, created] = await req.models.TripStopTime.findOrCreate({
+        where: { tripId: numericTripId, routeStopId: numericRouteStopId },
+        defaults: { offsetMinutes: delta },
+    });
+
+    if (!created) {
+        const current = Number(record.offsetMinutes) || 0;
+        const updated = current + delta;
+        if (updated === 0) await record.destroy();
+        else {
+            record.offsetMinutes = updated;
+            await record.save();
+        }
+    }
+
+    const offsets = await req.models.TripStopTime.findAll({
+        where: { tripId: numericTripId },
+        raw: true,
+    });
+
+    if (!routeStops.length) {
+        throw new Error("Hat durakları bulunamadı.");
+    }
+
+    const firstStop = routeStops[0];
+    const firstOffsetRec = offsets.find(o => Number(o.routeStopId) === Number(firstStop.id));
+    const firstOffsetMinutes = firstOffsetRec ? Number(firstOffsetRec.offsetMinutes) || 0 : 0;
+
+    const totalDurationSeconds = routeStops.reduce((acc, stop) => {
+        if (!stop.duration) return acc;
+        const [h, m, s] = String(stop.duration).split(":").map(n => parseInt(n || 0, 10));
+        return acc + h * 3600 + m * 60 + (s || 0);
+    }, 0);
+
+    const totalOffsetSeconds = offsets.reduce(
+        (acc, o) => acc + ((Number(o.offsetMinutes) || 0) * 60),
+        0
+    );
+
+    const hareketTarihi = moment(trip.date).format("YYYY-MM-DD");
+    const baseStart = moment(trip.time, ["HH:mm", "HH:mm:ss"]);
+    const hareketSaati = baseStart.clone().add(firstOffsetMinutes, "minutes").format("HH:mm");
+    const startDateTime = moment(`${hareketTarihi} ${hareketSaati}`, "YYYY-MM-DD HH:mm");
+
+    const totalSecondsForEnd = totalDurationSeconds + (totalOffsetSeconds - (firstOffsetMinutes * 60));
+    const endDateTime = startDateTime.clone().add(totalSecondsForEnd, "seconds");
+
+    const seferBitisTarihi = endDateTime.format("YYYY-MM-DD");
+    const seferBitisSaati = endDateTime.format("HH:mm");
+
+    console.log(`🕓 New times → Trip ${numericTripId} Departure: ${hareketSaati} | Arrival: ${seferBitisSaati}`);
+
+    let uetdsResult = null;
+    if (trip.uetdsRefNo) {
+        uetdsResult = await seferGuncelle(req, trip.id, {
+            referansNo: trip.uetdsRefNo,
+            hareketTarihi,
+            hareketSaati,
+            seferBitisTarihi,
+            seferBitisSaati,
+        });
+        console.log("📡 [UETDS] Trip update result:", uetdsResult);
+    } else {
+        console.log(`⚠️ Trip ${numericTripId} has no UETDS ref number, skipping update.`);
+    }
+
+    return {
+        tripId: numericTripId,
+        newTimes: {
+            hareketTarihi,
+            hareketSaati,
+            seferBitisTarihi,
+            seferBitisSaati,
+        },
+        uetdsResult,
+    };
+}
+
 exports.postTripTimeAdjustment = async (req, res, next) => {
     try {
-        const { tripId, routeStopId, direction, amount } = req.body;
+        const { tripId, routeStopId, direction, amount, applyRange, startDate, endDate } = req.body;
 
         const numericTripId = Number(tripId);
         const numericRouteStopId = Number(routeStopId);
@@ -2510,27 +2596,34 @@ exports.postTripTimeAdjustment = async (req, res, next) => {
         });
         if (!routeStop) return res.status(404).json({ message: "Sefer durağı bulunamadı." });
 
-        const delta = minutes * (normalizedDirection === "backward" ? -1 : 1);
+        const useRange = isApplyRangeRequested(applyRange);
+        let targets = [trip];
 
-        const [record, created] = await req.models.TripStopTime.findOrCreate({
-            where: { tripId: numericTripId, routeStopId: numericRouteStopId },
-            defaults: { offsetMinutes: delta },
-        });
+        if (useRange) {
+            const start = String(startDate || "").trim();
+            const end = String(endDate || "").trim();
+            const startMoment = moment(start, "YYYY-MM-DD", true);
+            const endMoment = moment(end, "YYYY-MM-DD", true);
+            if (!startMoment.isValid() || !endMoment.isValid()) {
+                return res.status(400).json({ message: "Lütfen geçerli bir tarih aralığı seçiniz." });
+            }
+            if (start > end) {
+                return res.status(400).json({ message: "Başlangıç tarihi bitiş tarihinden sonra olamaz." });
+            }
 
-        if (!created) {
-            const current = Number(record.offsetMinutes) || 0;
-            const updated = current + delta;
-            if (updated === 0) await record.destroy();
-            else {
-                record.offsetMinutes = updated;
-                await record.save();
+            targets = await req.models.Trip.findAll({
+                where: {
+                    routeId: trip.routeId,
+                    time: trip.time,
+                    date: { [Op.between]: [start, end] },
+                    isDeleted: false,
+                },
+            });
+
+            if (!targets.length) {
+                return res.status(404).json({ message: "Seçilen aralıkta aynı saatte sefer bulunamadı." });
             }
         }
-
-        const offsets = await req.models.TripStopTime.findAll({
-            where: { tripId: numericTripId },
-            raw: true,
-        });
 
         const routeStops = await req.models.RouteStop.findAll({
             where: { routeId: trip.routeId },
@@ -2541,56 +2634,30 @@ exports.postTripTimeAdjustment = async (req, res, next) => {
         if (!routeStops.length)
             return res.status(400).json({ message: "Hat durakları bulunamadı." });
 
-        const firstStop = routeStops[0];
-        const firstOffsetRec = offsets.find(o => o.routeStopId === firstStop.id);
-        const firstOffsetMinutes = firstOffsetRec ? Number(firstOffsetRec.offsetMinutes) || 0 : 0;
+        const delta = minutes * (normalizedDirection === "backward" ? -1 : 1);
+        const results = [];
+        for (const target of targets) {
+            results.push(await applyTripStopTimeAdjustment(req, target, numericRouteStopId, delta, routeStops));
+        }
 
-        const totalDurationSeconds = routeStops.reduce((acc, stop) => {
-            if (!stop.duration) return acc;
-            const [h, m, s] = stop.duration.split(":").map(n => parseInt(n || 0, 10));
-            return acc + h * 3600 + m * 60 + (s || 0);
-        }, 0);
+        const sourceResult = results.find(result => result.tripId === numericTripId) || results[0];
+        const uetdsFailed = results.filter(result =>
+            result.uetdsResult && result.uetdsResult.success === false && !result.uetdsResult.skipped
+        ).length;
 
-        const totalOffsetSeconds = offsets.reduce(
-            (acc, o) => acc + ((Number(o.offsetMinutes) || 0) * 60),
-            0
-        );
-
-        const hareketTarihi = moment(trip.date).format("YYYY-MM-DD");
-        const baseStart = moment(trip.time, ["HH:mm", "HH:mm:ss"]);
-        const hareketSaati = baseStart.clone().add(firstOffsetMinutes, "minutes").format("HH:mm");
-        const startDateTime = moment(`${hareketTarihi} ${hareketSaati}`, "YYYY-MM-DD HH:mm");
-
-        const totalSecondsForEnd = totalDurationSeconds + (totalOffsetSeconds - (firstOffsetMinutes * 60));
-        const endDateTime = startDateTime.clone().add(totalSecondsForEnd, "seconds");
-
-        const seferBitisTarihi = endDateTime.format("YYYY-MM-DD");
-        const seferBitisSaati = endDateTime.format("HH:mm");
-
-        console.log(`🕓 New times → Departure: ${hareketSaati} | Arrival: ${seferBitisSaati}`);
-
-        if (trip.uetdsRefNo) {
-            const result = await seferGuncelle(req, trip.id, {
-                referansNo: trip.uetdsRefNo,
-                hareketTarihi,
-                hareketSaati,
-                seferBitisTarihi,
-                seferBitisSaati,
-            });
-            console.log("📡 [UETDS] Trip update result:", result);
-        } else {
-            console.log("⚠️ Trip has no UETDS ref number, skipping update.");
+        let message = "Saat ayarlandı ve UETDS güncellendi.";
+        if (useRange) {
+            message = `${results.length} seferin saati güncellendi.`;
+            if (uetdsFailed > 0) {
+                message += ` ${uetdsFailed} sefer UETDS'e yazılamadı.`;
+            }
         }
 
         res.json({
             success: true,
-            message: "Saat ayarlandı ve UETDS güncellendi.",
-            newTimes: {
-                hareketTarihi,
-                hareketSaati,
-                seferBitisTarihi,
-                seferBitisSaati,
-            },
+            message,
+            updatedCount: results.length,
+            newTimes: sourceResult?.newTimes,
         });
     } catch (err) {
         console.error("postTripTimeAdjustment error:", err);
