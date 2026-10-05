@@ -931,7 +931,8 @@
                         pnr,
                         seats: selectedTakenSeats,
                         date: currentTripDate,
-                        time: currentTripTime
+                        time: currentTripTime,
+                        tripId: currentTripId
                     }
                 });
                 cancelingSeatPNR = pnr;
@@ -1018,7 +1019,8 @@
                         seats: JSON.stringify(selectedTakenSeats),
                         pnr: cancelingSeatPNR,
                         date: currentTripDate,
-                        time: currentTripTime
+                        time: currentTripTime,
+                        tripId: currentTripId
                     }
                 });
                 closeSheet(true);
@@ -1367,6 +1369,14 @@
 
         // Takvim eklentisi yüklenemezse sefer listesi yine de açılabilsin.
         const onCalendarDateChange = async (dateInput) => {
+            if (isMoving) {
+                selectedSeats = [];
+                $(".seat").removeClass("selected");
+                syncSelectionBar();
+                showPanel("#mTripsPanel");
+                await loadTripsList(dateInput);
+                return;
+            }
             await closeOpenTrip();
             await loadTripsList(dateInput);
         };

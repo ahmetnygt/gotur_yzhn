@@ -138,6 +138,19 @@ function toArrayParam(value) {
     return [value];
 }
 
+// Aynı kalkış saatinde birden fazla sefer olabilir. İptal/iade/açığa alma
+// ekrandaki seferin id'siyle eşlenir; id yoksa tarih+saat yedeği kalır.
+function findTripByIdOrSchedule(models, { tripId, date, time }) {
+    const id = tripId != null && String(tripId).trim() !== "" ? String(tripId).trim() : null;
+    if (id) {
+        return models.Trip.findOne({ where: { id } });
+    }
+    if (!date || !time) {
+        return null;
+    }
+    return models.Trip.findOne({ where: { date, time } });
+}
+
 function moneyAmount(value) {
     const n = Number(value);
     return Number.isFinite(n) ? n : 0;
@@ -4576,7 +4589,11 @@ exports.getCancelOpenTicket = async (req, res, next) => {
 
     const seats = normalizeSeatList(seatsParam);
 
-    const trip = await req.models.Trip.findOne({ where: { date: tripDate, time: tripTime } });
+    const trip = await findTripByIdOrSchedule(req.models, {
+        tripId: req.query.tripId,
+        date: tripDate,
+        time: tripTime,
+    });
     if (!trip) {
         return res.status(404).json({ message: "Sefer bulunamadı." });
     }
@@ -4621,7 +4638,7 @@ exports.getCancelOpenTicket = async (req, res, next) => {
     const tickets = [];
 
     for (const ticketInstance of foundTickets) {
-        if (ticketInstance.tripId !== trip.id) {
+        if (String(ticketInstance.tripId) !== String(trip.id)) {
             continue;
         }
 
@@ -4683,8 +4700,10 @@ exports.postCancelTicket = async (req, res, next) => {
         const tripDate = req.body.date;
         const tripTime = req.body.time;
 
-        const trip = await req.models.Trip.findOne({
-            where: { date: tripDate, time: tripTime },
+        const trip = await findTripByIdOrSchedule(req.models, {
+            tripId: req.body.tripId,
+            date: tripDate,
+            time: tripTime,
         });
         if (!trip) return res.status(404).json({ message: "Sefer bulunamadı." });
 
@@ -4710,7 +4729,7 @@ exports.postCancelTicket = async (req, res, next) => {
         let didAnyRefund = false;
 
         for (const ticket of tickets) {
-            if (ticket.tripId !== trip.id) continue;
+            if (String(ticket.tripId) !== String(trip.id)) continue;
 
             const currentStatus = ticket.status;
             const beforeSnapshot = ticketSnapshot(ticket);
@@ -4917,7 +4936,12 @@ exports.postOpenTicket = async (req, res, next) => {
     try {
         const tripDate = req.body.date
         const tripTime = req.body.time
-        const trip = await req.models.Trip.findOne({ where: { date: tripDate, time: tripTime } })
+        const trip = await findTripByIdOrSchedule(req.models, {
+            tripId: req.body.tripId,
+            date: tripDate,
+            time: tripTime,
+        })
+        if (!trip) return res.status(404).json({ message: "Sefer bulunamadı." });
         const seats = JSON.parse(req.body.seats);
         const pnr = req.body.pnr;
 

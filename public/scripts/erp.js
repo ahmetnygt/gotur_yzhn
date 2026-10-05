@@ -4367,7 +4367,7 @@ $(".ticket-button-action").on("click", async e => {
             await $.ajax({
                 url: "/post-cancel-ticket",
                 type: "POST",
-                data: { seats: json, pnr: cancelingSeatPNR, date: currentTripDate, time: currentTripTime },
+                data: { seats: json, pnr: cancelingSeatPNR, date: currentTripDate, time: currentTripTime, tripId: currentTripId },
                 success: async function (response) {
                     $(".ticket-cancel-refund-open").css("display", "none")
                     $(".blackout").css("display", "none")
@@ -4393,7 +4393,7 @@ $(".ticket-button-action").on("click", async e => {
             await $.ajax({
                 url: "/post-cancel-ticket",
                 type: "POST",
-                data: { seats: json, pnr: cancelingSeatPNR, date: currentTripDate, time: currentTripTime },
+                data: { seats: json, pnr: cancelingSeatPNR, date: currentTripDate, time: currentTripTime, tripId: currentTripId },
                 success: async function (response) {
                     $(".ticket-cancel-refund-open").css("display", "none")
                     $(".blackout").css("display", "none")
@@ -4419,7 +4419,7 @@ $(".ticket-button-action").on("click", async e => {
             await $.ajax({
                 url: "/post-open-ticket",
                 type: "POST",
-                data: { seats: json, pnr: cancelingSeatPNR, date: currentTripDate, time: currentTripTime },
+                data: { seats: json, pnr: cancelingSeatPNR, date: currentTripDate, time: currentTripTime, tripId: currentTripId },
                 success: async function (response) {
                     $(".ticket-cancel-refund-open").css("display", "none")
                     $(".blackout").css("display", "none")
@@ -4726,7 +4726,7 @@ $(".taken-ticket-op").on("click", async e => {
         await $.ajax({
             url: "/get-cancel-open-ticket",
             type: "GET",
-            data: { pnr: pnr, seats: seatNumbers, date: tripDate, time: tripTime },
+            data: { pnr: pnr, seats: seatNumbers, date: tripDate, time: tripTime, tripId },
             success: function (response) {
                 $(".ticket-cancel-refund-open .gtr-header span").html("BİLET İPTAL")
                 // DÜZELTME: .prepend() eski/önceki açılıştan kalan bilet
@@ -4790,7 +4790,7 @@ $(".taken-ticket-op").on("click", async e => {
         await $.ajax({
             url: "/get-cancel-open-ticket",
             type: "GET",
-            data: { pnr: pnr, seats: seatNumbers, date: tripDate, time: tripTime },
+            data: { pnr: pnr, seats: seatNumbers, date: tripDate, time: tripTime, tripId },
             success: function (response) {
                 $(".ticket-cancel-refund-open .gtr-header span").html("BİLET İADE")
                 $(".ticket-cancel-refund-open .tickets").html(response)
@@ -4850,7 +4850,7 @@ $(".taken-ticket-op").on("click", async e => {
         await $.ajax({
             url: "/get-cancel-open-ticket",
             type: "GET",
-            data: { pnr: pnr, seats: seatNumbers, date: tripDate, time: tripTime },
+            data: { pnr: pnr, seats: seatNumbers, date: tripDate, time: tripTime, tripId },
             success: function (response) {
                 $(".ticket-cancel-refund-open .gtr-header span").html("AÇIK BİLET")
                 $(".ticket-cancel-refund-open .tickets").html(response)
