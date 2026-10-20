@@ -8594,7 +8594,7 @@ $(".user-settings-nav").on("click", async e => {
                         $(".user-settings").css("display", "block")
                         $(".user-name").val(response.name)
                         $(".user-username").val(response.username)
-                        $(".user-password").val("")
+                        $(".user-password").val("").attr("placeholder", "Kayıtlı — değiştirmek için yeni şifre yazın")
                         $(".user-phone").val(response.phoneNumber)
                         $(".user-branches").val(response.branchId)
                         renderPermissions(response.permissions)
@@ -9441,7 +9441,7 @@ $(".add-user").on("click", async e => {
     $("#isUserActive").prop("checked", true)
     $(".user-name").val("")
     $(".user-username").val("")
-    $(".user-password").val("")
+    $(".user-password").val("").attr("placeholder", "")
     $(".user-phone").val("")
     $(".user-branches").val("")
     editingUserId = null
@@ -9470,23 +9470,30 @@ $(".save-user").on("click", async e => {
     const password = ($(".user-password").val() || "").trim()
     const phone = ($(".user-phone").val() || "").trim()
     const branchId = $(".user-branches").val()
+    const isEditing = Boolean(editingUserId)
 
     $(".user-name").val(name)
     $(".user-username").val(username)
     $(".user-password").val(password)
     $(".user-phone").val(phone)
 
-    if (!name || !username || !password || !branchId) {
-        showError("Lütfen İsim Soyisim, Kullanıcı Adı, Şifre ve Şube alanlarını doldurunuz.")
+    if (!name || !username || !branchId || (!isEditing && !password)) {
+        showError(isEditing
+            ? "Lütfen İsim Soyisim, Kullanıcı Adı ve Şube alanlarını doldurunuz."
+            : "Lütfen İsim Soyisim, Kullanıcı Adı, Şifre ve Şube alanlarını doldurunuz.")
         return
     }
 
     const permissions = $(".permission-checkbox:checked").map((_, el) => $(el).val()).get()
+    const data = { id: editingUserId, isActive, name, username, phone, branchId, permissions: JSON.stringify(permissions) }
+    if (password) {
+        data.password = password
+    }
 
     await $.ajax({
         url: "/post-save-user",
         type: "POST",
-        data: { id: editingUserId, isActive, name, username, password, phone, branchId, permissions: JSON.stringify(permissions) },
+        data,
         success: function (response) {
             $("#isUserActive").prop("checked", true)
             $(".user-name").val("")
