@@ -97,9 +97,14 @@ function verifyCsrfToken(req, res, next) {
         return next();
     }
 
-    const provided = req.get("x-csrf-token") || req.body?._csrf;
+    const headerToken = req.get("x-csrf-token");
+    const bodyToken = req.body && typeof req.body === "object" ? req.body._csrf : undefined;
     const expected = req.session?.csrfToken;
     const ajax = isAjaxRequest(req);
+    // Sayfa açılışındaki meta anahtarı, sonraki istek oturum anahtarını
+    // yenilediyse eskir. Çerez her yanıtta güncellenir ve gövdedeki _csrf
+    // olarak da gelir; ikisinden biri oturumla eşleşirse kabul edilir.
+    const tokenMatches = value => typeof value === "string" && value.length > 0 && value === expected;
 
     if (!expected) {
         if (ajax) {
@@ -111,7 +116,7 @@ function verifyCsrfToken(req, res, next) {
         return res.redirect("/login");
     }
 
-    if (!provided || provided !== expected) {
+    if (!tokenMatches(headerToken) && !tokenMatches(bodyToken)) {
         if (ajax) {
             return res.status(403).json({
                 code: "CSRF_FAILED",

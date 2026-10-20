@@ -913,6 +913,45 @@ $.ajaxPrefilter((options, originalOptions) => {
     if (originalOptions && typeof originalOptions.url === "string") {
         originalOptions.url = normalizeErpUrl(originalOptions.url);
     }
+
+    const method = String(options.type || originalOptions.type || "GET").toUpperCase();
+    if (method === "GET" || method === "HEAD") {
+        return;
+    }
+
+    const contentType = String(options.contentType || "");
+    if (contentType.includes("application/json")) {
+        return;
+    }
+    if (typeof FormData !== "undefined" && options.data instanceof FormData) {
+        return;
+    }
+    if (options.processData === false) {
+        return;
+    }
+
+    // Header sayfa meta'sını taşır. Çerez, aradaki GET'lerde yenilenmiş oturum
+    // anahtarını taşır. İkisi ayrışırsa sunucu gövdedeki anahtarı da kabul eder.
+    const token = getCookieValue("XSRF-TOKEN") || getCsrfToken();
+    if (!token) {
+        return;
+    }
+
+    if (options.data == null || options.data === "") {
+        options.data = { _csrf: token };
+        return;
+    }
+
+    if (typeof options.data === "string") {
+        if (!/(^|&)_csrf=/.test(options.data)) {
+            options.data += `${options.data ? "&" : ""}_csrf=${encodeURIComponent(token)}`;
+        }
+        return;
+    }
+
+    if (typeof options.data === "object" && options.data._csrf == null) {
+        options.data._csrf = token;
+    }
 });
 
 const originalWindowOpen = window.open;
