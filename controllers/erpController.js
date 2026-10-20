@@ -7579,8 +7579,18 @@ exports.postSaveUser = async (req, res, next) => {
             return res.status(400).json({ message: "Yeni kullanıcılar için şifre zorunludur." });
         }
 
+        // Checkbox kalktığında istemci "false" metnini gönderir. Bu metin
+        // truthy olduğu için olduğu gibi yazılırsa kolon reddeder veya kullanıcı
+        // yanlışlıkla aktif kalır. Durak/sefer kayıtlarıyla aynı açık boolean.
+        let activeFlag = user ? user.isActive : true;
+        if (isActive === true || isActive === "true" || isActive === 1 || isActive === "1") {
+            activeFlag = true;
+        } else if (isActive === false || isActive === "false" || isActive === 0 || isActive === "0") {
+            activeFlag = false;
+        }
+
         const payload = {
-            isActive,
+            isActive: activeFlag,
             branchId,
             username: trimmedUsername,
             phoneNumber: phone,

@@ -9464,7 +9464,8 @@ $(".add-user").on("click", async e => {
 })
 
 $(".save-user").on("click", async e => {
-    const isActive = $("#isUserActive").prop("checked")
+    e.preventDefault()
+    const isActive = $("#isUserActive").prop("checked") ? "true" : "false"
     const name = ($(".user-name").val() || "").trim()
     const username = ($(".user-username").val() || "").trim()
     const password = ($(".user-password").val() || "").trim()
