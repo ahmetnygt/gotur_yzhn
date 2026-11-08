@@ -19,6 +19,7 @@ router.use(verifyCsrfToken);
 
 // --- Login öncesi erişilebilmesi gereken tek rotalar ---
 router.get('/login', erpController.getErpLogin);
+router.get('/suspended', erpController.getSuspended);
 // GÜVENLİK: app.js'de tanımlanan loginRateLimiter buraya kadar hiçbir route'a
 // bağlanmamıştı (sadece app.set ile saklanıyordu), bu yüzden brute-force login
 // denemeleri hiçbir şekilde sınırlanmıyordu.

@@ -1,6 +1,24 @@
 // Şifre değiştirme akışı ve çıkış işlemi, zorunlu şifre sıfırlama sırasında
 // dahi her zaman erişilebilir olmalı.
 const PASSWORD_RESET_EXEMPT_PATHS = new Set(["/post-change-password", "/logout"]);
+const SUSPENDED_PATH = "/suspended";
+
+function isBillingSuspendedValue(value) {
+    return value === true || value === 1 || value === "1";
+}
+
+async function firmIsBillingSuspended(req) {
+    if (!req.commonModels?.Firm || !req.tenantKey) {
+        return false;
+    }
+
+    const firm = await req.commonModels.Firm.findOne({
+        where: { key: req.tenantKey },
+        attributes: ["billingSuspended"],
+    });
+
+    return isBillingSuspendedValue(firm?.billingSuspended);
+}
 
 function isAjaxRequest(req) {
     if (req.xhr) {
@@ -16,7 +34,7 @@ function isAjaxRequest(req) {
     return accept.includes("application/json") && !accept.includes("text/html");
 }
 
-module.exports = (req, res, next) => {
+module.exports = async (req, res, next) => {
     const tenantKey = req.tenantKey;
     const tenantSession = tenantKey && req.session && req.session.tenants
         ? req.session.tenants[tenantKey]
@@ -45,6 +63,22 @@ module.exports = (req, res, next) => {
         });
     }
 
+    if (req.path !== SUSPENDED_PATH) {
+        try {
+            if (await firmIsBillingSuspended(req)) {
+                if (isAjaxRequest(req)) {
+                    return res.status(401).json({
+                        message: "Borcundan dolayı kullanıma kapatılmıştır.",
+                        redirect: SUSPENDED_PATH,
+                    });
+                }
+                return res.redirect(SUSPENDED_PATH);
+            }
+        } catch (err) {
+            return next(err);
+        }
+    }
+
     // Kullanıcı ilk girişte (veya bir yönetici tarafından) zorunlu şifre
     // sıfırlamaya tabi tutulduysa, şifresini değiştirene kadar veri değiştiren
     // hiçbir işlemi gerçekleştiremesin. Sayfa görüntüleme (GET) engellenmez ki
@@ -59,3 +93,5 @@ module.exports = (req, res, next) => {
 
     return next();
 };
+
+module.exports.firmIsBillingSuspended = firmIsBillingSuspended;

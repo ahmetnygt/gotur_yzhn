@@ -32,6 +32,7 @@ const {
     diffSnapshots,
 } = require('../utilities/systemLog');
 const { clearAuthCookies } = require("../middlewares/csrf");
+const { firmIsBillingSuspended } = require("../middlewares/authentication");
 
 const TURKISH_COLLATOR = (() => {
     try {
@@ -3229,6 +3230,31 @@ exports.getErpLogin = async (req, res, next) => {
     }
 }
 
+exports.getSuspended = async (req, res, next) => {
+    res.set("Cache-Control", "no-store, private");
+
+    const DEFAULT_TITLE = "GötürYZHN";
+    let firmRecord = null;
+
+    if (req.commonModels?.Firm && req.tenantKey) {
+        try {
+            firmRecord = await req.commonModels.Firm.findOne({ where: { key: req.tenantKey } });
+        } catch (error) {
+            console.error("Firm lookup error:", error);
+        }
+    }
+
+    const title = firmRecord?.displayName || DEFAULT_TITLE;
+
+    try {
+        const firmLogo = await resolveFirmLoginLogo(req, firmRecord);
+        res.render("suspended", { isNoNavbar: true, firmLogo, title });
+    } catch (error) {
+        console.error("Suspended page logo resolution failed:", error);
+        res.render("suspended", { isNoNavbar: true, firmLogo: DEFAULT_LOGIN_LOGO, title });
+    }
+};
+
 exports.postErpLogin = async (req, res, next) => {
     try {
         const { username, password } = req.body;
@@ -3266,6 +3292,11 @@ exports.postErpLogin = async (req, res, next) => {
         if (!success) {
             await logFailedLogin("şifre hatalı", u);
             return res.redirect("/login?error=1");
+        }
+
+        if (await firmIsBillingSuspended(req)) {
+            await logFailedLogin("firma kira kilidi", u);
+            return res.redirect("/suspended");
         }
 
         req.session.firmUser = u;

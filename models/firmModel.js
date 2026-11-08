@@ -26,6 +26,11 @@ module.exports = (sequelize) => {
         type: DataTypes.ENUM("active", "inactive"),
         defaultValue: "active",
       },
+      billingSuspended: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+      },
 
       // 🔹 Tema renkleri (Götür varsayılan)
       primaryColor: {
